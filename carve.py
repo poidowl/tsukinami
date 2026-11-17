@@ -965,15 +965,275 @@ def _onaji_kuukan(v_core, vo, N, SR, seed):
     return out
 
 
+def _scale_uta_spec(spec_list, mul):
+    """第1層ヘルパー：単一Hz数値・メリスマ配列 [hz1, hz2, ...]・音符辞書 {"hz": ..., "tie": ...} のすべてに倍率 mul を適用する。"""
+    out = []
+    for item in spec_list:
+        if isinstance(item, (list, tuple)):
+            out.append([round(float(x) * mul, 2) for x in item])
+        elif isinstance(item, dict):
+            d = dict(item)
+            if isinstance(d.get("hz"), (list, tuple)):
+                d["hz"] = [round(float(x) * mul, 2) for x in d["hz"]]
+            elif d.get("hz") is not None:
+                d["hz"] = round(float(d["hz"]) * mul, 2)
+            out.append(d)
+        else:
+            out.append(round(float(item) * mul, 2))
+    return out
+
+
 def _build_choir_parts(lead_hz):
     """『四声が4人じゃなくて1人に聞こえる＝オペラ歌手は1人で4人分歌っている』：
     別々の音程（3度下・4度下・5度下）でバラバラにハモらせるのではなく、
-    4声すべてが同じ1つの旋律（1:1 ユニゾン＋微細な自然倍音揺らぎ）を共有し、
+    4声すべてが同じ1つの旋律（1:1 ユニゾン＋メリスマ・音符イベント完全共有）を共有し、
     1人のオペラ歌手の「頭声・胸腔・頭蓋・聖堂オーラ」の4層として完全に一体化する。"""
-    hz_v2 = [round(h * 1.000, 2) for h in lead_hz]
-    hz_v3 = [round(h * 1.000, 2) for h in lead_hz]
-    hz_pad = [round(h * 1.000, 2) for h in lead_hz]
+    hz_v2 = _scale_uta_spec(lead_hz, 1.000)
+    hz_v3 = _scale_uta_spec(lead_hz, 1.000)
+    hz_pad = _scale_uta_spec(lead_hz, 1.000)
     return hz_v2, hz_v3, hz_pad
+
+
+def _trance_singing_layers(r, n, KT, L, rc, SR):
+    """チャッピィ提案の歌声合成3階層アーキテクチャ（--trance / --choir 専用、通常TTSには一切影響しない）：
+    - 第1層（音符・演奏情報層）：モーラ1対1の制約を解き、同音連打（再アタック）とタイの区別、および1母音内の複数音メリスマ `[hz1, hz2]` を音符イベント列へ展開。
+    - 第2層（歌唱表現層）：
+      ① 線形Hzの移動平均ではなく、セント（半音 log2）領域で「子音内の素早い遷移」と「母音間のS字最小躍度ポルタメント」を分離制御。
+      ② 同音連打時にも微細なしゃくり（再アタックスクープ）とビブラート起点リセットを発動し、メリスマ内ではレガート維持。
+      ③ 全母音一律の F1>=1.08*f0 ではなく、母音（i/u・e/o・a）と音高に応じたコペルトゥーラ（母音別フォルマント同調）を適用。"""
+    fpz = kotoba.FP / 1000.0
+    f_ref = SR / (2.0 * L["D_center"])
+    sh_st = float(KT.get("uta_trance_shift_st", 3.0))
+    sh_mul = 2.0 ** (sh_st / 12.0)
+    raw_specs = _scale_uta_spec(KT["uta_hz"], sh_mul)
+
+    # ---- 第1層：音符イベント列 (notes) の構築 ----
+    # 各イベント: {a_fr, b_fr, e_fr, st, hz, tie, reattack, melisma, has_cons, vowel}
+    cv_indices = [idx for idx, m_ in enumerate(r["moras"]) if m_.get("kind") != "pau"]
+    last_cv_idx = cv_indices[-1] if cv_indices else -1
+    auto_melisma = bool(KT.get("uta_auto_melisma", True))
+
+    notes = []
+    k_ = 0
+    prev_hz = None
+    for m_idx, m_ in enumerate(r["moras"]):
+        if m_.get("kind") == "pau":
+            prev_hz = None
+            continue
+        spec = raw_specs[min(k_, len(raw_specs) - 1)]
+        k_ += 1
+        a_fr = max(0, min(n - 1, int(m_["a"] / fpz)))
+        b_fr = max(a_fr, min(n - 1, int(m_["b"] / fpz)))
+        e_fr = max(b_fr + 1, min(n, int(m_["e"] / fpz) + 1))
+        has_cons = bool(m_.get("c"))
+        v_ch = m_.get("v", "a")
+        vd_sec = float(m_["e"] - m_["b"])
+
+        # 辞書指定・メリスマ配列・単一数値のすべてを正規化
+        explicit_tie = False
+        port_override = None
+        if isinstance(spec, dict):
+            explicit_tie = bool(spec.get("tie", False))
+            port_override = spec.get("port_ms")
+            hz_val = spec.get("hz", 392.0)
+        else:
+            hz_val = spec
+
+        # フレーズ中盤の中伸ばし母音（例：0.48s〜0.68s、「ワタシノナマエ」の「エ」560ms等）では、
+        # 単一音符指定でもソプラノの華麗なベルカント装飾音（上隣接音へのメリスマ・ターン）を自動付与
+        if (
+            auto_melisma
+            and not isinstance(hz_val, (list, tuple))
+            and not explicit_tie
+            and m_idx != last_cv_idx
+            and 0.48 <= vd_sec <= 0.68
+            and m_.get("kind") == "CV"
+        ):
+            base_h = float(hz_val)
+            upper_h = round(base_h * (2.0 ** (2.0 / 12.0)), 2)
+            hz_val = [(base_h, 0.46), (upper_h, 0.24), (base_h, 0.30)]
+
+        if isinstance(hz_val, (list, tuple)) and len(hz_val) > 1:
+            # メリスマ：1つのモーラの母音区間 [b_fr, e_fr] を複数音符（均等または重み付き比率）に分割
+            pairs = []
+            for item in hz_val:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    pairs.append(( float(item[0]), float(item[1]) ))
+                else:
+                    pairs.append(( float(item), 1.0 ))
+            tot_w = sum(w for _, w in pairs) or 1.0
+            span = max(1, e_fr - b_fr)
+            acc_w = 0.0
+            for idx, (h_sub, w_sub) in enumerate(pairs):
+                h_f = max(60.0, h_sub)
+                st_f = 12.0 * math.log2(h_f / f_ref)
+                sub_a = a_fr if idx == 0 else b_fr + int(round(span * acc_w / tot_w))
+                sub_b = b_fr if idx == 0 else sub_a
+                acc_w += w_sub
+                sub_e = e_fr if idx == len(pairs) - 1 else b_fr + int(round(span * acc_w / tot_w))
+                is_same = (prev_hz is not None and abs(h_f - prev_hz) < 1e-3)
+                notes.append({
+                    "a_fr": sub_a, "b_fr": sub_b, "e_fr": max(sub_b + 1, sub_e),
+                    "hz": h_f, "st": st_f,
+                    "tie": explicit_tie if idx == 0 else False,
+                    "reattack": (is_same and not explicit_tie) if idx == 0 else False,
+                    "melisma": idx > 0,
+                    "has_cons": has_cons if idx == 0 else False,
+                    "port_ms": port_override,
+                    "vowel": v_ch,
+                })
+                prev_hz = h_f
+        else:
+            h_f = max(60.0, float(hz_val[0] if isinstance(hz_val, (list, tuple)) else hz_val))
+            st_f = 12.0 * math.log2(h_f / f_ref)
+            is_same = (prev_hz is not None and abs(h_f - prev_hz) < 1e-3)
+            # 促音(Q)・撥音(N)以外の通常モーラで同音が続く場合は「同音再アタック」として扱う（明示tieを除く）
+            is_tie = explicit_tie or (is_same and m_.get("kind") in ("Q", "N"))
+            notes.append({
+                "a_fr": a_fr, "b_fr": b_fr, "e_fr": e_fr,
+                "hz": h_f, "st": st_f,
+                "tie": is_tie,
+                "reattack": (is_same and not is_tie),
+                "melisma": False,
+                "has_cons": has_cons,
+                "port_ms": port_override,
+                "vowel": v_ch,
+            })
+            prev_hz = h_f
+
+    if not notes:
+        return [SR / (2.0 * L["D_center"])] * n
+
+    # ---- 第2層①：セント（半音 st）領域での音程軌道構築（S字ポルタメント＆子音境界保護） ----
+    st_track = [notes[0]["st"]] * n
+    for idx, nt in enumerate(notes):
+        for t_ in range(nt["a_fr"], n):
+            st_track[t_] = nt["st"]
+
+    # 音符間の遷移をセント領域の最小躍度S字曲線 (3u^2 - 2u^3, sin/cos不使用) で接続
+    base_port_ms = float(KT.get("uta_sm", 45.0))
+    for idx in range(1, len(notes)):
+         prev_nt = notes[idx - 1]
+         cur_nt = notes[idx]
+         st0 = prev_nt["st"]
+         st1 = cur_nt["st"]
+         if abs(st1 - st0) < 1e-4 or cur_nt["tie"]:
+             continue
+         if cur_nt["melisma"]:
+             # メリスマ（同一母音内の音程変化）：母音の中で滑らかにS字ポルタメント
+             p_ms = float(cur_nt["port_ms"] or 36.0)
+             half_w = max(1, int(0.5 * p_ms / kotoba.FP))
+             t_mid = cur_nt["b_fr"]
+             t0 = max(prev_nt["b_fr"], t_mid - half_w)
+             t1 = min(cur_nt["e_fr"], t_mid + half_w)
+         elif cur_nt["has_cons"] and cur_nt["b_fr"] > cur_nt["a_fr"]:
+             # 子音ありモーラ：子音区間 [a_fr, b_fr + 2] の中で素早く音高を切り替え、母音頭 b_fr が前後にボケないようにする！
+             p_ms = float(cur_nt["port_ms"] or min(28.0, base_port_ms * 0.6))
+             t0 = cur_nt["a_fr"]
+             t1 = min(cur_nt["e_fr"], max(cur_nt["b_fr"] + 2, t0 + max(2, int(p_ms / kotoba.FP))))
+         else:
+             # 母音連続（ア・イ等）：境界を中心に滑らかなレガート・ポルタメント
+             p_ms = float(cur_nt["port_ms"] or base_port_ms)
+             half_w = max(2, int(0.5 * p_ms / kotoba.FP))
+             t_mid = cur_nt["b_fr"]
+             t0 = max(prev_nt["b_fr"], t_mid - half_w)
+             t1 = min(cur_nt["e_fr"], t_mid + half_w)
+         span = max(1, t1 - t0)
+         for t_ in range(t0, min(n, t1)):
+             u = (t_ - t0) / span
+             s_curve = u * u * (3.0 - 2.0 * u)
+             st_track[t_] = st0 + (st1 - st0) * s_curve
+
+    # ---- 第2層②：音の入りのしゃくり（uta_scoop：同音連打の再アタックにも対応） ----
+    if KT.get("uta_scoop"):
+        base_sc, base_sm = KT["uta_scoop"]
+        for idx, nt in enumerate(notes):
+            if nt["tie"] or nt["melisma"]:
+                continue
+            # 同音連打（reattack）のときは、ソプラノの自然な再アーティキュレーション（深さ0.42倍・時間0.65倍の軽いしゃくり）を入れる
+            if nt["reattack"]:
+                sc_use = base_sc * 0.42
+                sm_use = max(18.0, base_sm * 0.65)
+            elif idx == 0 or abs(nt["st"] - notes[idx - 1]["st"]) > 1e-3:
+                sc_use = base_sc
+                sm_use = base_sm
+            else:
+                continue
+            a_ = nt["b_fr"] if nt["has_cons"] else nt["a_fr"]
+            end_sc = min(nt["e_fr"], min(n, a_ + int(4.5 * sm_use / kotoba.FP)))
+            for t_ in range(a_, end_sc):
+                st_track[t_] -= sc_use * math.exp(-(t_ - a_) * kotoba.FP / sm_use)
+
+    # ---- 第2層③：天邪鬼ビブラート（乱数削り出し波＋同音再アタック時の起点リセット＆メリスマ継続） ----
+    if KT.get("uta_vib"):
+        vr_, vd_, vl_, vu_ = KT["uta_vib"]
+        vl_ = min(float(vl_), 135.0)
+        vu_ = min(float(vu_), 190.0)
+        wv_ = max(3, int(round(1000.0 / kotoba.FP / vr_ / 2.0)))
+        vw_ = arakezuri(
+            _comb(noise(random.Random(rc["seed"] + 33), n + 40 * wv_), [wv_] * (n + 40 * wv_), KT.get("uta_vib_g", 0.95)),
+            max(2, wv_ // 2),
+            2,
+        )[40 * wv_:40 * wv_ + n]
+        rm_ = (sum(v * v for v in vw_) / n) ** 0.5 or 1.0
+        vw_ = [max(-1.5, min(1.5, v / rm_ / 1.414)) for v in vw_]
+
+        raw_ = [0.0] * n
+        t0_sec = notes[0]["b_fr"] * fpz
+        for idx, nt in enumerate(notes):
+            if idx == 0:
+                t0_sec = nt["b_fr"] * fpz
+            elif nt["tie"] or nt["melisma"]:
+                # タイやメリスマではビブラートの成長を止めずにそのまま歌い繋ぐ
+                pass
+            elif nt["reattack"]:
+                # 同音連打では母音頭でビブラートを一旦軽く絞ってから素早く再立ち上げ（遅れ 0.55 倍）
+                t0_sec = nt["b_fr"] * fpz - 0.45 * (vl_ / 1000.0)
+            else:
+                t0_sec = nt["b_fr"] * fpz
+            for t_ in range(nt["a_fr"], min(n, nt["e_fr"])):
+                el_ = t_ * fpz - t0_sec - vl_ / 1000.0
+                if el_ > 0.0:
+                    raw_[t_] = min(1.0, el_ / (vu_ / 1000.0)) * vw_[t_]
+        for t_ in range(n):
+            st_track[t_] += (vd_ / 100.0) * raw_[t_]
+
+    fr_ = [f_ref * (2.0 ** (s / 12.0)) for s in st_track]
+
+    # ---- 第2層④：母音別・音高別の高音フォルマント同調（コペルトゥーラ / Copertura） ----
+    # 母音ごとのフレームマップを作成
+    v_map = ["a"] * n
+    for m_ in r["moras"]:
+        if m_.get("kind") == "CV" and m_.get("v"):
+            for t_ in range(max(0, int(m_["a"] / fpz)), min(n, int(m_["e"] / fpz) + 1)):
+                v_map[t_] = m_["v"]
+
+    # 母音ごとの (同調開始ピッチf0_start, 基音倍率ratio, ブレンド傾き, 高音でのF2丸め係数)
+    # - 閉母音 (i, u): 420Hzまで本来の低いF1を保って「イ・ウ」の母音明瞭度を守り、超高音域だけ 0.96*f0 で緩やかに開く
+    # - 半狭母音 (e, o): 440Hzから 1.03*f0 へ滑らかに同調
+    # - 開母音 (a): 500Hzから 1.07*f0 へ同調しつつ、高音でF2をわずかに丸めて(0.96)キンつきを防ぐ
+    COPERTURA = {
+        "i": (420.0, 0.95, 0.65, 0.98),
+        "u": (420.0, 0.96, 0.68, 0.97),
+        "e": (440.0, 1.03, 0.78, 0.96),
+        "o": (440.0, 1.04, 0.80, 0.98),
+        "a": (500.0, 1.07, 0.85, 0.95),
+    }
+    for t_ in range(n):
+        if r["voiced"][t_] and fr_[t_] > 0.0:
+            v_c = v_map[t_]
+            f_start, f1_ratio, blend_k, f2_round = COPERTURA.get(v_c, (450.0, 1.04, 0.75, 0.97))
+            f0_t = fr_[t_]
+            target_f1 = f0_t * f1_ratio
+            if target_f1 > r["F1"][t_] and f0_t > f_start * 0.85:
+                # 急激なmax()の折れ曲がりではなく、音高に応じて滑らかにF1を引き上げる
+                w_tune = min(1.0, max(0.0, (f0_t - f_start * 0.85) / 180.0)) * blend_k
+                r["F1"][t_] = r["F1"][t_] + w_tune * (target_f1 - r["F1"][t_])
+            if f0_t > 440.0:
+                w_cov = min(1.0, (f0_t - 440.0) / 320.0)
+                r["F2"][t_] *= 1.0 - w_cov * (1.0 - f2_round)
+
+    return fr_
 
 
 LAST_CHOIR_PARTS = []
@@ -1001,7 +1261,7 @@ def _make_choir(rc):
     sh_st = float(base_kt.get("uta_trance_shift_st", 3.0))
     sh_mul = 2.0 ** (sh_st / 12.0)
     if base_kt.get("uta_hz"):
-        lead_hz = [float(h) * sh_mul for h in base_kt["uta_hz"]]
+        lead_hz = _scale_uta_spec(base_kt["uta_hz"], sh_mul)
     else:
         f0_rule = accent.f0_rule(r0["moras"], r0["n"], None, **dict(accent.CUTE, reg=392.0, **(base_kt.get("accent_kw") or {})))
         fpz = kotoba.FP / 1000.0
@@ -1162,46 +1422,37 @@ def make_text(rc):
             KT.setdefault("uta_vib", [5.4, 22, 140, 210])
             KT.setdefault("uta_scoop", [1.4, 42])
     if KT.get("uta_hz"):                   # 127 歌：拍ごとの音の高さ（Hz、間を除いた拍の順）。段々の道筋を sm ms で均すだけ
-        sh_st = float(KT.get("uta_trance_shift_st", 3.0 if is_trance else 0.0))
-        sh_mul = 2.0 ** (sh_st / 12.0)
-        uhz_use = [h * sh_mul for h in KT["uta_hz"]]
-        fr_ = [uhz_use[0]] * n; k_ = 0; fpz_ = kotoba.FP / 1000
-        for m_ in r["moras"]:
-            if m_.get("kind") == "pau": continue
-            h_ = uhz_use[min(k_, len(uhz_use) - 1)]; k_ += 1
-            for t_ in range(max(0, int(m_["a"] / fpz_)), n): fr_[t_] = h_
-        # 階段状のボカロ/テト切り替えにならないよう、ソプラノの流麗なレガート（55ms平滑）で繋ぐ
-        fr_ = kotoba.smooth1(fr_, KT.get("uta_sm", 55 if is_trance else 40))
-        if KT.get("uta_scoop"):            # 131：音の頭の弾み。[半音, ms]：音が変わる拍の頭で st 半音下から入って ms で的へ（指数で寄る）
-            sc_, sm_ = KT["uta_scoop"]; k_ = 0; cur_ = None
-            for m_ in r["moras"]:
-                if m_.get("kind") == "pau": cur_ = None; continue
-                h_ = uhz_use[min(k_, len(uhz_use) - 1)]; k_ += 1
-                if h_ == cur_: continue
-                cur_ = h_; a_ = int(m_["a"] / fpz_)
-                for t_ in range(a_, min(n, a_ + int(5 * sm_ / 1000 / fpz_))):
-                    fr_[t_] *= 2 ** (-sc_ * math.exp(-(t_ - a_) * fpz_ * 1000 / sm_) / 12)
-        if KT.get("uta_vib"):              # 129：伸ばした音にだけ規則的な高さの波（道筋だけ）。[速さ Hz, 深さ セント, 入りの遅れ ms, 立ち上がり ms]。同じ高さが続く間を一つの音と数える
-            vr_, vd_, vl_, vu_ = KT["uta_vib"]; t0_ = 0; raw_ = [0.0] * n; k_ = 0; cur_ = None
-            if is_trance:
-                vl_ = min(vl_, 135)
-                vu_ = min(vu_, 190)
-            wv_ = max(3, int(round(1000 / kotoba.FP / vr_ / 2)))      # 波は数式やなく、ノイズを削って作る（細かい平均 − 粗い平均 → 速さ vr のあたりだけ残る）
-            vw_ = arakezuri(_comb(noise(random.Random(rc["seed"] + 33), n + 40 * wv_), [wv_] * (n + 40 * wv_), KT.get("uta_vib_g", 0.95 if is_trance else 0.93)), max(2, wv_ // 2), 2)[40 * wv_:40 * wv_ + n]   # 声の線と同じくびれ：周期 2·wv こまの山だけ立てる
-            rm_ = (sum(v * v for v in vw_) / n) ** 0.5 or 1.0; vw_ = [max(-1.5, min(1.5, v / rm_ / 1.414)) for v in vw_]
-            for m_ in r["moras"]:
-                if m_.get("kind") == "pau": cur_ = None; continue
-                h_ = uhz_use[min(k_, len(uhz_use) - 1)]; k_ += 1
-                if h_ != cur_: cur_ = h_; t0_ = m_["b"]
-                for t_ in range(max(0, int(m_["a"] / fpz_)), min(n, int(m_["e"] / fpz_) + 1)):
-                    el_ = t_ * fpz_ - t0_ - vl_ / 1000
-                    if el_ > 0: raw_[t_] = min(1.0, el_ / (vu_ / 1000)) * vw_[t_]
-            fr_ = [f * 2 ** (vd_ * w_ / 1200) for f, w_ in zip(fr_, raw_)]
         if is_trance:
-            # 高音でのソプラノの開口同調（F1 >= 1.08 * f0）：顎を開いて基音を共鳴させる
-            for t_ in range(n):
-                if r["voiced"][t_] and fr_[t_] > 0:
-                    r["F1"][t_] = max(r["F1"][t_], fr_[t_] * 1.08)
+            fr_ = _trance_singing_layers(r, n, KT, L, rc, SR)
+        else:
+            fr_ = [KT["uta_hz"][0]] * n; k_ = 0; fpz_ = kotoba.FP / 1000
+            for m_ in r["moras"]:
+                if m_.get("kind") == "pau": continue
+                h_ = KT["uta_hz"][min(k_, len(KT["uta_hz"]) - 1)]; k_ += 1
+                for t_ in range(max(0, int(m_["a"] / fpz_)), n): fr_[t_] = h_
+            fr_ = kotoba.smooth1(fr_, KT.get("uta_sm", 40))
+            if KT.get("uta_scoop"):        # 131：音の頭の弾み。[半音, ms]：音が変わる拍の頭で st 半音下から入って ms で的へ（指数で寄る）
+                sc_, sm_ = KT["uta_scoop"]; k_ = 0; cur_ = None
+                for m_ in r["moras"]:
+                    if m_.get("kind") == "pau": cur_ = None; continue
+                    h_ = KT["uta_hz"][min(k_, len(KT["uta_hz"]) - 1)]; k_ += 1
+                    if h_ == cur_: continue
+                    cur_ = h_; a_ = int(m_["a"] / fpz_)
+                    for t_ in range(a_, min(n, a_ + int(5 * sm_ / 1000 / fpz_))):
+                        fr_[t_] *= 2 ** (-sc_ * math.exp(-(t_ - a_) * fpz_ * 1000 / sm_) / 12)
+            if KT.get("uta_vib"):          # 129：伸ばした音にだけ規則的な高さの波（道筋だけ）。[速さ Hz, 深さ セント, 入りの遅れ ms, 立ち上がり ms]。同じ高さが続く間を一つの音と数える
+                vr_, vd_, vl_, vu_ = KT["uta_vib"]; t0_ = 0; raw_ = [0.0] * n; k_ = 0; cur_ = None
+                wv_ = max(3, int(round(1000 / kotoba.FP / vr_ / 2)))      # 波は数式やなく、ノイズを削って作る（細かい平均 − 粗い平均 → 速さ vr のあたりだけ残る）
+                vw_ = arakezuri(_comb(noise(random.Random(rc["seed"] + 33), n + 40 * wv_), [wv_] * (n + 40 * wv_), KT.get("uta_vib_g", 0.93)), max(2, wv_ // 2), 2)[40 * wv_:40 * wv_ + n]   # 声の線と同じくびれ：周期 2·wv こまの山だけ立てる
+                rm_ = (sum(v * v for v in vw_) / n) ** 0.5 or 1.0; vw_ = [max(-1.5, min(1.5, v / rm_ / 1.414)) for v in vw_]
+                for m_ in r["moras"]:
+                    if m_.get("kind") == "pau": cur_ = None; continue
+                    h_ = KT["uta_hz"][min(k_, len(KT["uta_hz"]) - 1)]; k_ += 1
+                    if h_ != cur_: cur_ = h_; t0_ = m_["b"]
+                    for t_ in range(max(0, int(m_["a"] / fpz_)), min(n, int(m_["e"] / fpz_) + 1)):
+                        el_ = t_ * fpz_ - t0_ - vl_ / 1000
+                        if el_ > 0: raw_[t_] = min(1.0, el_ / (vu_ / 1000)) * vw_[t_]
+                fr_ = [f * 2 ** (vd_ * w_ / 1200) for f, w_ in zip(fr_, raw_)]
         st = _per_sample([12 * math.log2(f / (SR / (2 * L["D_center"]))) for f in fr_], N)
     elif KT.get("accent"):                   # 75：東京式アクセント規則（kw/it/accent/accent.py, 標準ライブラリ）で高さの道筋を作る（音そのものではなく道筋だけ）
         f0 = accent.f0_rule(r["moras"], n, None, **dict(accent.CUTE, reg=SR / (2 * L["D_center"]), **KT.get("accent_kw", {})))
