@@ -1,5 +1,7 @@
 # Tsukinami TTS / Amanojaku TTS (`tsukinami`)
 
+![Tsukinami TTS — Read Japanese Kana. Read how it works, in Python.](assets/social_preview.png)
+
 **[🇯🇵 日本語 (Japanese README)](README.md) | [🌐 English](README_EN.md)**
 
 > **Read Japanese Kana.**  
