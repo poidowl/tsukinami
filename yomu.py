@@ -42,9 +42,9 @@ PRESETS = {
         "yure": 0.003, "shimmer": 0.05, "tadayoi": 0.5, "line_g": 0.5, "ap_n": 40, "rate": 1.30,
     },
     "ossan": {
-        "description": "おっさん声（太い声道 fscale=0.86・低ピッチ 125Hz・大きめの粒 tsubu=64）",
-        "seed": 2024, "tsubu": 64, "hz": 125.0, "fscale": 0.86,
-        "yure": 0.006, "shimmer": 0.08, "tadayoi": 0.6, "line_g": 0.65, "ap_n": 40, "rate": 1.25,
+        "description": "おっさん声（太い声道 fscale=0.90・渋い低音 155Hz・明瞭な粒 tsubu=34）",
+        "seed": 2024, "tsubu": 34, "hz": 155.0, "fscale": 0.90,
+        "yure": 0.004, "shimmer": 0.05, "tadayoi": 0.35, "line_g": 0.65, "ap_n": 50, "rate": 1.22,
     },
     "robot": {
         "description": "冷凍ロボット（周期揺らぎ・振幅揺らぎ・漂いすべてゼロ＋強い6本くびれ）",
@@ -155,6 +155,12 @@ def build_carve_rc(text, prm):
         r["line.D_haba"] = 0.0
     r["kotoba"]["line_g"] = float(prm["line_g"])
     r["kotoba"]["ap_n"] = int(prm["ap_n"])
+    if hz < 220.0:
+        # 低ピッチ時は基音(H1)・第2倍音(2H)がピーク正規化を食ってこもるのを防ぎ、F2/F3と高域倍音(3H)を立てて明瞭度を確保
+        r["kotoba"]["h1"] = 0.25
+        r["kotoba"]["hk"] = {"2": 0.5, "3": 1.3}
+        r["kotoba"]["bump"] = [2.5, 2.4, 2.2]
+        r["kotoba"]["emph"] = 0.85
 
     has_marks = any(ch in text for ch in ("'", "’", "0", "/", "|", " ", "　", "?", "？"))
     if has_marks:
@@ -166,6 +172,17 @@ def build_carve_rc(text, prm):
         target_text = text
 
     return C.variant(dict(r, text=target_text, seed=int(prm["seed"])))
+
+
+def boost_low_pitch_rms(samples, hz, target_rms=0.092):
+    """低ピッチ（周期が長い）音声のクレストファクタ増大による音量低下をソフトニー圧縮で補正"""
+    if float(hz) >= 220.0 or not samples:
+        return samples
+    cur_rms = math.sqrt(sum(v * v for v in samples) / len(samples)) or 1.0
+    if cur_rms >= target_rms:
+        return samples
+    gain = target_rms / cur_rms
+    return [0.92 * math.tanh((v * gain) / 0.92) for v in samples]
 
 
 def compare_signals(ref, test):
@@ -253,6 +270,7 @@ def main():
     for idx, t in enumerate(args.texts):
         rc = build_carve_rc(t, prm)
         samples, moras = C.make(rc)
+        samples = boost_low_pitch_rms(samples, prm["hz"])
         if args.out and len(args.texts) == 1:
             out_path = args.out
             os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
