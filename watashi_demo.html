@@ -318,6 +318,9 @@ const STAGE_INFO = [
 let audioCtx = null;
 let curSource = null;
 let animId = null;
+let tourTimer = null;
+let isTouring = false;
+let tourStageIdx = 0;
 let curStageIdx = 5;
 let selectedMoraIdx = -1; // -1 = full sentence, >=0 = specific mora
 let decodedStages = {};
@@ -369,13 +372,44 @@ function buildMoraBar() {
       buildMoraBar();
       drawTimeline(-1);
       drawZoom();
-      playSelectedSegment();
+      if (isTouring) {
+        // Keep the tour alive on the newly selected mora (restart from Step 1 or continue current step)
+        runTourStep(tourStageIdx);
+      } else {
+        playSelectedSegment();
+      }
     };
     bar.appendChild(btn);
   });
 }
 
+function updateTourButton() {
+  const btn = document.querySelector(".btn-tour");
+  if (!btn) return;
+  if (isTouring) {
+    btn.textContent = `⏹ 進化ツアー停止 (Step ${tourStageIdx + 1}/6 再生中)`;
+    btn.style.background = "rgba(251, 113, 133, 0.22)";
+    btn.style.borderColor = "#fb7185";
+    btn.style.color = "#fb7185";
+  } else {
+    btn.textContent = "🎬 Step 1→6 進化ツアー再生";
+    btn.style.background = "rgba(251, 191, 36, 0.16)";
+    btn.style.borderColor = "#fbbf24";
+    btn.style.color = "#fbbf24";
+  }
+}
+
+function stopTour() {
+  isTouring = false;
+  if (tourTimer) {
+    clearTimeout(tourTimer);
+    tourTimer = null;
+  }
+  updateTourButton();
+}
+
 function selectStage(idx, autoPlay) {
+  if (autoPlay) stopTour();
   curStageIdx = idx;
   for (let i = 0; i < 6; i++) {
     document.getElementById("stCard" + i).classList.toggle("active", i === idx);
@@ -389,7 +423,12 @@ function selectStage(idx, autoPlay) {
 }
 
 function stopAudio() {
+  if (tourTimer) {
+    clearTimeout(tourTimer);
+    tourTimer = null;
+  }
   if (curSource) {
+    curSource.onended = null;
     try { curSource.stop(); } catch (e) {}
     curSource = null;
   }
@@ -400,7 +439,7 @@ function stopAudio() {
   document.querySelectorAll(".mora-btn").forEach(b => b.classList.remove("playing-now"));
 }
 
-function playBufferSlice(samples, startSec, endSec) {
+function playBufferSlice(samples, startSec, endSec, onDoneCallback) {
   stopAudio();
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
@@ -420,8 +459,11 @@ function playBufferSlice(samples, startSec, endSec) {
   playDuration = len / sr;
 
   src.onended = () => {
-    stopAudio();
+    curSource = null;
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+    document.querySelectorAll(".mora-btn").forEach(b => b.classList.remove("playing-now"));
     drawTimeline(-1);
+    if (onDoneCallback) onDoneCallback();
   };
   src.start();
   curSource = src;
@@ -443,48 +485,68 @@ function tickPlayhead() {
   }
 }
 
+function getSelectedTimeRange() {
+  if (selectedMoraIdx >= 0) {
+    const m = DATA.moras[selectedMoraIdx];
+    return [Math.max(0, m.a - 0.03), Math.min(DATA.duration, m.e + 0.04)];
+  }
+  // Full speech range (skip leading/trailing 0.5s silence for snappy playback)
+  return [0.55, 3.65];
+}
+
 function playSelectedSegment() {
   ensureDecoded();
   const samples = decodedStages[STAGE_KEYS[curStageIdx]];
-  if (selectedMoraIdx >= 0) {
-    const m = DATA.moras[selectedMoraIdx];
-    playBufferSlice(samples, Math.max(0, m.a - 0.02), Math.min(DATA.duration, m.e + 0.03));
-  } else {
-    playBufferSlice(samples, 0, DATA.duration);
-  }
+  const [t0, t1] = getSelectedTimeRange();
+  playBufferSlice(samples, t0, t1, null);
 }
 
 function playCurrentStageFull() {
+  stopTour();
   selectedMoraIdx = -1;
   document.getElementById("selMoraBadge").textContent = "現在：全文モード";
   buildMoraBar();
   playSelectedSegment();
 }
 
+function runTourStep(st) {
+  if (!isTouring) return;
+  if (st >= 6) {
+    stopTour();
+    return;
+  }
+  tourStageIdx = st;
+  updateTourButton();
+  selectStage(st, false);
+  const samples = decodedStages[STAGE_KEYS[st]];
+  const [t0, t1] = getSelectedTimeRange();
+  playBufferSlice(samples, t0, t1, () => {
+    if (!isTouring) return;
+    tourTimer = setTimeout(() => {
+      runTourStep(st + 1);
+    }, 180);
+  });
+}
+
 function startDigestTour() {
-  // Play "わたし" (0.55s .. 1.35s) across Step 1 -> Step 6 sequentially so the user hears the evolution fast!
-  selectedMoraIdx = -1;
-  buildMoraBar();
-  let st = 0;
-  const stepNext = () => {
-    if (st >= 6) return;
-    selectStage(st, false);
-    const samples = decodedStages[STAGE_KEYS[st]];
-    playBufferSlice(samples, 0.52, 2.25); // "わたし、にほんご"
-    st++;
-    setTimeout(() => {
-      if (curSource && st <= 6) stepNext();
-    }, 1820);
-  };
-  stepNext();
+  if (isTouring) {
+    stopTour();
+    stopAudio();
+    drawTimeline(-1);
+    return;
+  }
+  isTouring = true;
+  runTourStep(0);
 }
 
 function playAblation(key, btn) {
+  stopTour();
   ensureDecoded();
   document.querySelectorAll(".ab-btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   const samples = decodedAbl[key];
-  playBufferSlice(samples, 0, DATA.duration);
+  const [t0, t1] = getSelectedTimeRange();
+  playBufferSlice(samples, t0, t1, null);
 }
 
 function drawTimeline(playheadSec) {
