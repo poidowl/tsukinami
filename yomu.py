@@ -52,9 +52,9 @@ PRESETS = {
         "yure": 0.0, "shimmer": 0.0, "tadayoi": 0.0, "line_g": 0.85, "ap_n": 0, "rate": 1.15,
     },
     "horror": {
-        "description": "ホラーゲームのNPC（不安定な周期揺らぎ yure=0.045・うねり tadayoi=2.2・低い声道）",
-        "seed": 13, "tsubu": 52, "hz": 165.0, "fscale": 0.92,
-        "yure": 0.045, "shimmer": 0.25, "tadayoi": 2.2, "line_g": 0.75, "ap_n": 60, "rate": 1.55,
+        "description": "ホラーゲームのNPC（虚ろな共鳴 line_g=0.78・不気味な揺らぎ tadayoi=0.95・ap_n=18）",
+        "seed": 13, "tsubu": 30, "hz": 195.0, "fscale": 0.94,
+        "yure": 0.008, "shimmer": 0.10, "tadayoi": 0.95, "line_g": 0.78, "ap_n": 18, "rate": 1.45,
     },
     "whisper": {
         "description": "ささやき声（周期の揺らぎを大きく散らし、くびれを切って息成分を強調）",
