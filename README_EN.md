@@ -115,3 +115,19 @@ Open any of these self-contained HTML files directly in your browser (zero exter
    A simple 40-sample fixed random grain is shaped step by step via periodic placement (`PER = 2D`), period jitter (`yure = 0.003`), per-grain amplitude shimmer (`±5%`), slow pitch drift (`tadayoi`), 6-comb harmonic shaping (`kubire_n`), and voiced/unvoiced mixing before entering the resonance bank.
 3. **Parallel Resonance Extraction & 40-Stage All-Pass Dispersion ([`carve.py:1038-1109`](carve.py#L1038-L1109) — `231` recipe + `347` literal numbers):**
    Following the cascade/parallel formant synthesis tradition (Klatt, 1980), `carve.py` branches a shared excitation `src` into parallel moving-average band-pass extractors (`yama_bp`) for `floor`, $F_1\text{–}F_3$, `f1x`, $H_1/H_K$, and $F_4\text{–}F_5$, sums them, and applies 40 all-pass stages (`_ap_cascade`) for temporal phase dispersion.
+
+### 📚 Prior Art (Classical Phonetics & DSP) vs. Original Contributions
+
+All code in this repository is written from scratch in pure Python standard library. To make the conceptual lineage completely transparent, here is the exact boundary between classical literature and Tsukinami's original design:
+
+| Category | Component | Code Location | Lineage / Details |
+|---|---|---|---|
+| **📚 Prior Art / Classical Literature** | Cascade/parallel formant synthesis architecture & vowel/consonant targets | [`kotoba.py:53-76`](kotoba.py#L53-L76)<br>[`carve.py:1038-1100`](carve.py#L1038-L1100) | Dennis H. Klatt (1980), *"Software for a cascade/parallel formant synthesizer"*, JASA 67(3), pp. 971–995. |
+| **📚 Prior Art / Classical Literature** | Consonant-to-vowel $F_2$ locus equations (`LE`) | [`kotoba.py:67, 174`](kotoba.py#L67) | Björn Lindblom (1963) / Harvey M. Sussman et al. (1991), *JASA* 90(3). |
+| **📚 Prior Art / Classical Literature** | Rule-based Tokyo pitch accent, downstep, and declination | [`accent.py:9-26`](accent.py#L9-L26) | Janet Pierrehumbert & Mary E. Beckman (1988), *"Japanese Tone Structure"*, MIT Press / Fujisaki model. |
+| **📚 Prior Art / Classical Literature** | Spectral envelope Gaussian bump energy model (`_world_energy`) | [`carve.py:495-517`](carve.py#L495-L517) | Masanori Morise et al. (2016), *"WORLD: A Vocoder-Based High-Quality Speech Synthesis System"*, IEICE Trans. |
+| **📚 Prior Art / Classical Literature** | 2nd-order Biquad All-Pass phase/group-delay dispersion (`_ap_cascade`) | [`carve.py:553-570`](carve.py#L553-L570) | Classical DSP 2nd-order IIR all-pass cascade (40 stages). |
+| **🪵 Original to Tsukinami** | **Single 40-sample fixed random `grain` ("potato stamp") + jittered periodic stamping** | [`carve.py:995-1005`](carve.py#L995-L1005) | Instead of oscillators or impulse trains, one 40-sample carved noise grain serves as the fixed spectral DNA, stamped every `PER = 2D` with `yure` and `shimmer`. |
+| **🪵 Original to Tsukinami** | **Time-domain moving-average subtraction & bidirectional comb chisels (`arakezuri`, `kubire_n`, `yama_bp`)** | [`carve.py:18-145`](carve.py#L18-L145) | Formant extraction and harmonic shaping built from moving-average subtraction and $N$-comb feedback. |
+| **🪵 Original to Tsukinami** | **Noise-carved singing vibrato (`uta_vib`) without `math.sin()`** | [`carve.py:961-973`](carve.py#L961-L973) | Even the vibrato LFO is carved from white noise via comb filtering and moving averages rather than a sine function. |
+| **🪵 Original to Tsukinami** | **Human ear onomatopoeia + ASR loop condensed into 120KB stdlib Python & Toybox** | [`kotoba.py:225-245`](kotoba.py#L225-L245)<br>[`yomu.py`](yomu.py), [`toybox.html`](toybox.html) | Interactive "Play → Modify → Listen → Compare → Share" workflow in ~765 transparent numbers. |
