@@ -495,7 +495,7 @@ function getSelectedTimeRange() {
     return [Math.max(0, m.a - 0.03), Math.min(DATA.duration, m.e + 0.04)];
   }
   // Full speech range (skip leading/trailing 0.5s silence for snappy playback)
-  return [0.55, 3.65];
+  return [0.52, DATA.duration];
 }
 
 function playSelectedSegment() {
