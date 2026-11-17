@@ -1,5 +1,7 @@
 # 月並みTTS / 天邪鬼TTS (`tsukinami`)
 
+**[🇯🇵 日本語](README.md) | [🌐 English (README_EN.md)](README_EN.md)**
+
 > **日本語かな・カナを読む。**  
 > **その仕組みを、Pythonで読む。**
 
