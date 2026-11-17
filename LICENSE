@@ -19,11 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-Note on third-party models and reference tables:
-- The standalone noise-carved synthesizer in `tsukinami/` contains zero external
-  voice/corpus tables and is licensed purely under the MIT License above.
-- Optional evaluation scripts (`ears/`, `exp*/`) and reference tables measured
-  from VOICEVOX voices (`exp29/dojo/`) are subject to the upstream terms and
-  credit requirements listed in `CREDITS.md`.
