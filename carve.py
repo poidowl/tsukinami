@@ -1145,11 +1145,12 @@ def _trance_singing_layers(r, n, KT, L, rc, SR):
             for t_ in range(a_, end_sc):
                 st_track[t_] -= sc_use * math.exp(-(t_ - a_) * kotoba.FP / sm_use)
 
-    # ---- 第2層③：天邪鬼ビブラート（乱数削り出し波＋同音再アタック時の起点リセット＆ロングトーンの澄んだ伸び） ----
+    # ---- 第2層③：天邪鬼ビブラート（乱数削り出し波＋16セント頭打ち解除＆倍音明滅のための軌道保持） ----
+    raw_ = [0.0] * n
     if KT.get("uta_vib"):
         vr_, vd_, vl_, vu_ = KT["uta_vib"]
-        # 伸ばし音（マエ〜・コエ〜）がまず真っ直ぐ澄み渡ってから、気品あるビブラート（深さ16セント）がふわっと乗るようにする
-        vd_use = min(float(vd_), 16.0)
+        # 16セント上限を解除し、伸ばし音（マエ〜・コエ〜）の後半で人間らしい豊かなビブラート（実効±15〜22セント）が乗るようにする
+        vd_use = min(float(vd_) * 1.40, 44.0)
         vl_ = max(float(vl_), 180.0)
         vu_ = max(float(vu_), 240.0)
         wv_ = max(3, int(round(1000.0 / kotoba.FP / vr_ / 2.0)))
@@ -1161,7 +1162,6 @@ def _trance_singing_layers(r, n, KT, L, rc, SR):
         rm_ = (sum(v * v for v in vw_) / n) ** 0.5 or 1.0
         vw_ = [max(-1.5, min(1.5, v / rm_ / 1.414)) for v in vw_]
 
-        raw_ = [0.0] * n
         t0_sec = notes[0]["b_fr"] * fpz
         for idx, nt in enumerate(notes):
             if idx == 0:
@@ -1178,15 +1178,96 @@ def _trance_singing_layers(r, n, KT, L, rc, SR):
                     raw_[t_] = min(1.0, el_ / (vu_ / 1000.0)) * vw_[t_]
         for t_ in range(n):
             st_track[t_] += (vd_use / 100.0) * raw_[t_]
+    r["vib_raw"] = raw_
 
     fr_ = [f_ref * (2.0 ** (s / 12.0)) for s in st_track]
 
-    # ---- 第2層④：母音別・音高別の高音フォルマント同調（コペルトゥーラ / Copertura） ----
+    # ---- 第2層④：母音内部の調音ダイナミクス（固定された「エ〜」を、少しずつ動く生身の「エ〜」にする） ----
+    # 1) 前後モーラとの調音結合（vl_hold で止められていた無声子音前の先行調音も復元）
+    # 2) 長音内部での「口の開き（アーク）→ 母音固有の緩やかな収束（エ→エぃ、ア→アぉ等）」
+    # 3) 舌・顎の緩やかな生体ゆらぎ（±1.6%）＋ ビブラートに同期したフォルマント微細揺れ（倍音明滅 Harmonic AM）
+    cv_list = [m_ for m_ in r["moras"] if m_.get("kind") == "CV" and m_.get("v")]
+    f_orig = [[ float(x) for x in r["F%d" % (j + 1)] ] for j in range(3)]
+    r_art = random.Random(rc["seed"] + 41)
+    art_drifts = []
+    for j in range(3):
+        dr = arakezuri(noise(r_art, n + 60), 18, 2)[30:30 + n]
+        drm = sum(dr) / n
+        drs = (sum((v - drm) ** 2 for v in dr) / n) ** 0.5 or 1.0
+        art_drifts.append([(v - drm) / drs for v in dr])
+
+    # 母音別の長音後半の自然な調音シフト率 (dF1, dF2, dF3)：前舌母音(e,i)はわずかに舌が上がり、奥・開母音(a,o,u)はわずかに丸まる
+    V_LONG_DRIFT = {
+        "e": (-0.065, +0.052, +0.025),
+        "i": (-0.045, +0.038, +0.020),
+        "a": (-0.058, -0.045, -0.018),
+        "o": (-0.050, -0.048, -0.020),
+        "u": (-0.045, -0.042, -0.018),
+    }
+    PLACE_LOCUS_F2 = {"lab": 950.0, "alv": 1850.0, "pal": 2350.0, "vel": 1650.0, "glot": None, None: None}
+
+    for idx_m, m_ in enumerate(cv_list):
+        b_fr = max(0, min(n - 1, int(round(m_["b"] / fpz))))
+        e_fr = max(b_fr + 1, min(n, int(round(m_["e"] / fpz))))
+        span_fr = max(1, e_fr - b_fr)
+        dur_ms = span_fr * kotoba.FP
+        v_c = m_["v"]
+        tm_cur = min(n - 1, (b_fr + e_fr) // 2)
+        F_cur = [f_orig[j][tm_cur] for j in range(3)]
+
+        # 前の母音のフォルマント
+        if idx_m > 0:
+            pm = cv_list[idx_m - 1]
+            tm_p = min(n - 1, int(round(0.5 * (pm["b"] + pm["e"]) / fpz)))
+            F_prev = [f_orig[j][tm_p] for j in range(3)]
+        else:
+            F_prev = list(F_cur)
+
+        # 次の子音・母音のターゲット（先行調音：次の子音の調音位置または次の母音へ向かって舌が準備を始める）
+        if idx_m + 1 < len(cv_list):
+            nm = cv_list[idx_m + 1]
+            tm_n = min(n - 1, int(round(0.5 * (nm["b"] + nm["e"]) / fpz)))
+            F_next = [f_orig[j][tm_n] for j in range(3)]
+            nc = nm.get("c") or ""
+            pl_n = kotoba.PLACE.get(nc)
+            loc_f2 = PLACE_LOCUS_F2.get(pl_n)
+            if loc_f2 is not None:
+                F_next[1] = 0.55 * F_next[1] + 0.45 * loc_f2
+                F_next[0] = min(F_next[0], F_cur[0] * 0.88)
+        else:
+            F_next = [F_cur[0] * 0.94, F_cur[1] * 0.97, F_cur[2] * 0.98]
+
+        d1_long, d2_long, d3_long = V_LONG_DRIFT.get(v_c, (-0.05, 0.0, 0.0))
+        long_scale = min(1.35, max(0.35, (dur_ms - 120.0) / 360.0))
+
+        for t_ in range(b_fr, e_fr):
+            u = (t_ - b_fr) / span_fr
+            # (a) 前母音からのキャリーオーバー (u: 0 -> 0.38) と 次音への先行調音 (u: 0.52 -> 1.0)
+            w_prev = 0.12 * ((1.0 - u / 0.38) ** 2) if u < 0.38 else 0.0
+            w_next = 0.16 * (((u - 0.52) / 0.48) ** 2) if u > 0.52 else 0.0
+            # (b) 長音の呼吸アーク（前半 u≈0.32 で口がわずかに開き、後半 u>0.40 で母音固有の方向へ緩やかに動く）
+            arch = 4.0 * u * (1.0 - u)
+            late = ((u - 0.35) / 0.65) if u > 0.35 else 0.0
+            late_s = late * late * (3.0 - 2.0 * late)
+
+            m1 = 1.0 + long_scale * (0.052 * arch + d1_long * late_s)
+            m2 = 1.0 + long_scale * (0.018 * arch * (1.0 if v_c in ("e", "i") else -1.0) + d2_long * late_s)
+            m3 = 1.0 + long_scale * (0.012 * arch + d3_long * late_s)
+            m_tuple = (m1, m2, m3)
+
+            for j in range(3):
+                k_name = "F%d" % (j + 1)
+                base_f = r[k_name][t_]
+                coart_f = base_f + w_prev * (F_prev[j] - F_cur[j]) + w_next * (F_next[j] - F_cur[j])
+                r[k_name][t_] = coart_f * m_tuple[j]
+
+    # ---- 第2層⑤：母音別・音高別の高音フォルマント同調（コペルトゥーラ）＋ビブラート連動フォルマント揺れ ----
     v_map = ["a"] * n
     for m_ in r["moras"]:
         if m_.get("kind") == "CV" and m_.get("v"):
             for t_ in range(max(0, int(m_["a"] / fpz)), min(n, int(m_["e"] / fpz) + 1)):
                 v_map[t_] = m_["v"]
+    r["v_map"] = v_map
 
     COPERTURA = {
         "i": (420.0, 0.95, 0.65, 0.98),
@@ -1195,6 +1276,7 @@ def _trance_singing_layers(r, n, KT, L, rc, SR):
         "o": (440.0, 1.04, 0.80, 0.98),
         "a": (500.0, 1.07, 0.85, 0.95),
     }
+    vib_mod_scales = (+0.026, -0.022, +0.030)
     for t_ in range(n):
         if r["voiced"][t_] and fr_[t_] > 0.0:
             v_c = v_map[t_]
@@ -1207,6 +1289,11 @@ def _trance_singing_layers(r, n, KT, L, rc, SR):
             if f0_t > 440.0:
                 w_cov = min(1.0, (f0_t - 440.0) / 320.0)
                 r["F2"][t_] *= 1.0 - w_cov * (1.0 - f2_round)
+            # 生体の微細調音ゆらぎ (±1.5%) ＋ ビブラート周期に同期した声道共鳴の揺れ（倍音明滅 Harmonic AM を生む）
+            vw_t = raw_[t_]
+            for j in range(3):
+                k_name = "F%d" % (j + 1)
+                r[k_name][t_] *= (1.0 + 0.015 * art_drifts[j][t_] + vib_mod_scales[j] * vw_t)
 
     return fr_
 
@@ -1454,29 +1541,37 @@ def make_text(rc):
     if is_trance:
         # 脱・「ピアニカ（フリーリード感）」＆澄み渡る人間のソプラノ声門源：
         # 1) サブサンプル配置 (pos += PER) で周期切り捨ての白濁ノイズは防ぎつつ、
-        #    README Ablation ③ の知見どおり、生身の声帯の微細なゆらぎ (yure=0.0018, shimmer=0.032) を残して金属リードの硬直を防ぐ！
+        #    1個の固定grainのスタンプ連打による低中域の「真空のような深すぎる谷」を防ぐため、
+        #    第2の緩やかな声門粒 (grain2) との周期ごとの生体ブレンド＋微細ゆらぎ (yure=0.0028, shimmer=0.045) を与える！
         # 2) PER の強い再帰コムはリード楽器（ピアニカ）の倍音になるため、月並みTTS本線の「kurai丸め ＋ 半周期Dの6本くびれ(kubire_n)」を主軸に据える！
         Gs = max(46, int(K.get("tsubu", 46)))
         grain = arakezuri(noise(r_k, Gs * 3), 4, 3)[Gs:2 * Gs]; gm = sum(grain) / Gs; grain = [v - gm for v in grain]
         grain = kiridashi(grain, 0, Gs, Gs // 4, Gs // 2, 1.5)
+        grain2 = arakezuri(noise(r_k, Gs * 3), 5, 3)[Gs:2 * Gs]; gm2 = sum(grain2) / Gs; grain2 = [v - gm2 for v in grain2]
+        grain2 = kiridashi(grain2, 0, Gs, Gs // 4, Gs // 2, 1.5)
+        g1_r = (sum(v * v for v in grain) / Gs) ** 0.5 or 1.0
+        g2_r = (sum(v * v for v in grain2) / Gs) ** 0.5 or 1.0
+        grain2 = [v * (g1_r / g2_r) for v in grain2]
         y = [0.0] * N; pos = 0.0
         r_pulse = random.Random(rc["seed"] + 16)
-        yure_tr = min(float(K.get("yure", 0.0018)), 0.0022)
-        shim_tr = min(float(K.get("shimmer", 0.032)), 0.038)
+        yure_tr = min(float(K.get("yure", 0.0028)), 0.0032)
+        shim_tr = min(float(K.get("shimmer", 0.045)), 0.050)
+        g_mix = 0.0
         while int(pos) < N:
             idx = int(pos)
             frac = pos - idx
+            g_mix = max(-0.28, min(0.28, 0.88 * g_mix + r_pulse.uniform(-0.11, 0.11)))
             amp_g = 1.0 + r_pulse.uniform(-1.0, 1.0) * shim_tr
             w0 = (1.0 - frac) * amp_g
             w1 = frac * amp_g
             for j in range(Gs):
-                g_v = grain[j]
+                g_v = (1.0 - abs(g_mix)) * grain[j] + g_mix * grain2[j]
                 if idx + j < N: y[idx + j] += g_v * w0
                 if idx + j + 1 < N: y[idx + j + 1] += g_v * w1
             pos += max(2.0, PER[min(idx, N - 1)] * (1.0 + r_pulse.uniform(-1.0, 1.0) * yure_tr))
         y = arakezuri(y, 2, 2)
-        line = kubire_n(y, D, [0.46] * N, L["m"], 6)
-        line = kubire_t(line, PER, [-0.14] * N, 2)
+        line = kubire_n(y, D, [0.45] * N, L["m"], 6)
+        line = kubire_t(line, PER, [-0.12] * N, 2)
         line = karuku(line, L["karuku_w"])
         line = [line[i] - 0.48 * (1.0 - cmS[i]) * line[i - 1] if i else line[i] for i in range(N)]
     else:
@@ -1515,16 +1610,17 @@ def make_text(rc):
     lo = [r["loud"][t] + (r["dl"][t] if KT["use_dl"] else 0.0) for t in range(n)]
     amp = [math.exp(v / 2) for v in lo]
     if is_trance:
-        # 高音に向かって声量と輝きが自然に開くソプラノのブレス・アポッジョ
+        # 高音に向かって声量と輝きが自然に開くソプラノのブレス・アポッジョ ＋ ビブラート周期に同期した声門下圧の微細脈動
+        vib_raw = r.get("vib_raw") or [0.0] * n
         for t_ in range(n):
             f_now = SR / PER[min(N - 1, int(t_ * N / n))]
             lift = max(0.92, min(1.36, (f_now / 310.0) ** 0.50))
-            amp[t_] *= lift
-        # 脱・ピアニカ（プラスチック筐体＆リード感）＆月並みTTS本線の肉声バランス（S.txt / OO.txt / R103 準拠）：
-        # F2/F3 を F1 より大きく持ち上げると「ピアニカの鼻詰まりリード共鳴」になるため、
-        # 本線と同じく F1 の口腔土台 (bump[0]=2.85) をしっかり据え、柔らかい声道減衰 g=[0.73, 0.72, 0.72] と h1_hz 規則を活かす！
-        KT["bump"] = [2.85, 1.55, 1.48]
-        KT["g"] = [0.73, 0.72, 0.72]
+            amp[t_] *= lift * (1.0 + 0.065 * vib_raw[t_])
+        # 脱・ピアニカ＆生身の声道共鳴：
+        # F1 の口腔土台 (bump[0]=2.85) をしっかり据えつつ、g=[0.74, 0.76, 0.77] でフォルマントの斜面を適度に立たせ、
+        # ビブラートや調音ダイナミクスで倍音が斜面を登り降りしたときに「倍音の明滅（Harmonic AM）」がキラキラと生まれるようにする！
+        KT["bump"] = [2.85, 1.58, 1.52]
+        KT["g"] = [0.74, 0.76, 0.77]
         KT["p_low"] = [5, 4, 3]
         KT["h1"] = 1.05
         KT["hk"] = {"2": 1.75, "3": 0.90}
@@ -1544,8 +1640,8 @@ def make_text(rc):
         Fj = _per_sample(r["F%d" % (j + 1)], N)
         bp = yama_bp(src, Fj, KT["g"][j], p_low=KT["p_low"][j]) if KT.get("p_low") else yama_bp(src, Fj, KT["g"][j])
         tg = _per_sample([KT["bump"][j] * math.sqrt(Ej[j][t]) * amp[t] * (VB[j][t] if VB else 1.0) for t in range(n)], N)
-        smj = (22 if is_trance else (KT["gain_sm_j"][j] if KT.get("gain_sm_j") else KT.get("gain_sm_ms", 0))) * SR / 1000
-        winj = (16 if is_trance else (KT["agc_j"][j] if KT.get("agc_j") else KT["agc_ms"])) * SR / 1000
+        smj = (18 if is_trance else (KT["gain_sm_j"][j] if KT.get("gain_sm_j") else KT.get("gain_sm_ms", 0))) * SR / 1000
+        winj = (14 if is_trance else (KT["agc_j"][j] if KT.get("agc_j") else KT["agc_ms"])) * SR / 1000
         if KT.get("gsm_c") and j > 0:
             bq = _agc(bp, tg, KT["gsm_c"][1] * SR / 1000, KT["gsm_c"][0] * SR / 1000); bp = _agc(bp, tg, winj, smj)
             bp = [cmS[i] * bq[i] + (1 - cmS[i]) * bp[i] for i in range(N)]
@@ -1584,17 +1680,40 @@ def make_text(rc):
         tg = _per_sample([rel * (VK[t] if VK else 1.0) * math.sqrt(Ej[0][t]) * amp[t] for t in range(n)], N)
         bp = _agc(bp, tg, (22 if is_trance else KT.get("h1_agc", 20)) * SR / 1000, (24 if is_trance else KT.get("h1_sm", 20)) * SR / 1000)
         for i in range(N): mix[i] += vo[i] * bp[i]
-    # 76：F4・F5（短い声道の高い山）。ソプラノ彫刻家では高域の電子チリつきを防ぐため 0.35 倍に整える
+    # 76：F4・F5（声道長・母音・F3に連動する高次フォルマント山）
+    fs_hi = fs[2] if isinstance(fs, (list, tuple)) else float(fs)
     for q45, (fq, rel) in enumerate(KT.get("f45", [])):
-        if KT.get("f45_f3"): fq_ = _per_sample([min(f + fq, 9000.0) for f in r["F3"]], N)
-        else: fq_ = [fq] * N
-        bp = yama_bp(src, fq_, 0.72 if is_trance else KT["g"][2], p_low=4 if is_trance else 3)
         if is_trance:
-            tg = _per_sample([rel * 0.35 * math.sqrt(Ej[2][t]) * amp[t] * (1 - 0.9 * cm[t]) for t in range(n)], N)
+            # 固定周波数ではなく、母音ごとに動く F3 と声道スケール fs_hi に連動して F4/F5 の山を動かす
+            off_hz = (1040.0 if q45 == 0 else 2020.0) * fs_hi
+            fq_ = _per_sample([min(f + off_hz, 8600.0) for f in r["F3"]], N)
+        elif KT.get("f45_f3"):
+            fq_ = _per_sample([min(f + fq, 9000.0) for f in r["F3"]], N)
+        else:
+            fq_ = [fq] * N
+        bp = yama_bp(src, fq_, 0.76 if is_trance else KT["g"][2], p_low=4 if is_trance else 3)
+        if is_trance:
+            tg = _per_sample([rel * 0.62 * math.sqrt(Ej[2][t]) * amp[t] * (1 - 0.9 * cm[t]) for t in range(n)], N)
         else:
             tg = _per_sample([rel * math.sqrt(Ej[2][t]) * amp[t] * (1 - KT.get("f45_cmute", 0.0) * cm[t]) * (V45[q45][t] if V45 else 1.0) for t in range(n)], N)
         bp = _agc(bp, tg, KT.get("f45_agc", KT["agc_ms"]) * SR / 1000, KT.get("f45_sm", KT.get("gain_sm_ms", 0)) * SR / 1000)
         for i in range(N): mix[i] += bp[i]
+    if is_trance:
+        # 梨状陥凹（Piriform Fossa）の動的反共振ノッチ：
+        # 固定周波数（4.5kHz一律）ではなく、女性歌手の声道スケール(fs_hi)・母音ごとの咽頭腔容積・音高(喉頭挙上)に応じて
+        # 4.5〜5.5kHz の間で有機的に移動する反共振の谷を「引き算の削り出し」で刻み、3山楽器から「生身の喉の立体感」へ昇華させる！
+        PIRI_BASE = {"o": 4720.0, "a": 4820.0, "u": 4980.0, "e": 5180.0, "i": 5320.0}
+        v_map_tr = r.get("v_map") or ["a"] * n
+        f_piri_tr = []
+        for t_ in range(n):
+            f_now = SR / PER[min(N - 1, int(t_ * N / n))]
+            pb = PIRI_BASE.get(v_map_tr[t_], 4950.0) * fs_hi
+            # 音高上昇に伴う喉頭位置の変化と F3 の動きを反映
+            f_p = pb + 0.42 * max(0.0, f_now - 260.0) + 0.12 * (r["F3"][t_] - 2850.0)
+            f_piri_tr.append(max(4100.0, min(6200.0, f_p)))
+        bp_piri = yama_bp(mix, _per_sample(f_piri_tr, N), 0.80, p_low=4)
+        for i in range(N):
+            mix[i] -= 0.52 * vo[i] * (1.0 - cmS[i]) * bp_piri[i]
     # 帯：さ・しゃ・破裂などのノイズの帯を、新しいノイズから別に削り出して置く
     for k, (t0, t1, cen, sd, lev) in enumerate(r["bands"]):
         a = max(0, int((t0 - 0.01) * SR)); b = min(N, int((t1 + 0.01) * SR))
@@ -1605,16 +1724,16 @@ def make_text(rc):
     if KT["breath"]:                       # 73 の息の層（生身の声の空気感を残しつつ曇らせない 0.12 倍）
         B = rc["breath"]; bx = karuku(sabun(noise(r_breath, N), B["sabun_w1"], B["sabun_w2"]), B["karuku_w"]); br = rms(bx) or 1.0
         ea = _per_sample(amp, N); mr = rms(mix) or 1.0
-        br_scale = 0.12 if is_trance else 1.0
+        br_scale = 0.14 if is_trance else 1.0
         for i in range(N): mix[i] += KT["breath"] * br_scale * mr * ea[i] * bx[i] / br
     if KT.get("henv") and not is_trance:   # 82b：exp35 の人の母音包絡
         st5_ = [st[min(N - 1, int(t * N / n))] for t in range(n)]; sv_ = sorted(st5_[t] for t in range(n) if r["voiced"][t]) or [0.0]
         mix = (_HENV_REF or _henv)(mix, src, dict(r, cm=cm, st5=st5_, st5_med=sv_[len(sv_) // 2]), KT, SR)
     if is_trance:
-        # 147 の核心：「上の帯が純な倍音だけ（倍音の間の谷 20〜25dB）＝ハーモニカ／ピアニカ」！
-        # 0〜1800Hz の基音・F1・F2 の芯は澄み渡る純粋な倍音のまま保ち、2600Hz 以上の高域倍音の力の一部だけを
-        # 同じ包絡形状に削った絹の息 (_iki_up) に置き換えることで、ピアニカ（フリーリード）感を一掃して生身の歌姫の息吹にする！
-        iki_tr = {"pts": [[1800, 0.0], [2700, 0.14], [4800, 0.36], [8000, 0.58]], "w_hz": 550, "fl": 0.45}
+        # 147 の核心＋低中域の谷の自然化：
+        # 950Hz 以下の基音核は純倍音のまま保ち、1.2〜2.5kHz の中域にもわずかな息の湿り気 (5.5%〜14%) を織り込んで
+        # 「真空に浮かぶ電子倍音（谷 24〜37dB）」から「生身の声の倍音の谷（16〜22dB）」へ自然に馴染ませる！
+        iki_tr = {"pts": [[950, 0.0], [1600, 0.055], [2500, 0.14], [4800, 0.38], [8000, 0.60]], "w_hz": 520, "fl": 0.52}
         mix = _iki_up(mix, r, SR, iki_tr, random.Random(rc["seed"] + 31))
     elif KT.get("iki"):
         mix = _iki_up(mix, r, SR, KT["iki"], random.Random(rc["seed"] + 31))
