@@ -152,7 +152,7 @@ def build_carve_rc(text, prm):
     r["tadayoi"] = float(prm["tadayoi"])
     if float(prm["yure"]) == 0.0 and float(prm["tadayoi"]) == 0.0:
         r["yure_hayai"] = 0.0
-        r["line"] = dict(r["line"], D_haba=0.0)
+        r["line.D_haba"] = 0.0
     r["kotoba"]["line_g"] = float(prm["line_g"])
     r["kotoba"]["ap_n"] = int(prm["ap_n"])
 
