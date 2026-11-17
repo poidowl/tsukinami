@@ -92,21 +92,30 @@
 
 ---
 
-## 2. 使い方（Windows / macOS / Linux 共通・`pip install` 不要）
+## 2. 使い方：「壊しても戻せるTTS」（Play → Modify → Listen → Compare → Share）
 
-### A. 1行で喋らせる・パラメータを改造して実験する（[`yomu.py`](yomu.py)）
-
-OSを問わず `python`（または `python3`）だけで即座にWAVを生成でき、5つの設計ブロック（原料・骨格・倍音整形・共鳴・位相分散）を引数から直接ハックできます：
+Windows / macOS / Linux すべてで `python`（または `python3`）だけで動き、**いじる → 鳴らす → 元の音と比べる → レシピを共有する**サイクルが1コマンドで回せます：
 
 ```bash
-# 1) そのまま喋らせる（out/yomu_1.wav に出力）
+# 1) 【Play】そのまま喋らせる（out/yomu_1.wav に出力）
 python yomu.py "わたし、にほんご、ちょっとしゃべれます"
 
-# 2) アクセント核 (')・平板 (0)・句切れ (空白)・疑問上昇 (?) を付けて喋らせる
-python yomu.py "わたし0、にほんご0、ちょ'っと しゃべれま'す？" -o out/watashi_q.wav
+# 2) 【Preset】同梱のキャラ声プリセットで遊んでみる（おっさん / ロボ / ホラーNPC / ささやき / ちびっ子）
+python yomu.py --list-presets
+python yomu.py --preset ossan   "わたし、にほんご、ちょっとしゃべれます"
+python yomu.py --preset horror  "うしろに、だれか、いますよ"
+python yomu.py --preset robot   "わたし、にほんご、ちょっとしゃべれます"
+python yomu.py --preset whisper "ないしょの、おはなしですよ"
 
-# 3) 5つの設計ブロックを引数でいじって聴き比べる（例：乱数種変更・大人の声道 fscale=1.0・くびれOFF・オールパスOFF）
-python yomu.py "わたし、にほんご、ちょっとしゃべれます" --seed 7 --hz 240 --fscale 1.0 --line-g 0.0 --ap-n 0 -o out/hack.wav
+# 3) 【Modify & Compare】マジックナンバーを改造し、壊す前の基準WAV (out/yomu_base_1.wav) と同時出力して比較する
+python yomu.py --seed 7 --hz 150 --fscale 0.88 --line-g 0.0 --compare "わたし、にほんご、ちょっとしゃべれます"
+
+# 4) 【Share】自分（やChatGPT/Claude）が発見した改造レシピをJSONで保存・配布・再現する
+python yomu.py --seed 42 --hz 160 --fscale 0.90 --yure 0.015 --save-recipe my_npc.json "テストです"
+python yomu.py --recipe my_npc.json "わたし、にほんご、ちょっとしゃべれます"
+
+# 5) アクセント核 (')・平板 (0)・句切れ (空白)・疑問上昇 (?) を付けて喋らせる
+python yomu.py "わたし0、にほんご0、ちょ'っと しゃべれま'す？" -o out/watashi_q.wav
 ```
 
 シェルスクリプト [`yomu2.sh`](yomu2.sh) からまとめて生成することもできます：
