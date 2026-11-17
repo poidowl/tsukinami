@@ -1311,41 +1311,33 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
                 f2_0 = r["F2"][t_]
                 f3_0 = r["F3"][t_]
 
-                if tr_sub_cut and cm is not None and cm[t_] > 0.25 and f1_0 < 1.00 * f0_t:
-                    # 鼻音(n, m)のFN1(245Hz)で F1 が基音 f0 より下に落ちると、
+                if tr_sub_cut and f1_0 < 1.02 * f0_t:
+                    # 鼻音(n, m)のFN1(245Hz)等で F1 が基音 f0 より下に落ちると、
                     # yama_bp + _agc が基音より下の無音帯域(<240Hz)の風切りノイズを増幅して「マイクに息が吹きかかったボフッ音」になるのを防ぐ
-                    target_f1 = f0_t * 1.00
+                    target_f1 = f0_t * 1.02
                     df1_lock[t_] = 0.92 * (target_f1 - f1_0)
-                elif f1_0 < 1.02 * f0_t:
-                    # ソプラノのフォルマント・チューニング：基音 f0 が母本来の F1 を上回るときだけ F1 を 1*f0 にロックする
-                    target_f1 = f0_t * 1.01
-                    df1_lock[t_] = 0.88 * w_v * (target_f1 - f1_0)
+                elif (v_c in ("i", "u") and f0_t >= 330.0) or (v_c == "o" and f0_t >= 380.0) or f1_0 < 1.35 * f0_t:
+                    # ロボット乙女の清らかな頭声ドーム：中〜高音で F1 を基音 H1 のすぐ上(1.02*f0)へ包み込み、ピアニカのリード鳴りを防ぐ
+                    target_f1 = f0_t * 1.02
+                    df1_lock[t_] = 0.86 * w_v * (target_f1 - f1_0)
                 else:
-                    # f1_0 >= 1.02*f0（開母音ア等）では母音固有の F1 位置を保ちつつ最寄りの整数倍音 m*f0 へ軽く引き寄せる（5母音の明瞭さを維持）
                     m_h = max(1, int(round(f1_0 / f0_t)))
-                    cand_f1 = max(f1_0 * 0.88, min(f1_0 * 1.12, m_h * f0_t * 1.01))
-                    df1_lock[t_] = 0.72 * w_v * (cand_f1 - f1_0)
+                    cand_f1 = max(f1_0 * 0.78, min(f1_0 * 1.22, m_h * f0_t * 1.01))
+                    df1_lock[t_] = 0.84 * w_v * (cand_f1 - f1_0)
 
                 f2_base = f2_0
                 if f0_t > 440.0:
                     w_cov = min(1.0, (f0_t - 440.0) / 320.0)
                     f2_base = f2_0 * (1.0 - w_cov * (1.0 - f2_round))
                 k_h = max(2, int(round(f2_base / f0_t)))
-                cand_f2 = max(f2_base * 0.90, min(f2_base * 1.10, k_h * f0_t))
-                df2_lock[t_] = (f2_base - f2_0) + 0.68 * w_v * (cand_f2 - f2_base)
-
-                # 2〜4kHz の「抜け」（F3）：鼻音ハミング(n, m)から母音へ開く際も 2.5〜3.6kHz の整数倍音 k3*f0 にロックして響きを落とさない
-                k3_h = max(4, int(round(f3_0 / f0_t)))
-                cand_f3 = max(f3_0 * 0.88, min(f3_0 * 1.12, k3_h * f0_t))
-                df3_lock[t_] = 0.82 * (cand_f3 - f3_0)
+                cand_f2 = max(f2_base * 0.82, min(f2_base * 1.15, k_h * f0_t))
+                df2_lock[t_] = (f2_base - f2_0) + 0.80 * w_v * (cand_f2 - f2_base)
 
         sm_df1 = kotoba.smooth1(df1_lock, 20)
         sm_df2 = kotoba.smooth1(df2_lock, 20)
-        sm_df3 = kotoba.smooth1(df3_lock, 20)
         for t_ in range(n):
             r["F1"][t_] += sm_df1[t_]
             r["F2"][t_] += sm_df2[t_]
-            r["F3"][t_] += sm_df3[t_]
             if r["voiced"][t_] and fr_[t_] > 0.0:
                 vw_t = raw_[t_]
                 for j in range(3):
@@ -1424,28 +1416,28 @@ def _make_choir(rc):
     singers = [
         {
             "name": "Testa", "hz_list": lead_hz,
-            "fscale": [0.98, 0.96, 0.95], "tsubu": 46,
+            "fscale": [0.98, 0.95, 0.92], "tsubu": 46,
             "band": base_kt.get("band", 3.0),
             "vib": vib_use, "scoop": scoop_use, "gain": 1.00,
             "pan": (0.76, 0.74), "cavity": "testa",
         },
         {
             "name": "Petto", "hz_list": hz_v2,
-            "fscale": [0.93, 0.91, 0.90], "tsubu": 46,
+            "fscale": [0.93, 0.90, 0.88], "tsubu": 46,
             "band": 0.0,
             "vib": vib_use, "scoop": scoop_use, "gain": 0.30,
             "pan": (0.68, 0.80), "cavity": "petto",
         },
         {
             "name": "Maschera", "hz_list": hz_v3,
-            "fscale": [1.02, 1.00, 0.98], "tsubu": 46,
+            "fscale": [1.02, 0.99, 0.96], "tsubu": 46,
             "band": 0.0,
             "vib": vib_use, "scoop": scoop_use, "gain": 0.22,
             "pan": (0.80, 0.68), "cavity": "maschera",
         },
         {
             "name": "Duomo", "hz_list": hz_pad,
-            "fscale": [0.96, 0.94, 0.92], "tsubu": 46,
+            "fscale": [0.96, 0.93, 0.90], "tsubu": 46,
             "band": 0.0,
             "vib": vib_use, "scoop": scoop_use, "gain": 0.24,
             "pan": (0.72, 0.78), "cavity": "duomo",
@@ -1548,8 +1540,8 @@ def make_text(rc):
     # 高さ（73 と同じ：中心 D・千鳥足・漂い・周期ごとの速い揺れ）＋句の上がり下がり
     fs = KT.get("fscale", 1.0)             # 76k: formant tracks F1..F3 x fscale (shorter vocal tract = child)
     if is_trance and not isinstance(fs, (list, tuple)):
-        # 重音テト(1.22)・管(1.09)・ピアニカ(0.86)を避け、2〜4kHzの「抜け」(F3)が潰れずに澄み渡る声道比率へ
-        fs = [0.98, 0.96, 0.95]
+        # 重音テト(1.22)・管(1.09)・ピアニカ(0.86)のすべてを避け、29fcc99で好評だった「ロボット乙女の清らかさ」の声道比率へ
+        fs = [0.98, 0.95, 0.92]
     if fs != 1.0:
         fs = fs if isinstance(fs, (list, tuple)) else [fs] * 3
         for j in range(3): r["F%d" % (j + 1)] = [min(f * fs[j], 9000.0) for f in r["F%d" % (j + 1)]]
@@ -1712,13 +1704,11 @@ def make_text(rc):
             f0_tr_e = r.get("f0_tr") or [SR / PER[min(N - 1, int(t * N / n))] for t in range(n)]
             for t_ in range(n):
                 fk = max(120.0, f0_tr_e[t_])
-                for j_ in (0, 1, 2):
+                for j_ in (0, 1):
                     fj = r["F%d" % (j_ + 1)][t_]
                     dist = abs(fj / fk - round(fj / fk))  # 0.0=整数倍音に完全ロック, 0.5=半整数倍音の谷
-                    # F2/F3（2〜4kHz の「抜け」）は鼻音ハミング(n, m)から母音へ開く瞬間も閉じずに響きを保つ
-                    w_cm = (1.0 - cm[t_]) if j_ == 0 else (1.0 - 0.30 * cm[t_])
-                    gain_k = 0.42 if j_ == 2 else 0.36
-                    eff = 1.0 + gain_k * (1.0 - 8.0 * dist * dist) * w_cm
+                    w_cm = (1.0 - cm[t_]) if j_ == 0 else (1.0 - 0.35 * cm[t_])
+                    eff = 1.0 + 0.36 * (1.0 - 8.0 * dist * dist) * w_cm
                     Ej[j_][t_] *= eff * eff
     else:
         Ef, Ej, Eb = _world_energy(r, KT["gk"])
@@ -1727,14 +1717,15 @@ def make_text(rc):
     amp = list(amp_base)
     if is_trance:
         vib_raw = r.get("vib_raw") or [0.0] * n
-        am_k = 0.065 if tr_harm_am else 0.0
+        # ビブラートの波に合わせて声の張りもわずかに呼吸させ、_agc 固定による「ピアニカの機械的定常感」を消す
+        am_k = 0.065 if tr_harm_am else 0.032
         for t_ in range(n):
             f_now = SR / PER[min(N - 1, int(t_ * N / n))]
             lift = max(0.92, min(1.36, (f_now / 310.0) ** 0.50))
             amp[t_] *= lift * (1.0 + am_k * vib_raw[t_])
-        # 2〜4kHz帯（F2・F3）の「抜け」を確保し、こもりを防ぐ共鳴バランス（2×2実験で A/B/C/D 共通）
-        KT["bump"] = [2.85, 1.58, 1.52] if tr_harm_am else [2.62, 1.92, 2.08]
-        KT["g"] = [0.74, 0.76, 0.77] if tr_harm_am else [0.77, 0.76, 0.75]
+        # F2/F3 を上げすぎると 1.5〜3.5kHz がピアニカの金属リードのように鳴るため、29fcc99 の清らかな頭声バランスを守る
+        KT["bump"] = [2.85, 1.58, 1.52] if tr_harm_am else [2.86, 1.62, 1.54]
+        KT["g"] = [0.74, 0.76, 0.77] if tr_harm_am else [0.77, 0.75, 0.74]
         KT["p_low"] = [5, 4, 3]
         KT["h1"] = 1.05
         KT["hk"] = {"2": 1.75, "3": 0.90}
@@ -1809,7 +1800,7 @@ def make_text(rc):
             fq_ = [fq] * N
         bp = yama_bp(src, fq_, (0.76 if tr_piri_notch else 0.72) if is_trance else KT["g"][2], p_low=4 if is_trance else 3)
         if is_trance:
-            f45_k = 0.62 if tr_piri_notch else 0.42
+            f45_k = 0.62 if tr_piri_notch else 0.35
             tg = _per_sample([rel * f45_k * math.sqrt(Ej[2][t]) * amp[t] * (1 - 0.9 * cm[t]) for t in range(n)], N)
         else:
             tg = _per_sample([rel * math.sqrt(Ej[2][t]) * amp[t] * (1 - KT.get("f45_cmute", 0.0) * cm[t]) * (V45[q45][t] if V45 else 1.0) for t in range(n)], N)
