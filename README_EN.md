@@ -7,6 +7,14 @@
 > **Read Japanese Kana.**  
 > **Read how it works, in Python.**
 
+### 👉 Try It Live in Your Browser (No Install — Mobile & Desktop)
+- 🎛️ **[Interactive Toybox (`toybox.html`)](https://poidowl.github.io/tsukinami/toybox.html)** — 6 real `carve.py` character presets + one-click A/B compare + 10 magic-number sliders + Recipe JSON generator
+- 🔬 **[6-Stage Carving & 17-Mora Microscope (`watashi_demo.html`)](https://poidowl.github.io/tsukinami/watashi_demo.html)** — Hear how *"Watashi, nihongo, chotto shaberemasu"* is carved from white noise
+- 🧪 **[7-Track Ablation Jury (`ablation.html`)](https://poidowl.github.io/tsukinami/ablation.html)** — Disable each DSP component one by one and hear the exact difference
+- 🎹 **[Free-Kana Web Synth (`demo.html`)](https://poidowl.github.io/tsukinami/demo.html)** — Type any Japanese kana and synthesize live in the browser
+
+---
+
 > **Don't draw the voice—create the conditions where a voice is born.**  
 > **No recorded voice samples. No pre-trained neural weights. Carve a human voice out of uniform random noise.**
 
