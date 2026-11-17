@@ -66,15 +66,31 @@ PRESETS = {
         "seed": 2024, "tsubu": 32, "hz": 400.0, "fscale": 1.35,
         "yure": 0.004, "shimmer": 0.05, "tadayoi": 0.5, "line_g": 0.45, "ap_n": 40, "rate": 1.20,
     },
+    "utahime": {
+        "description": "ソプラノ彫刻家（大人の声道比率・丸ノミ倍音整形・3kHzスクイッロ・澄んだホール余韻）",
+        "seed": 2024, "tsubu": 56, "hz": 392.0, "fscale": 1.22,
+        "yure": 0.0012, "shimmer": 0.018, "tadayoi": 0.25, "line_g": 0.18, "ap_n": 6, "rate": 1.05,
+        "uta_trance": True, "uta_choir": False,
+    },
+    "choir": {
+        "description": "1声×4共鳴腔オペラ歌姫（頭声・胸腔・仮面・聖堂4壁が完全同期して響く超人的ソプラノ）",
+        "seed": 2024, "tsubu": 56, "hz": 392.0, "fscale": 1.22,
+        "yure": 0.0012, "shimmer": 0.018, "tadayoi": 0.25, "line_g": 0.18, "ap_n": 6, "rate": 1.05,
+        "uta_trance": True, "uta_choir": True,
+    },
 }
 
 
 def resolve_params(args):
-    prm = dict(PRESETS["default"])
+    prm = dict(PRESETS["default"], uta_trance=False, uta_choir=False)
     if args.preset:
         if args.preset not in PRESETS:
             raise SystemExit(f"未知のプリセット '{args.preset}' です。選択可能: {', '.join(PRESETS.keys())}")
         prm.update(PRESETS[args.preset])
+    if getattr(args, "trance", False):
+        prm.update(PRESETS["utahime"])
+    if getattr(args, "choir", False):
+        prm.update(PRESETS["choir"])
     if args.recipe:
         with open(args.recipe, encoding="utf-8") as f:
             user_rc = json.load(f)
@@ -155,6 +171,10 @@ def build_carve_rc(text, prm):
         r["line.D_haba"] = 0.0
     r["kotoba"]["line_g"] = float(prm["line_g"])
     r["kotoba"]["ap_n"] = int(prm["ap_n"])
+    if prm.get("uta_trance"):
+        r["kotoba"]["uta_trance"] = True
+    if prm.get("uta_choir"):
+        r["kotoba"]["uta_choir"] = True
     if hz < 220.0:
         # 低ピッチ時は基音(H1)・第2倍音(2H)がピーク正規化を食ってこもるのを防ぎ、F2/F3と高域倍音(3H)を立てて明瞭度を確保
         r["kotoba"]["h1"] = 0.25
@@ -223,8 +243,10 @@ def main():
         "--preset",
         choices=list(PRESETS.keys()),
         default=None,
-        help="同梱キャラ声プリセット (default / ossan / robot / horror / whisper / chibi)",
+        help="同梱キャラ声プリセット (default / ossan / robot / horror / whisper / chibi / utahime / choir)",
     )
+    p.add_argument("--trance", action="store_true", help="ソプラノ彫刻家モード（大人の声道比率・丸ノミ倍音整形・3kHzスクイッロ＆ホール余韻）")
+    p.add_argument("--choir", action="store_true", help="1声×4共鳴腔オペラ歌姫モード（頭声・胸腔・仮面・聖堂4壁が完全同期して響く超人的ソプラノ）")
     p.add_argument("--list-presets", action="store_true", help="同梱プリセット一覧とパラメータを表示して終了")
     p.add_argument("--recipe", default=None, help="共有レシピJSONファイルを読み込んで合成")
     p.add_argument("--save-recipe", default=None, help="現在の改造パラメータをレシピJSONファイルに保存")

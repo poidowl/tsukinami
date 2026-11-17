@@ -142,12 +142,14 @@ Windows / macOS / Linux すべてで `python`（または `python3`）だけで�
 # 1) 【Play】そのまま喋らせる（out/yomu_1.wav に出力）
 python yomu.py "わたし、にほんご、ちょっとしゃべれます"
 
-# 2) 【Preset】同梱のキャラ声プリセットで遊んでみる（おっさん / ロボ / ホラーNPC / ささやき / ちびっ子）
+# 2) 【Preset】同梱のキャラ声プリセットで遊んでみる（おっさん / ロボ / ホラーNPC / ささやき / ちびっ子 / ソプラノ彫刻家 / 4共鳴腔オペラ歌姫）
 python yomu.py --list-presets
 python yomu.py --preset ossan   "わたし、にほんご、ちょっとしゃべれます"
 python yomu.py --preset horror  "うしろに、だれか、いますよ"
 python yomu.py --preset robot   "わたし、にほんご、ちょっとしゃべれます"
 python yomu.py --preset whisper "ないしょの、おはなしですよ"
+python yomu.py --trance         "わたし、にほんご、ちょっとしゃべれます"
+python yomu.py --choir          "わたし、にほんご、ちょっとしゃべれます"
 
 # 3) 【Modify & Compare】マジックナンバーを改造し、壊す前の基準WAV (out/yomu_base_1.wav) と同時出力して比較する
 python yomu.py --seed 7 --hz 150 --fscale 0.88 --line-g 0.0 --compare "わたし、にほんご、ちょっとしゃべれます"
@@ -167,11 +169,15 @@ bash yomu2.sh sample "" "" "きょうもいっしょにがんばろうね" "わ�
 # → out/sample_1.wav, out/sample_2.wav が出力されます
 ```
 
-### B. 歌わせる（[`nagauta.sh`](nagauta.sh)）
+### B. 歌わせる（[`nagauta.sh`](nagauta.sh) / [`jikoshoukai_uta.sh`](jikoshoukai_uta.sh)）
 
 ```bash
 bash nagauta.sh uta_sample
 # → out/uta_sample_1.wav 〜 out/uta_sample_4.wav が出力されます
+
+# 自己紹介ソングをソプラノ彫刻家 (--trance) や 1声×4共鳴腔オペラ歌姫 (--choir) で歌わせる：
+bash jikoshoukai_uta.sh uta_trance_ --trance
+bash jikoshoukai_uta.sh uta_choir_  --choir
 ```
 
 ### C. Pythonスクリプトから直接呼ぶ（最小3行）

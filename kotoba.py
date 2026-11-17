@@ -136,10 +136,15 @@ def mora_info(moras):
     return out
 
 def rule_durations(ml, P):
+    if P.get('uta_trance'):
+        for q in ml:
+            q['dev'] = False
+    cd_s = P.get('cd_s', 0.75 if P.get('uta_trance') else 1.0)
+    vd_s = P.get('vd_s', 1.12 if P.get('uta_trance') else 1.0)
     for q in ml:
         if q['kind'] == 'pau': q['cd'], q['vd'] = 0.0, P['pau']; continue
         if q['kind'] in ('Q', 'N'): q['cd'], q['vd'] = 0.0, P['qn'] * (1.3 if (q['final'] and q['kind'] == 'Q') else 1.0); continue
-        c = P['CDUR'][q['c']] / 1000 * P['rate']; v = P['VDUR'][q['v']] / 1000 * P['rate']
+        c = P['CDUR'][q['c']] / 1000 * P['rate'] * cd_s; v = P['VDUR'][q['v']] / 1000 * P['rate'] * vd_s
         if q['dev']: v = min(v, P['devmax'])
         if q['final']: v *= P['fin']
         q['cd'], q['vd'] = c, v
