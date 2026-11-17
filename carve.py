@@ -1190,7 +1190,7 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
     fr_ = [f_ref * (2.0 ** (s / 12.0)) for s in st_track]
 
     # ---- 第2層④：調音を模した母音内部フォルマント軌道制御（音節境界 b_fr/e_fr で跳躍ゼロの連続窓＋20ms平滑化） ----
-    cv_list = [m_ for m_ in r["moras"] if m_.get("kind") == "CV" and m_.get("v")]
+    cv_list = [m_ for m_ in r["moras"] if m_.get("kind") != "pau" and m_.get("v")]
     f_orig = [[float(x) for x in r["F%d" % (j + 1)]] for j in range(3)]
     r_art = random.Random(rc["seed"] + 41)
     art_drifts = []
@@ -1276,7 +1276,7 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
     # ---- 第2層⑤：フォルマント・倍音ロック（tr_f_shift：F1/F2/F3を整数倍音 m*f0 に噛み合わせ、半整数倍音の谷 (m+0.5)*f0 を避ける） ----
     v_map = ["a"] * n
     for m_ in r["moras"]:
-        if m_.get("kind") == "CV" and m_.get("v"):
+        if m_.get("kind") != "pau" and m_.get("v"):
             for t_ in range(max(0, int(m_["a"] / fpz)), min(n, int(m_["e"] / fpz) + 1)):
                 v_map[t_] = m_["v"]
     r["v_map"] = v_map
@@ -1297,33 +1297,73 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
     r["f0_tr"] = list(fr_)
 
     if tr_f_shift:
-        # 引き算の核心：複雑な共鳴や揺らぎを足すのではなく、既にある F1・F2・F3（2〜4kHzの抜け）の共鳴山を整数倍音 m*f0 にピタリと噛み合わせる。
+        # 『音素を座標ではなく、運動（到達点＋進行方向＋速度＋収束の仕方）として扱う』：
+        # 母音の頭(b)からいきなり倍音座標へ瞬間移動（＝ピアニカのリード固定化）させるのではなく、
+        # ① 前後の音からの出発点（自然な母音軌跡）から始まり、
+        # ② 音節の持続の中で整数倍音 m*f0 へ滑らかに収束（c_conv: 0.26 → 1.0）して共鳴が開花し、
+        # ③ 音節の終わり際(残り42ms)には次の母音へ向かってロックを緩め予兆運動を始める軌道を作る。
+        c_conv = [0.0] * n
+        coart_f1 = [0.0] * n
+        coart_f2 = [0.0] * n
+        V_TGT_F1 = {"a": 780.0, "e": 500.0, "o": 480.0, "u": 350.0, "i": 310.0}
+        V_TGT_F2 = {"a": 1280.0, "e": 2120.0, "o": 900.0, "u": 1250.0, "i": 2480.0}
+        cv_moras = [m_ for m_ in r["moras"] if m_.get("kind") != "pau" and m_.get("v")]
+        for idx_m, m_ in enumerate(cv_moras):
+            b_t = float(m_["b"])
+            e_t = float(m_["e"])
+            dv = max(0.06, e_t - b_t)
+            # 収束時定数 tau_conv：短音では約36ms、ロングトーンでは約62msかけて「母音になろうとし、倍音共鳴へ澄み渡る収束運動」を描く
+            tau_c = min(0.062, max(0.034, 0.20 * dv))
+            v_cur = m_.get("v") or "a"
+            v_nxt = (cv_moras[idx_m + 1].get("v") or v_cur) if (idx_m + 1 < len(cv_moras)) else v_cur
+            df1_nxt = V_TGT_F1.get(v_nxt, 500.0) - V_TGT_F1.get(v_cur, 500.0)
+            df2_nxt = V_TGT_F2.get(v_nxt, 1500.0) - V_TGT_F2.get(v_cur, 1500.0)
+            i_a = max(0, int(m_["a"] / fpz))
+            i_e = min(n, int(e_t / fpz) + 1)
+            for t_ in range(i_a, i_e):
+                t_sec = t_ * fpz
+                if t_sec <= b_t:
+                    c_conv[t_] = 0.26
+                else:
+                    el = t_sec - b_t
+                    # 到達点への収束曲線（指数収束）：最初は母音本来の座標が支配し、持続とともに倍音ロック 1.0 へ収束
+                    c_in = 0.26 + 0.74 * (1.0 - math.exp(-el / tau_c))
+                    rem = e_t - t_sec
+                    # 次の音への予兆運動（残り42msでロックを少し解き、次の母音の方向へ先回りして動き始める）
+                    if rem < 0.042 and idx_m + 1 < len(cv_moras):
+                        u_rel = max(0.0, min(1.0, (0.042 - rem) / 0.042))
+                        s_rel = u_rel * u_rel * (3.0 - 2.0 * u_rel)
+                        c_in *= (1.0 - 0.38 * s_rel)
+                        coart_f1[t_] = 0.12 * s_rel * df1_nxt
+                        coart_f2[t_] = 0.12 * s_rel * df2_nxt
+                    c_conv[t_] = c_in
+
         df1_lock = [0.0] * n
         df2_lock = [0.0] * n
-        df3_lock = [0.0] * n
         for t_ in range(n):
             if r["voiced"][t_] and fr_[t_] > 0.0:
                 v_c = v_map[t_]
                 _, _, _, f2_round = COPERTURA.get(v_c, (450.0, 1.04, 0.75, 0.97))
                 f0_t = fr_[t_]
                 w_v = (1.0 - cm[t_]) if cm is not None else 1.0
-                f1_0 = r["F1"][t_]
-                f2_0 = r["F2"][t_]
-                f3_0 = r["F3"][t_]
+                w_kin = w_v * c_conv[t_]
+                f1_0 = r["F1"][t_] + coart_f1[t_]
+                f2_0 = r["F2"][t_] + coart_f2[t_]
 
-                if tr_sub_cut and f1_0 < 1.02 * f0_t:
-                    # 鼻音(n, m)のFN1(245Hz)等で F1 が基音 f0 より下に落ちると、
-                    # yama_bp + _agc が基音より下の無音帯域(<240Hz)の風切りノイズを増幅して「マイクに息が吹きかかったボフッ音」になるのを防ぐ
-                    target_f1 = f0_t * 1.02
-                    df1_lock[t_] = 0.92 * (target_f1 - f1_0)
-                elif (v_c in ("i", "u") and f0_t >= 330.0) or (v_c == "o" and f0_t >= 380.0) or f1_0 < 1.35 * f0_t:
-                    # ロボット乙女の清らかな頭声ドーム：中〜高音で F1 を基音 H1 のすぐ上(1.02*f0)へ包み込み、ピアニカのリード鳴りを防ぐ
-                    target_f1 = f0_t * 1.02
-                    df1_lock[t_] = 0.86 * w_v * (target_f1 - f1_0)
+                # 吹かれ音対策と母音の立ち上がりの両立：
+                # 鼻音(n, m)の FN1(245Hz) 等で F1 が基音 H1 の下裾(0.96*f0)より下へ落ちる現象だけを下限 f_sub_min で受け止め、
+                # 子音→母音への立ち上がり遷移 (w_kin) と F1/F2 の収束運動は一切潰さない
+                f_sub_min = 0.96 * f0_t if tr_sub_cut else 0.0
+                f1_eff = max(f1_0, f_sub_min)
+                df_sub = f1_eff - r["F1"][t_]
+
+                if (v_c in ("i", "u") and f0_t >= 330.0) or (v_c == "o" and f0_t >= 380.0) or f1_eff < 1.35 * f0_t:
+                    target_f1 = f0_t * 1.03
+                    df1_lock[t_] = df_sub + 0.88 * w_kin * (target_f1 - f1_eff)
                 else:
-                    m_h = max(1, int(round(f1_0 / f0_t)))
-                    cand_f1 = max(f1_0 * 0.78, min(f1_0 * 1.22, m_h * f0_t * 1.01))
-                    df1_lock[t_] = 0.84 * w_v * (cand_f1 - f1_0)
+                    m_h = max(1, int(round(f1_eff / f0_t)))
+                    cand_f1 = max(f1_eff * 0.78, min(f1_eff * 1.22, m_h * f0_t * 1.01))
+                    df1_lock[t_] = df_sub + 0.86 * w_kin * (cand_f1 - f1_eff)
 
                 f2_base = f2_0
                 if f0_t > 440.0:
@@ -1331,10 +1371,10 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
                     f2_base = f2_0 * (1.0 - w_cov * (1.0 - f2_round))
                 k_h = max(2, int(round(f2_base / f0_t)))
                 cand_f2 = max(f2_base * 0.82, min(f2_base * 1.15, k_h * f0_t))
-                df2_lock[t_] = (f2_base - f2_0) + 0.80 * w_v * (cand_f2 - f2_base)
+                df2_lock[t_] = (f2_base - r["F2"][t_]) + 0.82 * w_kin * (cand_f2 - f2_base)
 
-        sm_df1 = kotoba.smooth1(df1_lock, 20)
-        sm_df2 = kotoba.smooth1(df2_lock, 20)
+        sm_df1 = kotoba.smooth1(df1_lock, 18)
+        sm_df2 = kotoba.smooth1(df2_lock, 18)
         for t_ in range(n):
             r["F1"][t_] += sm_df1[t_]
             r["F2"][t_] += sm_df2[t_]
