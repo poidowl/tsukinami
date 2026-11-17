@@ -167,19 +167,26 @@ x, moras = C.make(C.variant(dict(C.E79, text="きょうもいっしょにがん�
 C.write("out.wav", x)
 ```
 
-### D. 🤖 ChatGPT / Claude / Gemini に渡して「新しい声レシピ」を作らせるコピペ用プロンプト
+### D. 🤖 ChatGPT / Claude / Gemini に渡して「1クリック試聴リンク＆声レシピ」を作らせるコピペ用プロンプト
 
-コードを書かなくても、以下のプロンプトをそのままLLMにコピペするだけで、あなた専用の改造コマンドやレシピJSONを作ってもらえます：
+[`toybox.html`](https://poidowl.github.io/tsukinami/toybox.html) は **URLクエリ（`?hz=310&fscale=1.18&text=...`）の自動読み込み** と **JSONレシピの1発貼り付け** に対応しています。
+以下のプロンプトをそのままLLMにコピペすると、**チャット欄のリンクを1クリックするだけでその声がブラウザで鳴るURL** とレシピJSONをLLMが作ってくれます：
 
 ```text
-https://github.com/poidowl/tsukinami の月並みTTS（yomu.py / carve.py）を使って、
-「レトロゲームの眠そうな道具屋のおじいさん」っぽい声を作りたいです。
+https://github.com/poidowl/tsukinami の月並みTTSを使って、
+「ツンデレ美少女」「レトロゲームの眠そうな道具屋のおじいさん」など面白い声を作りたいです。
 
-以下の10個のマジックナンバーを調整して、実行用の `python yomu.py ... --compare --save-recipe grandpa.json` コマンドと、各数値をどう変えたかの理由を教えてください。
+以下のパラメータを組み合わせて、
+1) 1クリックでブラウザ試聴できるURL:
+   https://poidowl.github.io/tsukinami/toybox.html?hz=...&fscale=...&seed=...&tsubu=...&yure=...&shimmer=...&tadayoi=...&line_g=...&ap_n=...&rate=...&text=セリフのひらがな
+2) toybox.html にそのままコピペできる JSON レシピ (`{"text":"...", "params":{...}}`)
+3) ローカル実行用の `python yomu.py ... --compare --save-recipe voice.json` コマンド
+の3つを出力してください。
+
 - seed (基準 2024: 固定乱数粒の種)
 - tsubu (基準 40: 1周期に押す乱数粒のサンプル長 8〜100)
 - hz (基準 200.0: 基本ピッチ F0 Hz 80〜360)
-- fscale (基準 1.0: 声道フォルマント倍率 0.70〜1.35、低いほど声道が太く長い)
+- fscale (基準 1.0: 声道フォルマント倍率 0.70〜1.35、低いほど太い声、高いほど可愛い声)
 - yure (基準 0.003: 周期ごとの時間ジッタ 0.0〜0.025)
 - shimmer (基準 0.05: 周期ごとの振幅シマー 0.0〜0.30)
 - tadayoi (基準 0.02: ゆっくりしたピッチの漂い 0.0〜0.08)
@@ -187,6 +194,9 @@ https://github.com/poidowl/tsukinami の月並みTTS（yomu.py / carve.py）を�
 - ap_n (基準 40: オールパス位相分散の段数 0〜80)
 - rate (基準 1.30: 話速スケール 0.75〜1.85、大きいほどゆっくり)
 ```
+
+> **💡 ローカルスピーカーから直接鳴らす MCP サーバー（[`mcp_server.py`](mcp_server.py)）も同梱！**
+> Claude Desktop / Cursor / Antigravity 等の MCP 設定に `"command": "python3", "args": ["/path/to/tsukinami/mcp_server.py"]` を追加するだけで、`pip install` なし（標準ライブラリのみ）でLLMが直接 [`carve.py`](carve.py) を叩いてPCのスピーカーから声を鳴らせます。
 
 ---
 

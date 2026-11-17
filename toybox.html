@@ -390,11 +390,18 @@
     </div>
   </div>
 
-  <!-- STEP 4: Share Recipe & CLI Command -->
+  <!-- STEP 4: Share URL, Recipe JSON Paste/Import & CLI Command -->
   <div class="section">
     <div class="sec-title">
-      <span>③ 自分の改造レシピを共有・ローカル再現（<code>yomu.py</code> ワンコマンド ＆ レシピ JSON）</span>
-      <span style="font-size:0.74rem;color:var(--emerald);">そのままコピーしてターミナルやSNS・Issueでシェア可能！</span>
+      <span>③ 1クリック共有URL ＆ レシピJSON貼り付け（LLMとのキャッチボール対応！）</span>
+      <span style="font-size:0.74rem;color:var(--emerald);">URLクエリ自動読込 ＆ JSON貼り付け即再生に対応！</span>
+    </div>
+    <div style="margin-bottom:10px;">
+      <div class="copy-header">
+        <span>🔗 <strong>1クリック即鳴らしURL</strong>（LLMに出力させるか、X・チャットに貼るだけで相手のブラウザにこのツマミ＆セリフを再現！）</span>
+        <button class="copy-btn" onclick="copyText('urlBox', this)">📋 共有URLをコピー</button>
+      </div>
+      <div class="code-box" id="urlBox" style="max-height:58px;color:#38bdf8;"></div>
     </div>
     <div class="share-grid">
       <div>
@@ -406,10 +413,13 @@
       </div>
       <div>
         <div class="copy-header">
-          <span>🧪 改造レシピ JSON（<code>--recipe my_voice.json</code> で誰でも同じ声を再現）</span>
-          <button class="copy-btn" onclick="copyText('jsonBox', this)">📋 JSONをコピー</button>
+          <span>🧪 改造レシピ JSON（<strong>直接書き換え・LLMからのコピペ貼り付けもOK！</strong>）</span>
+          <div style="display:flex;gap:6px;">
+            <button class="copy-btn" style="color:#fbbf24;border-color:#f59e0b;" onclick="applyPastedJson()">📥 貼り付けたJSONを反映して鳴らす</button>
+            <button class="copy-btn" onclick="copyJsonBox(this)">📋 JSONをコピー</button>
+          </div>
         </div>
-        <div class="code-box" id="jsonBox"></div>
+        <textarea class="code-box" id="jsonBox" style="width:100%;height:125px;resize:vertical;border:1px solid var(--border);"></textarea>
       </div>
     </div>
   </div>
@@ -641,9 +651,97 @@ function updateDiffAndShare() {
   const recipeObj = {
     name: currentPresetKey === "default" && diffs.length > 0 ? "custom_voice" : currentPresetKey,
     engine: "tsukinami-carve-E79",
+    text: text,
     params: currentParams
   };
-  document.getElementById("jsonBox").textContent = JSON.stringify(recipeObj, null, 2);
+  document.getElementById("jsonBox").value = JSON.stringify(recipeObj, null, 2);
+
+  // Build shareable URL with query parameters
+  const qp = new URLSearchParams();
+  if (currentPresetKey !== "default") qp.set("preset", currentPresetKey);
+  SLIDER_DEFS.forEach(def => {
+    const k = def.key;
+    if (Math.abs(currentParams[k] - BASE_PARAMS[k]) > 1e-6) {
+      qp.set(k, currentParams[k]);
+    }
+  });
+  if (text && text !== "おれも、そのしんきのうで、あそびたい") {
+    qp.set("text", text);
+  }
+  const qStr = qp.toString();
+  const baseUrl = "https://poidowl.github.io/tsukinami/toybox.html";
+  document.getElementById("urlBox").textContent = qStr ? `${baseUrl}?${qStr}` : baseUrl;
+}
+
+function copyJsonBox(btn) {
+  navigator.clipboard.writeText(document.getElementById("jsonBox").value);
+  const old = btn.textContent;
+  btn.textContent = "✅ コピー完了！";
+  setTimeout(() => { btn.textContent = old; }, 1400);
+}
+
+function applyPastedJson() {
+  try {
+    const raw = document.getElementById("jsonBox").value;
+    const obj = JSON.parse(raw);
+    const srcParams = obj.params || obj;
+    SLIDER_DEFS.forEach(def => {
+      const k = def.key;
+      if (srcParams[k] !== undefined) {
+        currentParams[k] = (k === "seed" || k === "tsubu" || k === "ap_n")
+          ? parseInt(srcParams[k], 10)
+          : parseFloat(srcParams[k]);
+      }
+    });
+    if (typeof obj.text === "string" && obj.text.trim()) {
+      document.getElementById("kanaInput").value = obj.text.trim();
+    }
+    renderSliders();
+    updateDiffAndShare();
+    playCustomWebAudio(false);
+  } catch (err) {
+    document.getElementById("statusPill").textContent = "⚠️ JSONの形式を確認してね: " + err.message;
+  }
+}
+
+function loadFromUrlQuery() {
+  const sp = new URLSearchParams(window.location.search);
+  if ([...sp.keys()].length === 0) return false;
+  const preset = sp.get("preset");
+  if (preset && PRESETS_DATA[preset]) {
+    currentPresetKey = preset;
+    currentParams = Object.assign({}, PRESETS_DATA[preset].params);
+  }
+  let hasCustomSlider = false;
+  SLIDER_DEFS.forEach(def => {
+    const k = def.key;
+    if (sp.has(k)) {
+      const v = (k === "seed" || k === "tsubu" || k === "ap_n")
+        ? parseInt(sp.get(k), 10)
+        : parseFloat(sp.get(k));
+      if (!Number.isNaN(v)) {
+        currentParams[k] = v;
+        hasCustomSlider = true;
+      }
+    }
+  });
+  if (sp.has("text") && sp.get("text").trim()) {
+    document.getElementById("kanaInput").value = sp.get("text").trim();
+    hasCustomSlider = true;
+  }
+  renderPresetButtons();
+  renderSliders();
+  updateDiffAndShare();
+  const baseWave = synth5BlockBrowser(document.getElementById("kanaInput").value, BASE_PARAMS);
+  const modWave = synth5BlockBrowser(document.getElementById("kanaInput").value, currentParams);
+  const m = computeCorrAndDb(baseWave, modWave);
+  drawComparisonWaveforms(baseWave, modWave, m.corr, m.envDb);
+  document.getElementById("statusPill").textContent = "🔗 URLクエリから改造レシピを読み込みました！ボタンを押すと鳴ります";
+  try {
+    if (hasCustomSlider) playCustomWebAudio(false);
+    else playCurrentPreset();
+  } catch (e) {}
+  return true;
 }
 
 function drawComparisonWaveforms(baseWave, modWave, corr, envDb) {
@@ -862,8 +960,10 @@ function copyText(id, btn) {
   setTimeout(() => { btn.textContent = old; }, 1400);
 }
 
+document.getElementById("kanaInput").addEventListener("input", updateDiffAndShare);
 // Initialize
 selectPreset("default", false);
+loadFromUrlQuery();
 </script>
 </body>
 </html>
