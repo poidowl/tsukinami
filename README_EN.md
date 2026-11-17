@@ -90,6 +90,20 @@ python yomu.py "わたし、にほんご、ちょっとしゃべれます" \
 ### Interactive Browser Demos (No Python Needed)
 
 Open any of these self-contained HTML files directly in your browser (zero external CDN requests):
-1. **[`watashi_demo.html`](watashi_demo.html)**: 6-stage real `carve.py` audio evolution tour + 17-mora microscope + 7-track ablation comparison.
-2. **[`ablation.html`](ablation.html)**: 7-track ablation listening jury & quantitative metric formulas.
-3. **[`demo.html`](demo.html)**: Live Web Audio kana-to-speech playground with code-line sliders.
+1. **[`toybox.html`](toybox.html)**: "Breakable & Reversible" Toybox with 6 real `carve.py` character presets (`default`, `ossan`, `robot`, `horror`, `whisper`, `chibi`), one-click A/B comparison, 10 magic-number sliders, and Recipe JSON / CLI generator.
+2. **[`watashi_demo.html`](watashi_demo.html)**: 6-stage real `carve.py` audio evolution tour + 17-mora microscope + 7-track ablation comparison.
+3. **[`ablation.html`](ablation.html)**: 7-track ablation listening jury & quantitative metric formulas.
+4. **[`demo.html`](demo.html)**: Live Web Audio kana-to-speech playground with code-line sliders.
+
+---
+
+## Why ~765 Numbers Are Enough: Problem Scoping & Acoustic Cues
+
+> **Rather than solving "reproduce the human voice in its entirety," Tsukinami TTS narrows the problem to: "generate the acoustic cues needed for a listener (and ASR) to recognize Japanese speech from a kana sequence."**
+
+1. **Kana Input + Textbook Phonetics + ASR Selection ([`kotoba.py:1-76`](kotoba.py#L1-L76), [`accent.py:1-26`](accent.py#L1-L26) — `187` numbers):**
+   Using kana input bypasses kanji G2P ambiguity and anchors vowel targets to `5 vowels × 3 formants = 15` values (`VT`), while explicitly modeling consonant place/manner, $F_2$ locus equations (`LE`), consonant durations (`CDUR`), nasals (`nasT`), geminate/moraic nasal timing, devoicing attenuation, and fricative bands (`fricT`) — tuned by owner ear + ASR ([`kotoba.py:5`](kotoba.py#L5)).
+2. **Multi-Stage Source Shaping from a 40-Sample Random Grain ([`carve.py:985-1027`](carve.py#L985-L1027)):**
+   A simple 40-sample fixed random grain is shaped step by step via periodic placement (`PER = 2D`), period jitter (`yure = 0.003`), per-grain amplitude shimmer (`±5%`), slow pitch drift (`tadayoi`), 6-comb harmonic shaping (`kubire_n`), and voiced/unvoiced mixing before entering the resonance bank.
+3. **Parallel Resonance Extraction & 40-Stage All-Pass Dispersion ([`carve.py:1038-1109`](carve.py#L1038-L1109) — `231` recipe + `347` literal numbers):**
+   Following the cascade/parallel formant synthesis tradition (Klatt, 1980), `carve.py` branches a shared excitation `src` into parallel moving-average band-pass extractors (`yama_bp`) for `floor`, $F_1\text{–}F_3$, `f1x`, $H_1/H_K$, and $F_4\text{–}F_5$, sums them, and applies 40 all-pass stages (`_ap_cascade`) for temporal phase dispersion.
