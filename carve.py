@@ -961,7 +961,7 @@ def _build_choir_parts(lead_hz):
 
 def _ir_levels(KT):
     if KT.get("tr_mode") == "40b3d25": return 0.0, 0.0, 0.0, 0.0
-    v = KT.get("tr_iroke", True)
+    v = KT.get("tr_iroke", False)
     base = 0.0 if (v is False or v == 0 or v == "off") else (0.22 if v == "v1" else (1.75 if v in ("meltdown", "hyper") else (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 1.0)))
     def lv(key):
         kv = KT.get(key, None)

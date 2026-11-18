@@ -69,14 +69,14 @@ def hakaru_f12():
                                                            tr_c_conv=c_conv, tr_eff_conv=eff_conv, tr_mode=mode, params=dict(rc["kotoba"]["params"], vd_ms=vd_ms))
         r = {}; v_rc = carve.variant(dict(rc, text=txt, seed=2024)); v_rc["_out_r"] = r
         x, _ = carve.make(v_rc); return np.array(x, dtype=np.float64), r
-    print("=== [0] 回帰ハッシュ検証（E79通常読み上げ / 40b3d25互換 / 3f7cffb色気OFF / v1控えめ / 現行Overdrive / 崩壊Meltdown / 現行--choir） ===")
-    exp_hashes = {"E79(通常TTS)": "35dc9e825bf993d8", "40b3d25(--trance)": "bbb09b4d6f55d61b", "3f7cffb(色気OFF)": "2986205c88116f25"}
+    print("=== [0] 回帰ハッシュ検証（E79通常TTS / 40b3d25互換 / 現行--trance既定(=3f7cffb) / v1 / Overdrive / Meltdown / 現行--choir） ===")
+    exp_hashes = {"E79(通常TTS)": "35dc9e825bf993d8", "40b3d25(--trance)": "bbb09b4d6f55d61b", "現行(--trance既定)": "2986205c88116f25"}
     for nm, kw in [("E79(通常TTS)", {}), ("40b3d25(--trance)", {"uta_trance": True, "tr_mode": "40b3d25"}),
-                   ("3f7cffb(色気OFF)", {"uta_trance": True, "tr_iroke": False}),
-                   ("前版v1(控えめ)", {"uta_trance": True, "tr_iroke": "v1"}),
-                   ("現行Overdrive", {"uta_trance": True}),
-                   ("崩壊Meltdown", {"uta_trance": True, "tr_iroke": "meltdown"}),
-                   ("現行(--choir)", {"uta_choir": True})]:
+                   ("現行(--trance既定)", {"uta_trance": True}),
+                   ("前版v1(iroke=v1)", {"uta_trance": True, "tr_iroke": "v1"}),
+                   ("Overdrive(iroke=1)", {"uta_trance": True, "tr_iroke": True}),
+                   ("Meltdown(1.75)", {"uta_trance": True, "tr_iroke": "meltdown"}),
+                   ("現行(--choir既定)", {"uta_choir": True})]:
         rc = copy.deepcopy(carve.E79); rc["kotoba"] = dict(rc["kotoba"], **kw); x, _ = carve.make(carve.variant(dict(rc, text="こんにちわ", seed=2024)))
         arr = np.asarray(x, dtype=np.float64); finite_ok = bool(np.all(np.isfinite(arr))); pk = float(np.max(np.abs(arr)))
         h_ = wav_hash(x); ok_ = "" if nm not in exp_hashes else (" [OK]" if h_ == exp_hashes[nm] else f" [NG: expected {exp_hashes[nm]}]")
@@ -96,14 +96,14 @@ def hakaru_f12():
     for lbl, txt in [("高音イ(523Hz)", "イ"), ("高音ウ(523Hz)", "ウ")]:
         x, r = synth_item(txt, [523.25], [360]); m0 = r["moras"][0]; tb, tm = int((m0["b"] + 0.015) / fpz), int(0.5 * (m0["b"] + m0["e"]) / fpz)
         wf1_b, wf2_b = wav_f12(x, tb * fpz); wf1_m, wf2_m = wav_f12(x, tm * fpz)
-        print(f"  {lbl:16s}: 制御[頭(b+15ms) F1={r['F1'][tb]:5.1f}, F2={r['F1'][tm]:5.1f}Hz (ΔF1={r['F1'][tm]-r['F1'][tb]:+5.1f}Hz), F2={r['F2'][tb]:6.1f}→{r['F2'][tm]:6.1f}Hz] | WAV重心[mid F1={wf1_m:5.1f}, F2={wf2_m:6.1f}Hz]")
+        print(f"  {lbl:16s}: 制御[頭(b+15ms)→収束(mid): F1={r['F1'][tb]:5.1f}→{r['F1'][tm]:5.1f}Hz (ΔF1={r['F1'][tm]-r['F1'][tb]:+5.1f}Hz), F2={r['F2'][tb]:6.1f}→{r['F2'][tm]:6.1f}Hz] | WAV重心[mid F1={wf1_m:5.1f}, F2={wf2_m:6.1f}Hz]")
     print("\n=== [2] 無声音子音区間（アサ / カタ / シタ）での古いフォルマントロック残留チェック ===")
     for txt in ("アサ", "カタ", "シタ"):
         _, r = synth_item(txt, [440, 440], [280, 280]); m0, m1 = r["moras"][0], r["moras"][1]
         tm0, tc1, tm1 = int(0.5 * (m0["b"] + m0["e"]) / fpz), int(0.5 * (m1["a"] + m1["b"]) / fpz), int(0.5 * (m1["b"] + m1["e"]) / fpz)
         d1, d2 = r["df1_lock"], r["df2_lock"]
         print(f"  {txt} (子音={m1['c']:2s}): 1拍目母音中央 lock=({d1[tm0]:+5.1f}, {d2[tm0]:+6.1f}Hz) → 無声子音中央 lock=({d1[tc1]:+5.1f}, {d2[tc1]:+6.1f}Hz) → 2拍目母音中央 lock=({d1[tm1]:+5.1f}, {d2[tm1]:+6.1f}Hz)")
-    print("\n=== [3] 独立分離実験（本物の40b3d25 / 条件C[色気OFF] / 条件v1[控えめ] / 条件D[Overdrive] / 条件M[Meltdown]） ===")
+    print("\n=== [3] 独立分離実験（本物の40b3d25 / 条件C[--trance既定OFF] / 条件v1 / 条件D[Overdrive] / 条件M[Meltdown]） ===")
     T0 = "ワタシノナマエツキナミノコエ"; VD = [260, 260, 260, 260, 260, 260, 560, 260, 260, 260, 260, 260, 260, 820]
     M0 = [60, 62, 64, 67, 67, 64, 62, 64, 65, 67, 69, 67, 64, 62]; HZ0 = [round(440 * 2 ** ((k - 69) / 12)) for k in M0]
     W = os.path.dirname(os.path.abspath(__file__))
@@ -128,10 +128,10 @@ def hakaru_f12():
         return rc
     conds = [
         ("0: 本物の40b3d25 (旧コード完全一致)", {"tr_c_conv": False, "tr_eff_conv": False, "tr_mode": "40b3d25", "tr_iroke": False}),
-        ("C: 3f7cffb基準 (色気OFF)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": False}),
-        ("v1: 前版電子色気 (控えめ0.22)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": "v1"}),
-        ("D: 大げさ電子色気 (--trance新既定 Overdrive=1.0)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": True}),
-        ("M: 崩壊実験モード (Meltdown=1.75)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": "meltdown"}),
+        ("C: 現行--trance既定 (3f7cffb完全一致・色気OFF)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": False}),
+        ("v1: 実験v1 (控えめ iroke=0.22)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": "v1"}),
+        ("D: 実験Overdrive (iroke=1.0)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": True}),
+        ("M: 実験Meltdown (iroke=1.75)", {"tr_c_conv": True, "tr_eff_conv": True, "tr_iroke": "meltdown"}),
     ]
     for tag, ekw in conds:
         rc = build_song_rc(ekw); r = {}; v_rc = carve.variant(dict(rc, text=T0, seed=2024)); v_rc["_out_r"] = r
@@ -160,18 +160,18 @@ def hakaru_f12():
         print(f"  [{tag}]\n"
               f"    ① 立ち上がり＆ワウ開閉: 高母音ΔF1={np.mean(hi_df1):+5.1f}Hz, ミ10 F1({r['F1'][mi_b]:.0f}→{r['F1'][mi_m]:.0f}Hz), 母音F2ワウ開花量={np.mean(wah_df2):+6.1f}Hz [子音<240Hz={np.mean(sub240):+6.2f}dB]\n"
               f"    ② 高音エ/オ伸ばし: 頭42msリード比={np.mean(reed_on):+6.2f}dB, 定常中央リード比={np.mean(reed_mid):+6.2f}dB, F2重心(エ={np.mean(f2_e):.0f}/オ={np.mean(f2_o):.0f}Hz, 差={np.mean(f2_e)-np.mean(f2_o):+.0f}Hz)")
-    print("\n=== [4] 電子色気 4柱直交分離 ＆ Overdrive / Meltdown 実音響計測 ===")
+    print("\n=== [4] 電子色気 4柱直交分離 ＆ Overdrive / Meltdown 実音響計測（既定=OFF、--iroke指定で有効化） ===")
     nf4k = 4096; wn4k = np.hanning(nf4k); fq4k = np.fft.rfftfreq(nf4k, 1.0 / sr)
     nf2k = 2048; wn2k = np.hanning(nf2k); fq2k = np.fft.rfftfreq(nf2k, 1.0 / sr)
     ir_cases = [
-        ("0: 旧--trance (色気OFF)", {"tr_iroke": False}),
-        ("v1: 前版v1 (控えめ0.22)", {"tr_iroke": "v1"}),
+        ("0: 現行--trance既定 (OFF)", {"tr_iroke": False}),
+        ("v1: 実験v1 (控えめ0.22)", {"tr_iroke": "v1"}),
         ("1: +P1 粘着グライド&大フォール", {"tr_iroke": False, "tr_ir_glide": 1.0}),
         ("2: +P2 濃密H1&0.5f0エッジ溶解", {"tr_iroke": False, "tr_ir_pulse": 1.0}),
         ("3: +P3 濡れ唇ワウ&直交リサージュ", {"tr_iroke": False, "tr_ir_liss": 1.0}),
         ("4: +P4 36段絹位相&双子デチューン", {"tr_iroke": False, "tr_ir_silk": 1.0}),
-        ("5: 新--trance (Overdrive=1.0)", {"tr_iroke": True}),
-        ("6: 崩壊実験 (Meltdown=1.75)", {"tr_iroke": "meltdown"}),
+        ("5: 実験Overdrive (iroke=1.0)", {"tr_iroke": True}),
+        ("6: 実験Meltdown (iroke=1.75)", {"tr_iroke": "meltdown"}),
     ]
     for lbl, ikw in ir_cases:
         rc = build_song_rc(ikw); r = {}; v_rc = carve.variant(dict(rc, text=T0, seed=2024)); v_rc["_out_r"] = r

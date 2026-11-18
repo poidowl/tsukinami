@@ -255,9 +255,9 @@ def main():
         default=None,
         help="同梱キャラ声プリセット (default / ossan / robot / horror / whisper / chibi / utahime / choir)",
     )
-    p.add_argument("--trance", action="store_true", help="ソプラノ彫刻家モード（電子色気Overdrive既定・丸ノミ倍音整形・ホール余韻）")
+    p.add_argument("--trance", action="store_true", help="ソプラノ彫刻家モード（大人の声道比率・丸ノミ倍音整形・3kHzスクイッロ＆ホール余韻）")
     p.add_argument("--choir", action="store_true", help="1声×4共鳴腔オペラ歌姫モード（頭声・胸腔・仮面・聖堂4壁が完全同期して響く超人的ソプラノ）")
-    p.add_argument("--iroke", default=None, help="[トランス専用] 電子色気強度 (off / v1 / overdrive / meltdown / 任意倍率 例: 1.4)")
+    p.add_argument("--iroke", default=None, help="[トランス実験用] 電子色気ブレンド (既定: off / v1 / overdrive / meltdown / 任意倍率)")
     p.add_argument("--list-presets", action="store_true", help="同梱プリセット一覧とパラメータを表示して終了")
     p.add_argument("--recipe", default=None, help="共有レシピJSONファイルを読み込んで合成")
     p.add_argument("--save-recipe", default=None, help="現在の改造パラメータをレシピJSONファイルに保存")
