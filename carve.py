@@ -1070,24 +1070,22 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
         for j in range(3):
             sm_df = kotoba.smooth1(f_delta[j], 20); k_ = "F%d" % (j + 1); r[k_] = [f_orig[j][t_] + sm_df[t_] for t_ in range(n)]
 
-    # 第2層⑤：運動としてのフォルマント・倍音収束（c_conv：到達点＋進行方向＋速度＋収束の仕方）
-    # ・v_map は母音を持つ CV モーラのみ設定（撥音「ン」・促音「ッ」・休止が "a" 扱いされるのを防ぐ）
-    # ・鼻音閉鎖マスク nas_cm は m, n の子音区間のみに限定し、高母音「イ・ウ」や「ン」の F1 を不自然に持ち上げない
-    # ・先読み予兆は元の r["moras"] で直後が隣接 CV 母音モーラのときのみ発動し、実際の f_orig 軌道から目標差を取る
-    v_map = [None] * n; nas_cm = [0.0] * n; cons_cm = [0.0] * n
+    # 第2層⑤：運動としてのフォルマント・倍音収束（c_conv：位置・方向・速度・予兆）
+    tr_40b = (KT.get("tr_mode") == "40b3d25")
+    v_map = (["a"] * n) if tr_40b else ([None] * n); nas_cm = [0.0] * n; cons_cm = [0.0] * n; w_bnd = [0.0] * n
     for idx_m, m_ in enumerate(r["moras"]):
         if m_.get("kind") == "CV" and m_.get("v"):
             i_a, i_b, i_e = max(0, int(m_["a"] / fpz)), max(0, int(m_["b"] / fpz)), min(n, int(m_["e"] / fpz) + 1)
             for t_ in range(i_a, i_e): v_map[t_] = m_["v"]
-            nxt_m = r["moras"][idx_m + 1] if idx_m + 1 < len(r["moras"]) else None
-            if m_.get("final") or (nxt_m is not None and nxt_m.get("kind") in ("pau", "N", "Q")):
-                tm_c = min(n - 1, (i_b + i_e) // 2)
-                hold_e = min(n, i_e + (4 if m_.get("final") else 0))
-                for j in (0, 1, 2):
-                    k_ = "F%d" % (j + 1)
-                    for t_ in range(tm_c, hold_e):
-                        if j > 0 or m_.get("final"):
-                            f_orig[j][t_] = f_orig[j][tm_c]; r[k_][t_] = f_orig[j][tm_c]
+            if not tr_40b:
+                nxt_m = r["moras"][idx_m + 1] if idx_m + 1 < len(r["moras"]) else None
+                is_final = (nxt_m is None) or all(m2.get("kind") == "pau" for m2 in r["moras"][idx_m + 1:])
+                if is_final or (nxt_m is not None and nxt_m.get("kind") in ("pau", "N", "Q")):
+                    tm_c = min(n - 1, (i_b + i_e) // 2); hold_e = min(n, i_e + (4 if is_final else 0))
+                    for j in (0, 1, 2):
+                        k_ = "F%d" % (j + 1)
+                        for t_ in range(tm_c, hold_e):
+                            if j > 0 or is_final: f_orig[j][t_] = f_orig[j][tm_c]; r[k_][t_] = f_orig[j][tm_c]
         if m_.get("c"):
             for t_ in range(max(0, int((m_["a"] - 0.015) / fpz)), min(n, int((m_["b"] + 0.015) / fpz) + 1)): cons_cm[t_] = 1.0
         if m_.get("c") in ("m", "n"):
@@ -1095,56 +1093,77 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
     cons_cm = kotoba.smooth1(cons_cm, 10); nas_cm = kotoba.smooth1(nas_cm, 8)
     r["v_map"] = v_map; r["F1_base"], r["F2_base"], r["F3_base"], r["f0_tr"] = list(f_orig[0]), list(f_orig[1]), list(f_orig[2]), list(fr_)
     COPERTURA = {"i": (420.0, 0.95, 0.65, 0.98), "u": (420.0, 0.96, 0.68, 0.97), "e": (440.0, 1.03, 0.78, 0.96), "o": (440.0, 1.04, 0.80, 0.98), "a": (500.0, 1.07, 0.85, 0.95)}
-    vib_mod_scales = (+0.026, -0.022, +0.030) if tr_harm_am else (0.0, 0.0, 0.0); art_drift_scale = 0.014 if tr_art_dyn else 0.0
+    vib_mod_scales = (+0.026, -0.022, +0.030) if tr_harm_am else ((+0.008, -0.012, +0.014) if (tr_c_conv and not tr_40b) else (0.0, 0.0, 0.0))
+    art_drift_scale = 0.014 if tr_art_dyn else 0.0
 
-    c_conv = [1.0] * n; coart_f1 = [0.0] * n; coart_f2 = [0.0] * n
-    if tr_f_shift and tr_c_conv:
+    c_conv = [1.0] * n; w_ant = [0.0] * n
+    if tr_f_shift and tr_c_conv and not tr_40b:
         c_conv = [0.0] * n
         for idx_m, m_ in enumerate(r["moras"]):
             if m_.get("kind") != "CV" or not m_.get("v"): continue
-            b_t, e_t = float(m_["b"]), float(m_["e"]); tau_c = min(0.065, max(0.038, 0.22 * max(0.06, e_t - b_t)))
+            b_t, e_t = float(m_["b"]), float(m_["e"]); tau_c = min(0.062, max(0.036, 0.22 * max(0.06, e_t - b_t)))
             nxt_m = r["moras"][idx_m + 1] if idx_m + 1 < len(r["moras"]) else None
             has_adj_v = nxt_m is not None and nxt_m.get("kind") == "CV" and bool(nxt_m.get("v"))
             if has_adj_v:
-                tm_c = min(n - 1, int(0.5 * (b_t + e_t) / fpz)); tm_n = min(n - 1, int(0.5 * (nxt_m["b"] + nxt_m["e"]) / fpz))
-                df1_nxt, df2_nxt = f_orig[0][tm_n] - f_orig[0][tm_c], f_orig[1][tm_n] - f_orig[1][tm_c]
-            else: df1_nxt = df2_nxt = 0.0
+                t_a0 = max(0, int((e_t - 0.065) / fpz)); t_b1 = min(n, int((nxt_m["b"] + 0.030) / fpz) + 1)
+                for t_ in range(t_a0, t_b1): w_ant[t_] = 1.0
             for t_ in range(max(0, int(m_["a"] / fpz)), min(n, int(e_t / fpz) + 1)):
                 t_sec = t_ * fpz
-                if t_sec <= b_t: c_conv[t_] = 0.18
+                if t_sec <= b_t: c_conv[t_] = 0.14
                 else:
-                    c_in = 0.18 + 0.82 * (1.0 - math.exp(-(t_sec - b_t) / tau_c)); rem = e_t - t_sec
-                    if rem < 0.042 and has_adj_v:
-                        u_rel = max(0.0, min(1.0, (0.042 - rem) / 0.042)); s_rel = u_rel * u_rel * (3.0 - 2.0 * u_rel)
-                        c_in *= (1.0 - 0.38 * s_rel); coart_f1[t_] = 0.12 * s_rel * df1_nxt; coart_f2[t_] = 0.12 * s_rel * df2_nxt
+                    c_in = 0.14 + 0.86 * (1.0 - math.exp(-(t_sec - b_t) / tau_c)); rem = e_t - t_sec
+                    if rem < 0.065 and has_adj_v:
+                        u_rel = max(0.0, min(1.0, (0.065 - rem) / 0.065)); s_rel = u_rel * u_rel * (3.0 - 2.0 * u_rel)
+                        c_in = 0.14 + (c_in - 0.14) * (1.0 - 0.85 * s_rel)
                     c_conv[t_] = c_in
+        w_ant = kotoba.smooth1(w_ant, 8)
     r["c_conv"] = c_conv
 
     if tr_f_shift:
         df1_lock = [0.0] * n; df2_lock = [0.0] * n
         for t_ in range(n):
             v_c = v_map[t_]
-            if r["voiced"][t_] and fr_[t_] > 0.0 and v_c is not None:
+            if tr_40b:
+                if r["voiced"][t_] and fr_[t_] > 0.0:
+                    _, _, _, f2_round = COPERTURA.get(v_c, (450.0, 1.04, 0.75, 0.97))
+                    f0_t = fr_[t_]; w_v = (1.0 - cm[t_]) if cm is not None else 1.0; f1_0, f2_0 = r["F1"][t_], r["F2"][t_]
+                    if tr_sub_cut and f1_0 < 1.02 * f0_t: df1_lock[t_] = 0.92 * (f0_t * 1.02 - f1_0)
+                    elif (v_c in ("i", "u") and f0_t >= 330.0) or (v_c == "o" and f0_t >= 380.0) or f1_0 < 1.35 * f0_t: df1_lock[t_] = 0.86 * w_v * (f0_t * 1.02 - f1_0)
+                    else:
+                        m_h = max(1, int(round(f1_0 / f0_t))); df1_lock[t_] = 0.84 * w_v * (max(f1_0 * 0.78, min(f1_0 * 1.22, m_h * f0_t * 1.01)) - f1_0)
+                    w_cov = min(1.0, (f0_t - 440.0) / 320.0) if f0_t > 440.0 else 0.0; f2_base = f2_0 * (1.0 - w_cov * (1.0 - f2_round))
+                    k_h = max(2, int(round(f2_base / f0_t))); cand_f2 = max(f2_base * 0.82, min(f2_base * 1.15, k_h * f0_t))
+                    df2_lock[t_] = (f2_base - f2_0) + 0.80 * w_v * (cand_f2 - f2_base)
+            elif fr_[t_] > 0.0 and v_c is not None:
                 _, _, _, f2_round = COPERTURA.get(v_c, (450.0, 1.04, 0.75, 0.97))
-                f0_t = fr_[t_]; w_v = (1.0 - cons_cm[t_]) if tr_c_conv else ((1.0 - cm[t_]) if cm is not None else 1.0); w_kin = w_v * c_conv[t_]
+                f0_t = fr_[t_]; w_v = 1.0 - cons_cm[t_]; w_kin = w_v * c_conv[t_]
                 f1_0, f2_0 = r["F1"][t_], r["F2"][t_]
-                f_sub_min = (0.96 * f0_t * (nas_cm[t_] if tr_c_conv else 1.0)) if tr_sub_cut else 0.0
+                f_sub_min = (0.96 * f0_t * nas_cm[t_]) if tr_sub_cut else 0.0
                 f1_eff = max(f1_0, f_sub_min); df_sub = f1_eff - f1_0
                 if (v_c in ("i", "u") and f0_t >= 330.0) or (v_c == "o" and f0_t >= 380.0) or f1_eff < 1.35 * f0_t:
                     cand_f1, k1 = f0_t * 1.03, 0.88
                 else:
                     m_h = max(1, int(round(f1_eff / f0_t))); cand_f1, k1 = max(f1_eff * 0.78, min(f1_eff * 1.22, m_h * f0_t * 1.01)), 0.86
-                df1_lock[t_] = coart_f1[t_] + df_sub + k1 * w_kin * (cand_f1 - f1_eff)
+                df1_lock[t_] = df_sub + k1 * w_kin * (cand_f1 - f1_eff)
                 w_cov = min(1.0, (f0_t - 440.0) / 320.0) if f0_t > 440.0 else 0.0
                 f2_base = f2_0 * (1.0 - w_cov * (1.0 - f2_round))
                 k_h = max(2, int(round(f2_base / f0_t))); cand_f2 = max(f2_base * 0.82, min(f2_base * 1.15, k_h * f0_t))
-                df2_lock[t_] = coart_f2[t_] + w_kin * ((f2_base - f2_0) + 0.82 * (cand_f2 - f2_base))
+                df2_lock[t_] = w_kin * ((f2_base - f2_0) + 0.82 * (cand_f2 - f2_base))
             elif t_ > 0:
-                df1_lock[t_] = 0.0 if r["voiced"][t_] else df1_lock[t_ - 1]
-                df2_lock[t_] = df2_lock[t_ - 1] * (0.92 if r["voiced"][t_] else 1.0)
-        sm_df1, sm_df2 = kotoba.smooth1(df1_lock, 18), kotoba.smooth1(df2_lock, 18)
+                df1_lock[t_] = df1_lock[t_ - 1] * 0.80; df2_lock[t_] = df2_lock[t_ - 1] * 0.80
+        sm_w = 20 if tr_40b else 14
+        sm_df1, sm_df2 = kotoba.smooth1(df1_lock, sm_w), kotoba.smooth1(df2_lock, sm_w)
+        r["df1_lock"], r["df2_lock"] = sm_df1, sm_df2
         for t_ in range(n):
             r["F1"][t_] += sm_df1[t_]; r["F2"][t_] += sm_df2[t_]
+        if tr_c_conv and not tr_40b:
+            f1_ld = kotoba.smooth1([r["F1"][min(n - 1, t_ + 5)] for t_ in range(n)], 13)
+            f2_ld = kotoba.smooth1([r["F2"][min(n - 1, t_ + 5)] for t_ in range(n)], 13)
+            for t_ in range(n):
+                wa = 0.82 * w_ant[t_]
+                r["F1"][t_] = (1.0 - wa) * r["F1"][t_] + wa * f1_ld[t_]
+                r["F2"][t_] = (1.0 - wa) * r["F2"][t_] + wa * f2_ld[t_]
+        for t_ in range(n):
             if r["voiced"][t_] and fr_[t_] > 0.0:
                 for j in range(3): r["F%d" % (j + 1)][t_] *= (1.0 + art_drift_scale * art_drifts[j][t_] + vib_mod_scales[j] * raw_[t_])
     elif tr_art_dyn or tr_harm_am:
@@ -1365,11 +1384,13 @@ def make_text(rc):
         if tr_f_eff:
             f0_tr_e = r.get("f0_tr") or [SR / PER[min(N - 1, int(t * N / n))] for t in range(n)]
             c_cv = r.get("c_conv") or [1.0] * n
+            tr_eff_conv = bool(KT.get("tr_eff_conv", KT.get("tr_c_conv", True))) and (KT.get("tr_mode") != "40b3d25")
             for t_ in range(n):
-                fk = max(120.0, f0_tr_e[t_]); w_cv = c_cv[t_]
+                fk = max(120.0, f0_tr_e[t_])
                 for j_ in (0, 1):
                     fj = r["F%d" % (j_ + 1)][t_]; dist = abs(fj / fk - round(fj / fk))
                     w_cm = (1.0 - cm[t_]) if j_ == 0 else (1.0 - 0.35 * cm[t_])
+                    w_cv = (1.0 if j_ == 0 else c_cv[t_]) if tr_eff_conv else 1.0
                     eff = 1.0 + 0.36 * (1.0 - 8.0 * dist * dist) * w_cm * w_cv
                     Ej[j_][t_] *= eff * eff
     else: Ef, Ej, Eb = _world_energy(r, KT["gk"])

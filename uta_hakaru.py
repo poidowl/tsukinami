@@ -55,43 +55,64 @@ def hakaru(fn):
                 shakuri_cent=g(np.array([s[0] for s in scoop])), shakuri_ms=g(np.array([s[1] for s in scoop])), watari_ms=g(np.array(watari)), yukisugi_cent=g(np.array(over)),
                 tsure_db_per_hanon=None if np.isnan(tsure) else round(tsure, 2), tsure_r=None if np.isnan(tsure_r) else round(tsure_r, 2), hirosa_hanon=round(float(cs.max() - cs.min()) / 100, 1))
 def hakaru_f12():
-    import carve, kotoba, copy, math
-    fpz = kotoba.FP / 1000.0; fs = [0.98, 0.95, 0.92]; L = {"D_center": 95.0, "D_haba": 0, "osoi_s": 0.4, "m": 3, "g": 0.48, "karuku_w": 180}
-    def tr_run(txt, hzs, vd_ms, c_conv=True):
-        prm = dict(kotoba.TEXTBOOK, uta_trance=True, vd_ms=vd_ms)
-        r = kotoba.tracks_from_kana(txt, pre=0.2, post=0.3, params=prm); n = r["n"]
-        cm = [0.0] * n
-        for m in r["moras"]:
-            if m.get("c") or m.get("kind") in ("Q", "N"):
-                for t in range(max(0, int((m["a"] - 0.015) / fpz)), min(n, int(((m["e"] if m.get("kind") in ("Q", "N") else m["b"]) + 0.015) / fpz) + 1)): cm[t] = 1.0
-        cm = kotoba.smooth1(cm, 10)
-        for j in range(3): r["F%d" % (j + 1)] = [min(f * fs[j], 9000.0) for f in r["F%d" % (j + 1)]]
-        KT = dict(carve.KTDEF, uta_trance=True, uta_hz=hzs, uta_trance_shift_st=0.0, uta_vib=[5.5, 22, 220, 280], uta_scoop=[1.5, 45], tr_sub_cut=True, tr_f_shift=True, tr_c_conv=c_conv)
-        fr = carve._trance_singing_layers(r, n, KT, L, {"seed": 2024, "text": txt}, carve.SR, cm=cm)
-        return r, fr
-    print("=== [1] 5ms F1/F2 音素運動テスト（ア→イ / イ→ア / ア、イ / アンイ / 高音イ・ウ） ===")
+    import carve, kotoba, copy, math, hashlib
+    fpz = kotoba.FP / 1000.0; sr = carve.SR; nf42 = int(round(0.042 * sr)); wn42 = np.hanning(nf42); fq42 = np.fft.rfftfreq(nf42, 1.0 / sr)
+    def wav_hash(x):
+        return hashlib.sha256(b"".join(int(max(-32768, min(32767, round(v * 32767)))).to_bytes(2, "little", signed=True) for v in x)).hexdigest()[:16]
+    def wav_f12(x, t_sec):
+        s0 = max(0, min(len(x) - nf42, int(round(t_sec * sr)) - nf42 // 2)); sp = np.abs(np.fft.rfft(x[s0:s0 + nf42] * wn42)) ** 2
+        m1, m2 = (fq42 >= 280) & (fq42 <= 1150), (fq42 >= 1150) & (fq42 <= 3500)
+        return float(np.sum(fq42[m1] * sp[m1]) / (np.sum(sp[m1]) + 1e-24)), float(np.sum(fq42[m2] * sp[m2]) / (np.sum(sp[m2]) + 1e-24))
+    def synth_item(txt, hzs, vd_ms, c_conv=True, eff_conv=True, mode=None):
+        rc = copy.deepcopy(carve.E79); rc["kotoba"] = dict(rc["kotoba"], pre=0.2, post=0.3, uta_trance=True, uta_hz=hzs, uta_trance_shift_st=0.0,
+                                                           uta_vib=[5.5, 22, 220, 280], uta_scoop=[1.5, 45], tr_sub_cut=True, tr_f_shift=True,
+                                                           tr_c_conv=c_conv, tr_eff_conv=eff_conv, tr_mode=mode, params=dict(rc["kotoba"]["params"], vd_ms=vd_ms))
+        r = {}; v_rc = carve.variant(dict(rc, text=txt, seed=2024)); v_rc["_out_r"] = r
+        x, _ = carve.make(v_rc); return np.array(x, dtype=np.float64), r
+    print("=== [0] 回帰ハッシュ検証（E79通常読み上げ / 40b3d25互換 / 現行 --trance / 現行 --choir） ===")
+    for nm, kw in [("E79(通常TTS)", {}), ("40b3d25(--trance)", {"uta_trance": True, "tr_mode": "40b3d25"}),
+                   ("現行(--trance)", {"uta_trance": True}), ("現行(--choir)", {"uta_choir": True})]:
+        rc = copy.deepcopy(carve.E79); rc["kotoba"] = dict(rc["kotoba"], **kw); x, _ = carve.make(carve.variant(dict(rc, text="こんにちわ", seed=2024)))
+        print(f"  {nm:18s}: SHA256={wav_hash(x)} (samples={len(x)})")
+    print("\n=== [1] 5ms 内部制御軌道 & 出力WAV実音響スペクトル重心テスト（ア→イ / イ→ア / ア、イ / アンイ / 高音イ・ウ） ===")
     for lbl, txt, hzs in [("ア→イ", "アイ", [440, 440]), ("イ→ア", "イア", [440, 440]), ("ア、イ(休止跨ぎ)", "ア、イ", [440, 440]), ("アンイ(撥音跨ぎ)", "アンイ", [440, 440, 440])]:
-        r, _ = tr_run(txt, hzs, [300] * len(hzs)); m0 = r["moras"][0]
+        x, r = synth_item(txt, hzs, [300] * len(hzs)); m0 = r["moras"][0]; cv = [m for m in r["moras"] if m.get("kind") == "CV"]
         tb, tm, te = int(m0["b"] / fpz), int(0.5 * (m0["b"] + m0["e"]) / fpz), int((m0["e"] - 0.010) / fpz)
-        f1, f2 = r["F1"], r["F2"]
-        print(f"  {lbl:16s}: F1({f1[tb]:5.1f}→{f1[tm]:5.1f}→{f1[te]:5.1f}Hz, 予兆{f1[te]-f1[tm]:+5.1f}Hz) | F2({f2[tb]:6.1f}→{f2[tm]:6.1f}→{f2[te]:6.1f}Hz, 予兆{f2[te]-f2[tm]:+6.1f}Hz)")
+        f1, f2 = r["F1"], r["F2"]; wf1_m, wf2_m = wav_f12(x, tm * fpz); wf1_e, wf2_e = wav_f12(x, te * fpz)
+        print(f"  {lbl:16s}: 制御F1({f1[tb]:5.1f}→{f1[tm]:5.1f}→{f1[te]:5.1f}Hz, 予兆{f1[te]-f1[tm]:+6.1f}Hz) | 制御F2({f2[tb]:6.1f}→{f2[tm]:6.1f}→{f2[te]:6.1f}Hz, 予兆{f2[te]-f2[tm]:+6.1f}Hz) | WAV実音Δ(F1={wf1_e-wf1_m:+5.1f}Hz, F2={wf2_e-wf2_m:+6.1f}Hz)")
+        if txt == "アイ":
+            m_last = cv[-1]; t_lm, t_le = int(0.5 * (m_last["b"] + m_last["e"]) / fpz), int(m_last["e"] / fpz)
+            print(f"    └ 句末final保持[イ末尾]: F2_base(mid)={r['F2_base'][t_lm]:.1f}Hz == F2_base(e)={r['F2_base'][t_le]:.1f}Hz (差={r['F2_base'][t_le]-r['F2_base'][t_lm]:+.1f}Hz)")
         if txt == "アンイ":
             tN = int(0.5 * (r["moras"][1]["a"] + r["moras"][1]["e"]) / fpz)
             print(f"    └ 撥音[ン]中央: v_map={r['v_map'][tN]}, F1={f1[tN]:.1f}Hz (F1_base={r['F1_base'][tN]:.1f}Hz), F2={f2[tN]:.1f}Hz")
     for lbl, txt in [("高音イ(523Hz)", "イ"), ("高音ウ(523Hz)", "ウ")]:
-        r, _ = tr_run(txt, [523.25], [360]); m0 = r["moras"][0]; tb, tm = int((m0["b"] + 0.010) / fpz), int(0.5 * (m0["b"] + m0["e"]) / fpz)
-        print(f"  {lbl:16s}: 頭(b+10ms) F1={r['F1'][tb]:5.1f}Hz, F2={r['F2'][tb]:6.1f}Hz → 収束(mid) F1={r['F1'][tm]:5.1f}Hz, F2={r['F2'][tm]:6.1f}Hz")
-    print("\n=== [2] 3つのチェックポイント検証：直前版40b3d25相当(tr_c_conv=False) vs 今回(tr_c_conv=True) ===")
+        x, r = synth_item(txt, [523.25], [360]); m0 = r["moras"][0]; tb, tm = int((m0["b"] + 0.015) / fpz), int(0.5 * (m0["b"] + m0["e"]) / fpz)
+        wf1_b, wf2_b = wav_f12(x, tb * fpz); wf1_m, wf2_m = wav_f12(x, tm * fpz)
+        print(f"  {lbl:16s}: 制御[頭(b+15ms) F1={r['F1'][tb]:5.1f}, F2={r['F2'][tb]:6.1f} → 収束(mid) F1={r['F1'][tm]:5.1f}, F2={r['F2'][tm]:6.1f}Hz (ΔF1={r['F1'][tm]-r['F1'][tb]:+5.1f}Hz)] | WAV重心[mid F1={wf1_m:5.1f}, F2={wf2_m:6.1f}Hz]")
+    print("\n=== [2] 無声音子音区間（アサ / カタ / シタ）での古いフォルマントロック残留チェック ===")
+    for txt in ("アサ", "カタ", "シタ"):
+        _, r = synth_item(txt, [440, 440], [280, 280]); m0, m1 = r["moras"][0], r["moras"][1]
+        tm0, tc1, tm1 = int(0.5 * (m0["b"] + m0["e"]) / fpz), int(0.5 * (m1["a"] + m1["b"]) / fpz), int(0.5 * (m1["b"] + m1["e"]) / fpz)
+        d1, d2 = r["df1_lock"], r["df2_lock"]
+        print(f"  {txt} (子音={m1['c']:2s}): 1拍目母音中央 lock=({d1[tm0]:+5.1f}, {d2[tm0]:+6.1f}Hz) → 無声子音中央 lock=({d1[tc1]:+5.1f}, {d2[tc1]:+6.1f}Hz) → 2拍目母音中央 lock=({d1[tm1]:+5.1f}, {d2[tm1]:+6.1f}Hz)")
+    print("\n=== [3] 独立分離実験（本物の40b3d25 / 条件A / 条件B / 条件C）3大チェックポイント検証 ===")
     T0 = "ワタシノナマエツキナミノコエ"; VD = [260, 260, 260, 260, 260, 260, 560, 260, 260, 260, 260, 260, 260, 820]
     M0 = [60, 62, 64, 67, 67, 64, 62, 64, 65, 67, 69, 67, 64, 62]; HZ0 = [round(440 * 2 ** ((k - 69) / 12)) for k in M0]
     W = os.path.dirname(os.path.abspath(__file__))
     S0 = open(os.path.join(W, "S.txt")).read().strip(); OO = open(os.path.join(W, "OO.txt")).read().strip()
     V0 = '"vbump":{"a":[1,1.2,1],"e":[0.7,1.3,0.7],"o":[1,1.3,0.8],"i":[0.25,3.0,3.0]}'
     R103 = {"p_low": [5, 4, 3], "vfloor": {"a": 0.6, "o": 0.3}, "f1x_cmute": 1.0, "f45": [[1400, 0.75], [2300, 0.3]], "vbump": {"a": [1, 1.2, 1], "e": [0.7, 1.3, 0.7], "o": [1, 1, 0.3], "i": [0.7, 0.6, 0.7]}, "f1x": [[2.0, 0.35], [0.45, 0.25], [2.8, 0.35]], "vf1x": {"a": [0.15, 0, 0], "i": [0.3, 0, 0.3], "u": [0.3, 0, 0.3], "e": [0.5, 1, 0], "o": [0.1, 1, 0]}, "henv": None}
-    for c_flag, tag in [(False, "40b3d25相当(c_conv=OFF:即時ロック)"), (True, "最新修正版 (c_conv=ON :運動収束)")]:
+    conds = [
+        ("0: 本物の40b3d25 (旧コード完全一致)", False, False, "40b3d25"),
+        ("A: 移動=即時 / ゲイン=固定 / 鼻音=同一", False, False, None),
+        ("B: 移動=c_conv / ゲイン=固定 / 鼻音=同一", True, False, None),
+        ("C: 移動=c_conv / ゲイン=連動 / 鼻音=同一[現行]", True, True, None),
+    ]
+    for tag, c_fl, e_fl, md in conds:
         kw = dict(R103, **{"P.fend_at": 0.15, "P.fric_hold": 20, "P.vl_hold": True, "P.vdl": -2.0, "P.vbg": 1.5})
         kw.update(json.loads("{" + f"{S0},{V0},{OO}" + "}"))
-        kw.update({"P.vd_ms": VD, "rc.tadayoi": 0.0, "line.D_haba": 0, "uta_vib": [5.5, 22, 220, 280], "uta_scoop": [1.5, 45], "uta_hz": HZ0, "rc.yure_hayai": 0.02, "uta_trance": True, "tr_c_conv": c_flag})
+        kw.update({"P.vd_ms": VD, "rc.tadayoi": 0.0, "line.D_haba": 0, "uta_vib": [5.5, 22, 220, 280], "uta_scoop": [1.5, 45], "uta_hz": HZ0, "rc.yure_hayai": 0.02, "uta_trance": True, "tr_c_conv": c_fl, "tr_eff_conv": e_fl, "tr_mode": md})
         rc = copy.deepcopy(carve.E79); rc["line.D_center"] = carve.E79["line.D_center"] * 436.6 / 360
         K = dict(fscale=1.22, bump=[3, 1.4, 1.4], g=[0.7, 0.7, 0.7], floor=1.0, ap_on="mix", ap_n=40, ap_lo=300, ap_hi=8000, ap_bw=150, band=3.0); P = {}
         for k, v in kw.items():
@@ -103,40 +124,42 @@ def hakaru_f12():
         rc["kotoba"].pop("acc2", None); hz_b = rc["kotoba"].pop("hz", None)
         if hz_b: rc["line.D_center"] = carve.E79["line.D_center"] * 436.6 / hz_b
         r = {}; v_rc = carve.variant(dict(rc, text=T0, seed=2024)); v_rc["_out_r"] = r
-        x, _ = carve.make(v_rc); x = np.array(x, dtype=np.float64); sr = carve.SR; cv = [m for m in r["moras"] if m.get("kind") == "CV"]
+        x, _ = carve.make(v_rc); x = np.array(x, dtype=np.float64); cv = [m for m in r["moras"] if m.get("kind") == "CV"]
         df1_lk = [r["F1"][t] - r["F1_base"][t] for t in range(r["n"])]; df2_lk = [r["F2"][t] - r["F2_base"][t] for t in range(r["n"])]
-        # ① 立ち上がり運動：高母音(シ2,ツ7,キ8,ミ10)の母音頭(b+15ms)→収束(mid)のF1収束幅、高音ミ10(523Hz)のF1軌道、鼻音吹かれ(<240Hz比)
-        hi_f1_gl = [abs(r["F1"][int(0.5 * (cv[i]["b"] + cv[i]["e"]) / fpz)] - r["F1"][int((cv[i]["b"] + 0.015) / fpz)]) for i in (2, 7, 8, 10)]
+        # ① 立ち上がり運動：高母音(シ2,ツ7,キ8,ミ10)の子音解放後(b+30ms)→収束(mid)の符号付きΔF1 ＆ ミ10(b+15ms→mid) ＆ 鼻音吹かれ(<240Hz比)
+        hi_df1, hi_res = [], []
+        for i in (2, 7, 8, 10):
+            tb, tm = int((cv[i]["b"] + 0.030) / fpz), int(0.5 * (cv[i]["b"] + cv[i]["e"]) / fpz); tgt = r["f0_tr"][tm] * 1.03
+            hi_df1.append(r["F1"][tm] - r["F1"][tb]); hi_res.append(abs(r["F1"][tb] - tgt) - abs(r["F1"][tm] - tgt))
         mi_b, mi_m = int((cv[10]["b"] + 0.015) / fpz), int(0.5 * (cv[10]["b"] + cv[10]["e"]) / fpz)
-        mi_f1_b, mi_f1_m = r["F1"][mi_b], r["F1"][mi_m]
-        nf = 2048; wn = np.hanning(nf); fq = np.fft.rfftfreq(nf, 1.0 / sr); sub240 = []
+        sub240 = []
         for i in (3, 4, 5, 9, 10, 11):
-            s0 = int(cv[i]["a"] * sr); seg = x[s0:s0 + nf]
-            if len(seg) == nf:
-                sp = np.abs(np.fft.rfft(seg * wn)) ** 2; sub240.append(10 * np.log10((np.sum(sp[(fq >= 50) & (fq < 240)]) + 1e-24) / (np.sum(sp[(fq >= 60) & (fq <= 8000)]) + 1e-24)))
-        # ② 高音「エー」「オー」伸ばし(ノ3,エ6,ノ11,コ12,エ13)：頭42msリード帯域比 vs 定常中央リード帯域比(1.6-3.4kHz/H1-2) ＆ エ/オ F2重心差
+            s0 = int(cv[i]["a"] * sr); seg = x[s0:s0 + nf42]
+            if len(seg) == nf42:
+                sp = np.abs(np.fft.rfft(seg * wn42)) ** 2; sub240.append(10 * np.log10((np.sum(sp[(fq42 >= 50) & (fq42 < 240)]) + 1e-24) / (np.sum(sp[(fq42 >= 60) & (fq42 <= 8000)]) + 1e-24)))
+        # ② 高音「エー」「オー」伸ばし(ノ3,エ6,ノ11,コ12,エ13)：頭42.0ms窓(2016 samples)リード比 vs 定常中央42.0ms窓リード比(1.6-3.4kHz/H1-2) ＆ エ/オ F2重心差
         reed_on, reed_mid, f2_e, f2_o = [], [], [], []
         for i in (3, 6, 11, 12, 13):
-            for s_pos, acc in [(int(cv[i]["b"] * sr), reed_on), (int(0.5 * (cv[i]["b"] + cv[i]["e"]) * sr) - nf // 2, reed_mid)]:
-                seg = x[max(0, s_pos):max(0, s_pos) + nf]
-                if len(seg) == nf:
-                    sp = np.abs(np.fft.rfft(seg * wn)) ** 2
-                    acc.append(10 * np.log10((np.sum(sp[(fq >= 1600) & (fq <= 3400)]) + 1e-24) / (np.sum(sp[(fq >= 300) & (fq <= 1100)]) + 1e-24)))
+            for s_pos, acc in [(int(cv[i]["b"] * sr), reed_on), (int(0.5 * (cv[i]["b"] + cv[i]["e"]) * sr) - nf42 // 2, reed_mid)]:
+                seg = x[max(0, s_pos):max(0, s_pos) + nf42]
+                if len(seg) == nf42:
+                    sp = np.abs(np.fft.rfft(seg * wn42)) ** 2
+                    acc.append(10 * np.log10((np.sum(sp[(fq42 >= 1600) & (fq42 <= 3400)]) + 1e-24) / (np.sum(sp[(fq42 >= 300) & (fq42 <= 1100)]) + 1e-24)))
                     if acc is reed_mid:
-                        mb = (fq >= 800) & (fq <= 2800); cf2 = float(np.sum(fq[mb] * sp[mb]) / (np.sum(sp[mb]) + 1e-24))
+                        mb = (fq42 >= 800) & (fq42 <= 2800); cf2 = float(np.sum(fq42[mb] * sp[mb]) / (np.sum(sp[mb]) + 1e-24))
                         (f2_e if cv[i]["v"] == "e" else f2_o).append(cf2)
-        # ③ 高音→低音下降(マ5→エ6→ツ7, ミ10→ノ11→コ12→エ13)：音節末42ms予兆シフト量 |ΔF_lock(e-5ms)-ΔF_lock(mid)| ＆ 境界5ms最大跳躍 max|ΔF1|, max|ΔF2|
+        # ③ 高音→低音下降(マ5→エ6→ツ7, ミ10→ノ11→コ12→エ13)：音節末予兆移動量 |F(e-5ms)-F(mid)| ＆ 境界5ms最大跳躍 max|ΔF1|, max|ΔF2|
         df1_jmp, df2_jmp, coart_mv = [], [], []
         for i0, i1 in [(5, 6), (6, 7), (10, 11), (11, 12), (12, 13)]:
             ta = int(cv[i1]["a"] / fpz); w_r = range(max(1, ta - 6), min(r["n"], ta + 6))
             df1_jmp.append(max(abs(r["F1"][t] - r["F1"][t - 1]) for t in w_r))
             df2_jmp.append(max(abs(r["F2"][t] - r["F2"][t - 1]) for t in w_r))
             tm0 = int(0.5 * (cv[i0]["b"] + cv[i0]["e"]) / fpz); te0 = int((cv[i0]["e"] - 0.005) / fpz)
-            coart_mv.append(math.hypot(df1_lk[te0] - df1_lk[tm0], df2_lk[te0] - df2_lk[tm0]))
+            coart_mv.append(math.hypot(r["F1"][te0] - r["F1"][tm0], r["F2"][te0] - r["F2"][tm0]))
         print(f"  [{tag}]\n"
-              f"    ① 立ち上がり運動: 高母音平均F1収束幅={np.mean(hi_f1_gl):5.1f}Hz, 高音ミ10 F1({mi_f1_b:.1f}→{mi_f1_m:.1f}Hz, 収束{mi_f1_m-mi_f1_b:+.1f}Hz) [tr_sub_cut吹かれ<240Hz比={np.mean(sub240):+6.2f}dB]\n"
-              f"    ② 高音エ/オ伸ばし: 頭42msリード比={np.mean(reed_on):+6.2f}dB, 定常中央リード比={np.mean(reed_mid):+6.2f}dB, F2重心(エ={np.mean(f2_e):.0f}/オ={np.mean(f2_o):.0f}Hz, 差={np.mean(f2_e)-np.mean(f2_o):+.0f}Hz)\n"
-              f"    ③ 高→低下降遷移: 音節末42msロック解放・予兆シフト量={np.mean(coart_mv):5.1f}Hz, 境界5ms最大跳躍 max|ΔF1|={np.mean(df1_jmp):4.1f}Hz/5ms, max|ΔF2|={np.mean(df2_jmp):4.1f}Hz/5ms")
+              f"    ① 立ち上がり運動: 高母音符号付ΔF1(b+30ms→mid)={np.mean(hi_df1):+5.1f}Hz(目標接近{np.mean(hi_res):+5.1f}Hz), ミ10 F1(b+15ms→mid: {r['F1'][mi_b]:.1f}→{r['F1'][mi_m]:.1f}Hz, {r['F1'][mi_m]-r['F1'][mi_b]:+.1f}Hz) [吹かれ<240Hz={np.mean(sub240):+6.2f}dB]\n"
+              f"    ② 高音エ/オ伸ばし: 頭42.0msリード比={np.mean(reed_on):+6.2f}dB, 定常中央リード比={np.mean(reed_mid):+6.2f}dB, F2重心(エ={np.mean(f2_e):.0f}/オ={np.mean(f2_o):.0f}Hz, 差={np.mean(f2_e)-np.mean(f2_o):+.0f}Hz)\n"
+              f"    ③ 高→低下降遷移: 音節末予兆移動量={np.mean(coart_mv):5.1f}Hz, 境界5ms最大跳躍 max|ΔF1|={np.mean(df1_jmp):4.1f}Hz/5ms, max|ΔF2|={np.mean(df2_jmp):4.1f}Hz/5ms")
 
 if __name__ == '__main__':
     if '--f12' in sys.argv: hakaru_f12(); sys.exit(0)
