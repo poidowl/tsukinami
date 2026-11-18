@@ -1,17 +1,24 @@
 # tsukinami (`hitofude` branch — LLM Context Edition)
 
-> **日本語かな・カナを読む。その仕組みを、LLMの1コンテキストで丸ごと読む。**  
+> **68KBのピュアPythonで、たどたどしく日本語カナを読み上げる。その仕組みを、LLMの1コンテキストで丸ごと読む。**  
 > Python 3 標準ライブラリのみ・外部パッケージ不要・外部データファイル不要・Python全4ファイル計 1,264行（約62 KB）。
 
 このブランチは、**コード全体をそのまま LLM のプロンプト（コンテキスト）へ渡して読解・改造・自己検証させること**を目的に削ぎ落とした「一筆彫り（単線引き算合成）」仕様です。
 
-## 1. コンテキスト投入コマンド（全コード一括）
+## 1. コンテキスト投入コマンド ＆ Raw URL（全コード一括）
 
 リポジトリ全体の実装は以下の4ファイルだけで完結しています（README込み合計 約68 KB / 約16k tokens）：
 
 ```bash
 cat README.md hitofude.py yomu.py kotoba.py accent.py
 ```
+
+Web取得型LLM（GitHubのHTML `/tree/` 描画を読めない環境）には、以下の **Raw プレーンテキスト URL 5本**をそのまま渡してください：
+- https://raw.githubusercontent.com/poidowl/tsukinami/hitofude/README.md
+- https://raw.githubusercontent.com/poidowl/tsukinami/hitofude/hitofude.py
+- https://raw.githubusercontent.com/poidowl/tsukinami/hitofude/yomu.py
+- https://raw.githubusercontent.com/poidowl/tsukinami/hitofude/kotoba.py
+- https://raw.githubusercontent.com/poidowl/tsukinami/hitofude/accent.py
 
 | ファイル | 行数 | 役割 |
 | :--- | ---: | :--- |
