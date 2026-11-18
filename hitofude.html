@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="twitter:card" content="player">
+<meta name="twitter:title" content="一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る">
+<meta name="twitter:description" content="録音0 Byte・学習モデルなし・外部通信ゼロ。1本のホワイトノイズから4回の引き算だけで日本語の声と吐息を削り出す純JSシンセ（0原石→①谷→②角→③山→④完成をその場で聴き比べ）">
+<meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/hitofude_square.jpg">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/hitofude_player.html">
+<meta name="twitter:player:width" content="480">
+<meta name="twitter:player:height" content="480">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://poidowl.github.io/tsukinami/hitofude.html">
+<meta property="og:title" content="一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る">
+<meta property="og:description" content="録音0 Byte・学習モデルなし・外部通信ゼロ。1本のホワイトノイズから4回の引き算だけで日本語の声と吐息を削り出す純JSシンセ。">
+<meta property="og:image" content="https://poidowl.github.io/tsukinami/assets/hitofude_square.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<title>一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る | poidowl/tsukinami</title>
+<style>
+  :root {
+    --bg: #080d15;
+    --panel: #111a28;
+    --border: #243347;
+    --text: #f3efe6;
+    --muted: #94a3b8;
+    --amber: #f59e0b;
+    --emerald: #26cc9b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 14px 40px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    line-height: 1.55;
+  }
+  .wrap {
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .hero h1 {
+    margin: 0;
+    font-size: 1.3rem;
+    letter-spacing: 0.02em;
+  }
+  .hero p {
+    margin: 4px 0 0;
+    font-size: 0.86rem;
+    color: var(--muted);
+  }
+  .frame-shell {
+    width: 100%;
+    max-width: 480px;
+    height: 480px;
+    margin: 0 auto;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #0b111b;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  }
+  .frame-shell iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 0.86rem;
+  }
+  .card h2 {
+    margin: 0 0 8px;
+    font-size: 0.96rem;
+    color: var(--amber);
+  }
+  .steps-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+  }
+  .steps-list li { margin-bottom: 4px; }
+  .steps-list strong { color: var(--text); }
+  .share-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .btn {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn:hover { border-color: var(--emerald); color: var(--emerald); }
+  .btn.primary {
+    background: var(--emerald);
+    color: #07120f;
+    border-color: var(--emerald);
+  }
+  @media (max-width: 500px) {
+    body { padding: 12px 8px 28px; }
+    .frame-shell { height: 500px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div>
+      <h1>一筆彫り hitofude</h1>
+      <p>外部音源 0 Byte・正弦波オシレータ不使用。1本のホワイトノイズから4回の引き算だけで日本語を彫る。</p>
+    </div>
+  </header>
+
+  <div class="frame-shell">
+    <iframe src="./hitofude_player.html" title="一筆彫り hitofude インタラクティブシンセ"
+      sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
+  </div>
+
+  <section class="card">
+    <h2>4回の引き算だけで声になる仕組み</h2>
+    <ol class="steps-list">
+      <li><strong>0 原石：</strong><code>uniform(-1, 1)</code> の一様ホワイトノイズを1本だけ用意する。</li>
+      <li><strong>① 倍音の谷：</strong>2段フィードバックコムで倍音の隙間の谷を引き、ピッチと息のくびれ（<code>g_vo</code>）を作る。</li>
+      <li><strong>② 角落とし：</strong>移動平均の引き算でDC濁りと高域の角を引き、子音の鋭さと吐息の丸みを分ける。</li>
+      <li><strong>③ 声道の山：</strong>5本の受動共鳴（<code>yama_bp</code>）で母音 F1–F4 と子音帯の山だけを残す。</li>
+      <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線のコム <code>G</code> を緩めて吐息へ戻す。</li>
+    </ol>
+    <div class="share-bar">
+      <button id="copyUrlBtn" class="btn primary" type="button">X投稿用URLをコピー</button>
+      <a class="btn" href="./index.html">🎛️ 月並みTTS オモチャ箱へ</a>
+      <a class="btn" href="https://github.com/poidowl/tsukinami/tree/hitofude" target="_blank" rel="noopener noreferrer">Python原典 (71KB・hitofude branch) ↗</a>
+    </div>
+  </section>
+</div>
+<script>
+document.getElementById("copyUrlBtn").addEventListener("click", function () {
+  const url = "https://poidowl.github.io/tsukinami/hitofude.html?v=1";
+  const btn = this;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      btn.textContent = "✓ コピーしました: " + url;
+      setTimeout(() => { btn.textContent = "X投稿用URLをコピー"; }, 2400);
+    });
+  }
+});
+</script>
+</body>
+</html>
