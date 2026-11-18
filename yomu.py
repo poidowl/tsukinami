@@ -56,6 +56,7 @@ KNOB_KEYS = ("seed", "hz", "fscale", "rate", "g_vo", "tilt_w", "sigh", "jitter",
 
 
 def synth(text, prm, uta_hz=None, out_r=None):
+    # 手動韻律記号: "'" 核, "0" 平板, "/" または半角空白 " " = 句切れ(無音なし), "、" または全角空白 "　" = ポーズ(無音あり), "?" 疑問上昇
     has_marks = any(ch in text for ch in ("'", "’", "0", "/", "|", " ", "　", "?", "？"))
     if has_marks and not uta_hz:
         clean_kana, phrases = A.annotate(text)
@@ -81,31 +82,65 @@ def synth(text, prm, uta_hz=None, out_r=None):
     )
 
 
-def compare_signals(ref, test):
-    n = min(len(ref), len(test))
+def _env_db_curve(sig, bins=160):
+    n = len(sig)
     if n == 0:
-        return 0.0, 0.0
-    ma, mb = sum(ref[:n]) / n, sum(test[:n]) / n
-    num = sum((ref[i] - ma) * (test[i] - mb) for i in range(n))
-    da = math.sqrt(sum((ref[i] - ma) ** 2 for i in range(n))) or 1e-12
-    db = math.sqrt(sum((test[i] - mb) ** 2 for i in range(n))) or 1e-12
-    win = 882
-    diffs = [
-        (10.0 * math.log10((sum(v * v for v in ref[i : i + win]) / win + 1e-9) / (sum(v * v for v in test[i : i + win]) / win + 1e-9))) ** 2
-        for i in range(0, n - win, win // 2)
-        if sum(v * v for v in ref[i : i + win]) / win > 1e-5 or sum(v * v for v in test[i : i + win]) / win > 1e-5
-    ]
-    return num / (da * db), (math.sqrt(sum(diffs) / len(diffs)) if diffs else 0.0)
+        return [-90.0] * bins
+    win = max(1, int(0.020 * H.SR))
+    out = []
+    for b in range(bins):
+        c = int((b + 0.5) / bins * n)
+        i0 = max(0, min(max(0, n - win), c - win // 2))
+        seg = sig[i0 : i0 + win]
+        p = sum(v * v for v in seg) / max(1, len(seg))
+        out.append(10.0 * math.log10(p + 1e-9))
+    return out
+
+
+def compare_acoustic(base_sig, base_r, test_sig, test_r):
+    """位相非同期・話速差があっても破綻しない比較：正規化時間包絡の相関・dB差 ＋ hakaru 指標差分。"""
+    ea, eb = _env_db_curve(base_sig), _env_db_curve(test_sig)
+    ma, mb = sum(ea) / len(ea), sum(eb) / len(eb)
+    num = sum((a - ma) * (b - mb) for a, b in zip(ea, eb))
+    da = math.sqrt(sum((a - ma) ** 2 for a in ea)) or 1e-12
+    db = math.sqrt(sum((b - mb) ** 2 for b in eb)) or 1e-12
+    act = [(a - b) ** 2 for a, b in zip(ea, eb) if a > -50.0 or b > -50.0]
+    env_diff = math.sqrt(sum(act) / len(act)) if act else 0.0
+    mb_m = H.hakaru(base_sig, base_r)
+    mt_m = H.hakaru(test_sig, test_r)
+    return {
+        "env_r": round(num / (da * db), 3),
+        "env_diff_db": round(env_diff, 2),
+        "d_dur_s": round(mt_m["dur_s"] - mb_m["dur_s"], 2),
+        "d_band_1k_2k6_db": round(mt_m["band_1k_2k6_db"] - mb_m["band_1k_2k6_db"], 1),
+        "d_band_2k6_5k6_db": round(mt_m["band_2k6_5k6_db"] - mb_m["band_2k6_5k6_db"], 1),
+        "d_tani_core_db": round(mt_m["tani_core_db"] - mb_m["tani_core_db"], 1),
+        "d_tani_tail_db": round(mt_m["tani_tail_db"] - mb_m["tani_tail_db"], 1),
+    }
+
+
+def _resolve_out_path(args_out, n_texts, idx, out_dir, preset):
+    if args_out:
+        if n_texts == 1:
+            return args_out
+        stem, ext = os.path.splitext(args_out)
+        return f"{stem}_{idx + 1}{ext or '.wav'}"
+    seq = 1
+    while True:
+        cand = os.path.join(out_dir, f"yomu_{seq:03d}_{preset}.wav")
+        if not os.path.exists(cand):
+            return cand
+        seq += 1
 
 
 def main():
     p = argparse.ArgumentParser(description="一筆彫りTTS (hitofude) — 1本のホワイトノイズから4手で彫る日本語音声合成")
     p.add_argument("texts", nargs="*", default=["わたし、にほんご、ちょっとしゃべれます"])
-    p.add_argument("-o", "--out", default=None, help="出力WAVパス（省略時は out/yomu_1.wav ...）")
+    p.add_argument("-o", "--out", default=None, help="出力WAVパス（複数テキスト時は _1, _2 連番、省略時は out/yomu_NNN_<preset>.wav）")
     p.add_argument("--preset", choices=list(PRESETS.keys()), default="hitofude", help="プリセット名")
     p.add_argument("--list-presets", action="store_true", help="プリセット一覧を表示して終了")
     p.add_argument("--measure", action="store_true", help="合成波形の実測音響指標JSONを表示（LLM自己検証用・標準ライブラリのみ）")
-    p.add_argument("--compare", action="store_true", help="基準プリセット (hitofude) との差分も同時出力")
+    p.add_argument("--compare", action="store_true", help="基準プリセット (hitofude) との音響指標・包絡差分JSONを同時出力")
     p.add_argument("--uta", default=None, help="歌モード：カンマ区切り周波数Hz列（例: 294,330,349,392）")
     p.add_argument("--recipe", default=None, help="レシピJSONを読み込む")
     p.add_argument("--save-recipe", default=None, help="現在のパラメータをレシピJSONへ保存")
@@ -148,7 +183,7 @@ def main():
     for idx, t in enumerate(args.texts):
         r_info = {}
         samples, moras = synth(t, prm, uta_hz=uta_hz, out_r=r_info)
-        out_path = args.out if (args.out and len(args.texts) == 1) else os.path.join(out_dir, f"yomu_{idx + 1}.wav")
+        out_path = _resolve_out_path(args.out, len(args.texts), idx, out_dir, args.preset)
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         H.write_wav(out_path, samples)
         m_str = "".join(m.get("t", "") for m in moras)
@@ -156,11 +191,13 @@ def main():
         if args.measure:
             print("  [Measure]", json.dumps(H.hakaru(samples, r_info), ensure_ascii=False))
         if args.compare:
-            base_samples, _ = synth(t, PRESETS["hitofude"], uta_hz=uta_hz)
-            base_path = os.path.join(out_dir, f"yomu_base_{idx + 1}.wav")
+            base_r = {}
+            base_samples, _ = synth(t, PRESETS["hitofude"], uta_hz=uta_hz, out_r=base_r)
+            stem, ext = os.path.splitext(out_path)
+            base_path = f"{stem}_base{ext or '.wav'}"
             H.write_wav(base_path, base_samples)
-            corr, env_db = compare_signals(base_samples, samples)
-            print(f"  [Compare vs hitofude] Base: {base_path} | r={corr:+.4f} | env_diff={env_db:.2f} dB")
+            cmp_info = dict(base=base_path, **compare_acoustic(base_samples, base_r, samples, r_info))
+            print("  [Compare vs hitofude]", json.dumps(cmp_info, ensure_ascii=False))
 
 
 if __name__ == "__main__":

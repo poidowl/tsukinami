@@ -2,16 +2,17 @@
 # 標準ライブラリのみ (Python 3, 外部パッケージ・外部データファイル一切不要)。
 #
 # 【LLM向け設計原則】
-#   最初から最後まで「たった1本のホワイトノイズ x」だけを4段階で削って声と吐息にする。
+#   音になる信号線は最初から最後まで「たった1本のホワイトノイズ x」のみを4段階で削って声と吐息にする。
 #   - 固定波形の粒スタンプ (grain) なし → 40段オールパス位相散らし不要
-#   - 有声/無声・子音帯・息の別乱数ジェネレータなし → すべて同じ1本のノイズ線 x から彫る
-#   - 帯域ごとの自動利得制御 (_agc) なし → 1箇所触ると別箇所が勝手に押し戻す副作用ゼロ
+#   - 有声/無声・子音帯・息の音声信号はすべて同じ1本のノイズ線 x から彫る（ピッチ漂い・ジッタ・ビブラートの制御揺らぎのみ別シード乱数）
+#   - 帯域ごとの自動利得制御 (_agc) なし → 各ノブはほぼ直交に効く（g_vo 変化時の帯域比揺れも ±2 dB 以内）
 #   - STFT 往復なし → 時間領域の1パス直列処理のみ
 import array
 import cmath
 import hashlib
 import math
 import random
+import sys
 import wave
 
 import accent
@@ -171,12 +172,13 @@ def _comb_period(x, PER, G):
     入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする。"""
     n = len(x)
     y = [0.0] * n
+    _sqrt = math.sqrt
     for i in range(n):
         g = G[i]
         if g <= 1e-4:
             y[i] = x[i]
             continue
-        c_in = math.sqrt(1.0 - g * g)
+        c_in = _sqrt(1.0 - g * g)
         p = PER[i]
         k = int(p)
         u = p - k
@@ -228,6 +230,10 @@ def make_hitofude(
     r = kotoba.tracks_from_kana(text, pre=pre, post=post, params=prm)
     n = r["n"]
     N = int(n * fpz * SR)
+    if not any(r["voiced"]) and not r["bands"]:
+        if out_r is not None:
+            out_r.update(r, f0_tr=[0.0] * n)
+        return [0.0] * N, r["moras"]
 
     # ピッチ軌道 f0_fr (Hz, 5ms フレーム)
     if uta_hz:
@@ -265,28 +271,7 @@ def make_hitofude(
         acc = dict(accent.NORMAL, rng=6.2, jump=2.8, fall=3.8, sag=0.9, decl=1.4, fin=2.6) if sigh >= 0.25 else accent.CUTE
         f0_fr = accent.f0_rule(r["moras"], n, None, **dict(acc, reg=float(hz), **(accent_kw or {})))
 
-    fs = float(fscale)
-    F1 = [max(r["F1"][t] * fs, 1.04 * f0_fr[t] if r["voiced"][t] else 180.0) for t in range(n)]
-    F2 = [min(r["F2"][t] * fs, 8500.0) for t in range(n)]
-    F3 = [min(r["F3"][t] * fs, 9000.0) for t in range(n)]
-
-    # 子音破裂・摩擦帯域 (r["bands"]) と句末息抜きプロファイル (sigh_fr)
-    f_cons_cen = [2500.0] * n
-    f_cons_w = [0.0] * n
-    cons_sharp = [0.0] * n
-    last_cen = 2500.0
-    for (t0, t1, cen, _sd, lev) in sorted(r["bands"], key=lambda b: b[0]):
-        ia, ib = max(0, int(round(t0 / fpz))), min(n, int(round(t1 / fpz)) + 1)
-        last_cen = float(cen)
-        for t_ in range(max(0, ia - 2), min(n, ib + 2)):
-            f_cons_cen[t_] = last_cen
-        for t_ in range(ia, ib):
-            f_cons_w[t_] = max(f_cons_w[t_], min(3.4, 0.58 * float(lev)))
-            cons_sharp[t_] = 1.0
-    for t_ in range(1, n):
-        if f_cons_w[t_] == 0.0 and cons_sharp[t_] == 0.0:
-            f_cons_cen[t_] = f_cons_cen[t_ - 1]
-
+    # 句末息抜きプロファイル (sigh_fr)：F1 下限計算より先に f0_fr の微低下も確定させる
     sigh_fr = [0.0] * n
     if sigh > 0.0:
         for idx_m, m_ in enumerate(r["moras"]):
@@ -307,6 +292,28 @@ def make_hitofude(
                         s_v = min(1.0, sigh) * (((u - 0.30) / 0.70) ** 1.10)
                         sigh_fr[t_] = s_v
                         f0_fr[t_] *= 2.0 ** (-0.18 * s_v / 12.0)
+
+    fs = float(fscale)
+    F1 = [max(r["F1"][t] * fs, 1.04 * f0_fr[t] if r["voiced"][t] else 180.0) for t in range(n)]
+    F2 = [min(r["F2"][t] * fs, 8500.0) for t in range(n)]
+    F3 = [min(r["F3"][t] * fs, 9000.0) for t in range(n)]
+
+    # 子音破裂・摩擦帯域 (r["bands"])
+    f_cons_cen = [2500.0] * n
+    f_cons_w = [0.0] * n
+    cons_sharp = [0.0] * n
+    last_cen = 2500.0
+    for (t0, t1, cen, _sd, lev) in sorted(r["bands"], key=lambda b: b[0]):
+        ia, ib = max(0, int(round(t0 / fpz))), min(n, int(round(t1 / fpz)) + 1)
+        last_cen = float(cen)
+        for t_ in range(max(0, ia - 2), min(n, ib + 2)):
+            f_cons_cen[t_] = last_cen
+        for t_ in range(ia, ib):
+            f_cons_w[t_] = max(f_cons_w[t_], min(3.4, 0.58 * float(lev)))
+            cons_sharp[t_] = 1.0
+    for t_ in range(1, n):
+        if f_cons_w[t_] == 0.0 and cons_sharp[t_] == 0.0:
+            f_cons_cen[t_] = f_cons_cen[t_ - 1]
 
     vo_sm = kotoba.smooth1([1.0 if v else 0.0 for v in r["voiced"]], 10)
     sigh_sm = kotoba.smooth1(sigh_fr, 14)
@@ -385,36 +392,54 @@ def make_hitofude(
     return [v * 0.891 / pk for v in out], r["moras"]
 
 
+def _pcm16_bytes(samples):
+    """[-1, +1] float 列を 16-bit signed little-endian PCM バイト列へ変換する。"""
+    pcm = array.array("h", [max(-32768, min(32767, int(round(v * 32767)))) for v in samples])
+    if sys.byteorder != "little":
+        pcm.byteswap()
+    return pcm.tobytes()
+
+
 def write_wav(path, samples):
     """[-1, +1] float 列を 16-bit mono PCM WAV として書き出す。"""
-    pcm = array.array("h", [max(-32767, min(32767, int(round(v * 32767)))) for v in samples])
     with wave.open(path, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(SR)
-        wf.writeframes(pcm.tobytes())
+        wf.writeframes(_pcm16_bytes(samples))
 
 
 # ==============================================================================
 # LLM用「耳の代わり」：標準ライブラリのみの自己音響計測 (numpy/scipy 一切不要)
 # ==============================================================================
+_FFT_CACHE = {}
+
+
 def _fft_radix2(a):
     n = len(a)
     if n <= 1:
         return list(a)
-    bits = (n - 1).bit_length()
-    out = [complex(a[int(format(i, f"0{bits}b")[::-1], 2)]) for i in range(n)]
-    step = 2
-    while step <= n:
-        half = step // 2
-        tw = [cmath.exp(-2j * math.pi * k / step) for k in range(half)]
+    plan = _FFT_CACHE.get(n)
+    if plan is None:
+        bits = (n - 1).bit_length()
+        bitrev = [int(format(i, f"0{bits}b")[::-1], 2) for i in range(n)]
+        tws = []
+        step = 2
+        while step <= n:
+            half = step // 2
+            tws.append((step, half, [cmath.exp(-2j * math.pi * k / step) for k in range(half)]))
+            step <<= 1
+        plan = (bitrev, tws)
+        _FFT_CACHE[n] = plan
+    bitrev, tws = plan
+    out = [complex(a[j]) for j in bitrev]
+    for step, half, tw in tws:
         for s in range(0, n, step):
             for k in range(half):
                 u = out[s + k]
                 v = out[s + k + half] * tw[k]
                 out[s + k] = u + v
                 out[s + k + half] = u - v
-        step <<= 1
     return out
 
 
@@ -422,40 +447,54 @@ def hakaru(samples, r_info):
     """合成波形と out_r から、LLMが音色を数値検証するための実測指標辞書を返す（標準ライブラリのみ）。"""
     N = len(samples)
     fpz = kotoba.FP / 1000.0
+    voiced = r_info.get("voiced") or []
+    moras = r_info.get("moras") or []
+    f0_tr = r_info.get("f0_tr") or [0.0]
     pk = max((abs(v) for v in samples), default=0.0)
     v_sq, v_cnt = 0.0, 0
-    for t, vo in enumerate(r_info["voiced"]):
+    for t, vo in enumerate(voiced):
         if vo:
             a, b = int(t * fpz * SR), min(N, int((t + 1) * fpz * SR))
             for i in range(a, b):
                 v_sq += samples[i] * samples[i]
             v_cnt += max(0, b - a)
-    rms_v = math.sqrt(v_sq / max(1, v_cnt))
-    crest_db = 20.0 * math.log10(pk / (rms_v + 1e-12))
+    rms_v = math.sqrt(v_sq / v_cnt) if v_cnt > 0 else rms(samples)
+    crest_db = 20.0 * math.log10(pk / (rms_v + 1e-12)) if pk > 0.0 and rms_v > 0.0 else 0.0
 
     nf = 2048
     hb = nf // 2 + 1
     win = [0.5 - 0.5 * math.cos(2.0 * math.pi * k / nf) for k in range(nf)]
     fq = [k * SR / nf for k in range(hb)]
+
+    def _win_spec(s0):
+        seg = samples[s0 : s0 + nf]
+        if len(seg) < nf:
+            seg = list(seg) + [0.0] * (nf - len(seg))
+        return _fft_radix2([seg[k] * win[k] for k in range(nf)])
+
     sp_acc = [0.0] * hb
-    for s0 in range(0, N - nf, nf):
+    if 0 < N < nf and any(voiced):
+        spec = _win_spec(0)
+        for k in range(hb):
+            sp_acc[k] += spec[k].real ** 2 + spec[k].imag ** 2
+    for s0 in range(0, N - nf + 1, nf):
         tc = int(((s0 + nf // 2) / SR) / fpz)
-        if 0 <= tc < len(r_info["voiced"]) and r_info["voiced"][tc]:
-            spec = _fft_radix2([samples[s0 + k] * win[k] for k in range(nf)])
+        if 0 <= tc < len(voiced) and voiced[tc]:
+            spec = _win_spec(s0)
             for k in range(hb):
                 sp_acc[k] += spec[k].real ** 2 + spec[k].imag ** 2
+    has_sp = any(v > 0.0 for v in sp_acc)
     b0 = sum(sp_acc[k] for k in range(hb) if 120.0 <= fq[k] < 1000.0) + 1e-24
-    b1 = 10.0 * math.log10((sum(sp_acc[k] for k in range(hb) if 1000.0 <= fq[k] < 2600.0) + 1e-24) / b0)
-    b2 = 10.0 * math.log10((sum(sp_acc[k] for k in range(hb) if 2600.0 <= fq[k] < 5600.0) + 1e-24) / b0)
-
-    cvs = [m for m in r_info["moras"] if m.get("kind") == "CV" and any(r_info["voiced"][int(m["b"] / fpz) : int(m["e"] / fpz)])]
-    ml = cvs[-1] if cvs else r_info["moras"][0]
+    b1 = 10.0 * math.log10((sum(sp_acc[k] for k in range(hb) if 1000.0 <= fq[k] < 2600.0) + 1e-24) / b0) if has_sp else 0.0
+    b2 = 10.0 * math.log10((sum(sp_acc[k] for k in range(hb) if 2600.0 <= fq[k] < 5600.0) + 1e-24) / b0) if has_sp else 0.0
 
     def _tani_at(ts):
-        s0 = max(0, min(N - nf, int(ts * SR) - nf // 2))
-        spec = _fft_radix2([samples[s0 + k] * win[k] for k in range(nf)])
+        if N == 0:
+            return 0.0
+        s0 = max(0, min(max(0, N - nf), int(ts * SR) - nf // 2))
+        spec = _win_spec(s0)
         sp_db = [10.0 * math.log10(spec[k].real ** 2 + spec[k].imag ** 2 + 1e-24) for k in range(hb)]
-        f0 = max(80.0, r_info["f0_tr"][min(len(r_info["f0_tr"]) - 1, int(ts / fpz))])
+        f0 = max(80.0, f0_tr[min(len(f0_tr) - 1, max(0, int(ts / fpz)))])
         diffs = []
         for h_idx in range(1, 7):
             ps = [sp_db[k] for k in range(hb) if (h_idx - 0.18) * f0 <= fq[k] <= (h_idx + 0.18) * f0]
@@ -464,17 +503,21 @@ def hakaru(samples, r_info):
                 diffs.append(max(ps) - min(vs))
         return sum(diffs) / len(diffs) if diffs else 0.0
 
-    tm = ml["b"] + 0.18 * (ml["e"] - ml["b"])
-    tt = ml["b"] + 0.85 * (ml["e"] - ml["b"])
-    wav_sha = hashlib.sha256(
-        b"".join(int(max(-32768, min(32767, round(v * 32767)))).to_bytes(2, "little", signed=True) for v in samples)
-    ).hexdigest()[:16]
+    cvs = [m for m in moras if m.get("kind") == "CV" and any(voiced[int(m["b"] / fpz) : int(m["e"] / fpz)])]
+    ml = cvs[-1] if cvs else (moras[0] if moras else None)
+    if ml is not None and has_sp:
+        t_core = _tani_at(ml["b"] + 0.18 * (ml["e"] - ml["b"]))
+        t_tail = _tani_at(ml["b"] + 0.85 * (ml["e"] - ml["b"]))
+    else:
+        t_core, t_tail = 0.0, 0.0
+
+    wav_sha = hashlib.sha256(_pcm16_bytes(samples)).hexdigest()[:16]
     return {
         "sha256_16": wav_sha,
         "dur_s": round(N / SR, 2),
         "crest_db": round(crest_db, 1),
         "band_1k_2k6_db": round(b1, 1),
         "band_2k6_5k6_db": round(b2, 1),
-        "tani_core_db": round(_tani_at(tm), 1),
-        "tani_tail_db": round(_tani_at(tt), 1),
+        "tani_core_db": round(t_core, 1),
+        "tani_tail_db": round(t_tail, 1),
     }

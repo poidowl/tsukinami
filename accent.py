@@ -114,6 +114,7 @@ def _targets(ml, phrases, P, question):
     """per non-pause mora: (level_st_start, level_st_end) relative to the H line of the utterance"""
     idx = [j for j, m in enumerate(ml) if m['kind'] != 'pau']
     lv = [None] * len(ml)
+    if not idx or not phrases: return lv
     top = 0.0
     for pi, (s, L, acc, *_q) in enumerate(phrases):
         if pi > 0:
@@ -222,13 +223,15 @@ def _guess1(ml, p, accent):
 
 
 def _smooth(x, k):
-    """moving average (edge padded), applied twice (triangular kernel)"""
-    if k <= 1: return list(x)
-    for _ in range(2):
-        h = k // 2; n = len(x); pad = [x[0]] * h + list(x) + [x[-1]] * h
+    """moving average (edge padded), applied twice (symmetric zero-phase triangular kernel even for even k)"""
+    if k <= 1 or not x: return list(x)
+    for p in range(2):
+        hl = k // 2 if p == 0 else k - 1 - k // 2
+        hr = k - 1 - hl
+        n = len(x); pad = [x[0]] * hl + list(x) + [x[-1]] * hr
         c = [0.0]
         for v in pad: c.append(c[-1] + v)
-        x = [(c[i + k] - c[i]) / k for i in range(n)] if len(pad) >= k + n - 1 else x
+        x = [(c[i + k] - c[i]) / k for i in range(n)]
     return x
 
 

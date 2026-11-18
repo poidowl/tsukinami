@@ -97,7 +97,8 @@ def setslice(L, a, b, vals):
         for i, v in zip(idx, vals): L[i] = v
 
 def interp(x, xp, fp):
-    out = []; m = len(xp)
+    if not xp: return [0.0] * len(x)
+    out = []
     for v in x:
         if v < xp[0]: out.append(fp[0]); continue
         if v >= xp[-1]: out.append(fp[-1]); continue
@@ -248,6 +249,7 @@ def build_tracks(seq, n, P):
         if P.get('fric_hold') and nxc and (nxc in P['fricT'] or (P.get('vl_hold') and nxc in VOICELESS)): kp.append((s['e'] + P['fric_hold'] / 1000, *V))   # 103g：次が息の子音なら、声が止むまで母音の形のまま
         else: kp.append((s['e'] - (P['Tvc'] / 1000 if nxc else P['Tvv'] / 2000), *V))
         cur = list(V); first = False
+    if not kp: return [[float(cur[j])] * n for j in range(3)]
     kp.sort(key=lambda q: q[0]); tfr = [i * FP / 1000 for i in range(n)]; xp = [float(q[0]) for q in kp]
     return [smooth1(interp(tfr, xp, [float(q[j + 1]) for q in kp]), (P.get('smooth_j') or [P['smooth']] * 3)[j]) for j in range(3)]   # 77a: per-formant track smoothing
 
