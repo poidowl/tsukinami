@@ -7,7 +7,7 @@
 <meta name="twitter:title" content="一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る">
 <meta name="twitter:description" content="録音0 Byte・学習モデルなし・外部通信ゼロ。1本のホワイトノイズから4回の引き算だけで日本語の声と吐息を削り出す純JSシンセ（0原石→①谷→②角→③山→④完成をその場で聴き比べ）">
 <meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/hitofude_square.jpg">
-<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/hitofude_player.html">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/hitofude_player.html?v=2">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="480">
 <meta property="og:type" content="website">
@@ -138,7 +138,7 @@
   </header>
 
   <div class="frame-shell">
-    <iframe src="./hitofude_player.html" title="一筆彫り hitofude インタラクティブシンセ"
+    <iframe src="./hitofude_player.html?v=2" title="一筆彫り hitofude インタラクティブシンセ"
       sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
   </div>
 
@@ -160,7 +160,7 @@
 </div>
 <script>
 document.getElementById("copyUrlBtn").addEventListener("click", function () {
-  const url = "https://poidowl.github.io/tsukinami/hitofude.html?v=1";
+  const url = "https://poidowl.github.io/tsukinami/hitofude.html?v=2";
   const btn = this;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(() => {
