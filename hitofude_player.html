@@ -1778,6 +1778,8 @@ let tourTimers = [];
 let isTouring = false;
 let playStartCtxTime = 0;
 let playDurSec = 0;
+let playRangeStart = 0;
+let playRangeSpan = 1;
 let rafId = 0;
 
 function getOpts() {
@@ -1904,6 +1906,15 @@ async function ensureAudio() {
   }
 }
 
+function spokenSampleBounds(res) {
+  const N = res.samples.length;
+  const ms = res.r && res.r.moras ? res.r.moras : [];
+  if (!ms.length) return [0, N];
+  const s0 = Math.max(0, Math.min(N - 1, Math.trunc(Math.max(0, ms[0].a - 0.05) * SR)));
+  const s1 = Math.max(s0 + 1, Math.min(N, Math.trunc((ms[ms.length - 1].e + 0.08) * SR)));
+  return [s0, s1];
+}
+
 async function playCurrentStep(stepIdx) {
   stopPlayback();
   setStepUI(stepIdx);
@@ -1911,6 +1922,9 @@ async function playCurrentStep(stepIdx) {
   const res = ensureCarved();
   const arr = res.steps ? res.steps[stepIdx] : res.samples;
   if (!arr || !arr.length) return;
+
+  const [s0] = spokenSampleBounds(res);
+  const offSec = s0 / SR;
 
   const buf = audioCtx.createBuffer(1, arr.length, SR);
   buf.getChannelData(0).set(arr);
@@ -1920,7 +1934,9 @@ async function playCurrentStep(stepIdx) {
   activeNodes.push(src);
 
   playStartCtxTime = audioCtx.currentTime;
-  playDurSec = arr.length / SR;
+  playDurSec = Math.max(0.01, (arr.length - s0) / SR);
+  playRangeStart = s0 / arr.length;
+  playRangeSpan = 1 - playRangeStart;
   elPlay.classList.add("playing");
   elPlay.textContent = "■ 停止";
 
@@ -1929,7 +1945,7 @@ async function playCurrentStep(stepIdx) {
       stopPlayback();
     }
   };
-  src.start();
+  src.start(0, offSec);
   startAnimLoop();
 }
 
@@ -1946,27 +1962,24 @@ async function playStepTour() {
   elPlay.classList.add("playing");
   elPlay.textContent = "■ 停止";
 
-  // Extract a crisp ~1.05s voiced excerpt from the start of speech for steps 0..3, then full step 4
-  const m0 = res.r.moras && res.r.moras[0] ? Math.max(0, res.r.moras[0].a - 0.04) : 0.5;
-  const sStart = Math.min(res.samples.length - 1, Math.trunc(m0 * SR));
-  const sLen = Math.min(res.samples.length - sStart, Math.trunc(1.05 * SR));
-  const fade = Math.min(660, Math.floor(sLen / 6));
+  // Play the full spoken span [first mora .. last mora] across all 5 steps (0 -> ① -> ② -> ③ -> ④)
+  const N = res.samples.length;
+  const [sStart, sEnd] = spokenSampleBounds(res);
+  const sLen = sEnd - sStart;
+  const fade = Math.min(530, Math.floor(sLen / 8));
 
   let offsetSec = 0.02;
   const now = audioCtx.currentTime;
 
   for (let st = 0; st < 5; st++) {
     const full = res.steps[st];
-    let seg;
-    if (st < 4 && sLen > 2000) {
-      seg = full.slice(sStart, sStart + sLen);
+    const seg = full.slice(sStart, sEnd);
+    if (st < 4 && fade > 1) {
       for (let i = 0; i < fade; i++) {
         const w = i / fade;
         seg[i] *= w;
         seg[seg.length - 1 - i] *= w;
       }
-    } else {
-      seg = full;
     }
     const dur = seg.length / SR;
     const buf = audioCtx.createBuffer(1, seg.length, SR);
@@ -1984,13 +1997,15 @@ async function playStepTour() {
       if (!isTouring) return;
       playStartCtxTime = audioCtx.currentTime;
       playDurSec = durCopy;
+      playRangeStart = sStart / N;
+      playRangeSpan = sLen / N;
       setStepUI(stepCopy);
     }, fireMs));
 
     if (st === 4) {
       src.onended = () => { if (isTouring) stopPlayback(); };
     }
-    offsetSec += dur + 0.10;
+    offsetSec += dur + 0.14;
   }
   startAnimLoop();
 }
@@ -1999,8 +2014,8 @@ function startAnimLoop() {
   if (rafId) cancelAnimationFrame(rafId);
   const tick = () => {
     if (!audioCtx || !playDurSec) { rafId = 0; return; }
-    const prog = Math.min(1, Math.max(0, (audioCtx.currentTime - playStartCtxTime) / playDurSec));
-    drawScope(prog);
+    const localProg = Math.min(1, Math.max(0, (audioCtx.currentTime - playStartCtxTime) / playDurSec));
+    drawScope(playRangeStart + localProg * playRangeSpan);
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
