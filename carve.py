@@ -959,13 +959,22 @@ def _scale_uta_spec(spec_list, mul):
 def _build_choir_parts(lead_hz):
     return _scale_uta_spec(lead_hz, 1.0), _scale_uta_spec(lead_hz, 1.0), _scale_uta_spec(lead_hz, 1.0)
 
+def _ir_levels(KT):
+    if KT.get("tr_mode") == "40b3d25": return 0.0, 0.0, 0.0, 0.0
+    v = KT.get("tr_iroke", True)
+    base = 0.0 if (v is False or v == 0 or v == "off") else (0.22 if v == "v1" else (1.75 if v in ("meltdown", "hyper") else (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 1.0)))
+    def lv(key):
+        kv = KT.get(key, None)
+        if kv is None: return base
+        if kv is False or kv == 0: return 0.0
+        if kv is True: return base if base > 0.0 else 1.0
+        return float(kv)
+    return lv("tr_ir_glide"), lv("tr_ir_pulse"), lv("tr_ir_liss"), lv("tr_ir_silk")
+
 def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
     fpz = kotoba.FP / 1000.0; f_ref = SR / (2.0 * L["D_center"])
     tr_40b = (KT.get("tr_mode") == "40b3d25")
-    tr_iroke = bool(KT.get("tr_iroke", True)) and not tr_40b
-    tr_ir_glide = bool(KT.get("tr_ir_glide", tr_iroke)) and not tr_40b
-    tr_ir_pulse = bool(KT.get("tr_ir_pulse", tr_iroke)) and not tr_40b
-    tr_ir_liss = bool(KT.get("tr_ir_liss", tr_iroke)) and not tr_40b
+    kg, kp, kl, _ks = _ir_levels(KT)
     raw_specs = _scale_uta_spec(KT["uta_hz"], 2.0 ** (float(KT.get("uta_trance_shift_st", 3.0)) / 12.0))
     notes = []; k_ = 0; prev_hz = None; moras = r["moras"]
     for idx_m, m_ in enumerate(moras):
@@ -995,18 +1004,33 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
             prev_hz = h_f
     if not notes: return [f_ref] * n
 
-    s_tail = [0.0] * n
-    if tr_ir_glide or tr_ir_pulse or tr_ir_liss:
-        for nt in notes:
+    # 句末の有声吐息サステイン延長（休止・末尾余白へ声を残しながら溶かす）＆ s_tail エンベロープ
+    s_tail = [0.0] * n; k_tail_act = max(kg, kp, kl); last_ext_fr = 0; last_e_ext = notes[-1]["e_fr"]
+    if k_tail_act > 0.0:
+        for idx_n, nt in enumerate(notes):
             v_frames = nt["e_fr"] - nt["b_fr"]
-            if not nt["phr_end"] or v_frames * kotoba.FP < 180.0: continue
-            tail_fr = min(int(240.0 / kotoba.FP), max(6, int(0.40 * v_frames)))
-            t_start = max(nt["b_fr"] + 4, nt["e_fr"] - tail_fr); sp_t = max(1, nt["e_fr"] - t_start)
-            for t_ in range(t_start, min(n, nt["e_fr"] + 16)):
+            if not nt["phr_end"] or v_frames * kotoba.FP < 65.0: continue
+            e_orig = nt["e_fr"]; ext_fr = 0
+            if kg >= 0.45 or kp >= 0.45:
+                lim_fr = (notes[idx_n + 1]["a_fr"] - 3) if idx_n + 1 < len(notes) else (n - 6)
+                ext_fr = max(0, min(lim_fr - e_orig, int(250.0 * max(kg, kp) / kotoba.FP)))
+                if ext_fr > 2:
+                    t_ref = max(nt["b_fr"], min(n - 1, e_orig - 5)); l_ref = r["loud"][t_ref]
+                    for t_ in range(t_ref, e_orig + ext_fr):
+                        u_ex = max(0.0, (t_ - t_ref) / max(1, e_orig + ext_fr - t_ref))
+                        r["voiced"][t_] = True
+                        r["loud"][t_] = max(r["loud"][t_], l_ref + 0.85 * min(1.4, max(kg, kp)) * math.sin(math.pi * min(1.0, u_ex * 1.6)) - 12.5 * (u_ex ** 1.55))
+                        for j_ in (1, 2, 3): r["F%d" % j_][t_] = r["F%d" % j_][t_ref]
+                    nt["e_fr"] = e_orig + ext_fr
+            if idx_n == len(notes) - 1: last_ext_fr = ext_fr; last_e_ext = nt["e_fr"]
+            tail_ms = 280.0 * min(1.45, 0.55 + 0.65 * k_tail_act)
+            tail_fr = min(int(tail_ms / kotoba.FP), max(5, int(0.58 * (e_orig - nt["b_fr"]))))
+            t_start = max(nt["b_fr"] + 2, e_orig - tail_fr); t_end = min(n, nt["e_fr"] + 8); sp_t = max(1, t_end - t_start)
+            for t_ in range(t_start, t_end):
                 u_t = min(1.0, (t_ - t_start) / sp_t); s_tail[t_] = max(s_tail[t_], u_t * u_t * (3.0 - 2.0 * u_t))
-    r["s_tail"] = s_tail
+    r["s_tail"] = s_tail; r["tail_ext_ms"] = last_ext_fr * kotoba.FP; r["last_e_fr"] = last_e_ext
 
-    # 第2層①：セント領域での音程軌道（S字最小躍度・電子色気時は母音間粘性ヒステリシス u^1.58）
+    # 第2層①：音程軌道（Overdrive時は子音越え粘液スラー＋強ヒステリシス u^(1+1.8*kg)）
     st_track = [notes[0]["st"]] * n
     for nt in notes:
         for t_ in range(nt["a_fr"], n): st_track[t_] = nt["st"]
@@ -1015,34 +1039,45 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
         p_nt, c_nt = notes[idx - 1], notes[idx]; st0, st1 = p_nt["st"], c_nt["st"]
         if abs(st1 - st0) < 1e-4 or c_nt["tie"]: continue
         if c_nt["melisma"]:
-            hw = max(1, int(0.5 * float(c_nt["port_ms"] or (44.0 if tr_ir_glide else 34.0)) / kotoba.FP)); t0, t1 = max(p_nt["b_fr"], c_nt["b_fr"] - hw), min(c_nt["e_fr"], c_nt["b_fr"] + hw)
+            p_m = float(c_nt["port_ms"] or (34.0 + 110.0 * kg))
+            hw = max(1, int(0.5 * p_m / kotoba.FP)); t0, t1 = max(p_nt["b_fr"], c_nt["b_fr"] - hw), min(c_nt["e_fr"], c_nt["b_fr"] + hw)
         elif c_nt["has_cons"] and c_nt["b_fr"] > c_nt["a_fr"]:
-            p_ms = float(c_nt["port_ms"] or min(26.0, base_port_ms * 0.6)); t0 = c_nt["a_fr"]; t1 = min(c_nt["e_fr"], max(c_nt["b_fr"] + 2, t0 + max(2, int(p_ms / kotoba.FP))))
+            p_ms = float(c_nt["port_ms"] or min(26.0, base_port_ms * 0.6))
+            extra_v = int(72.0 * kg / kotoba.FP) if kg >= 0.45 else 0
+            t0 = max(p_nt["b_fr"], c_nt["a_fr"] - int(22.0 * kg / kotoba.FP)) if kg >= 0.45 else c_nt["a_fr"]
+            t1 = min(c_nt["e_fr"], max(c_nt["b_fr"] + 2 + extra_v, t0 + max(2, int(p_ms / kotoba.FP))))
         else:
-            hw = max(2, int(0.5 * float(c_nt["port_ms"] or min(38.0 if tr_ir_glide else 30.0, base_port_ms)) / kotoba.FP)); t0, t1 = max(p_nt["b_fr"], c_nt["b_fr"] - hw), min(c_nt["e_fr"], c_nt["b_fr"] + hw)
-        sp_ = max(1, t1 - t0); use_hyst = tr_ir_glide and not c_nt["has_cons"]
+            p_v = float(c_nt["port_ms"] or (30.0 + 115.0 * kg if kg > 0.0 else min(30.0, base_port_ms)))
+            hw = max(2, int(0.5 * p_v / kotoba.FP)); t0, t1 = max(p_nt["b_fr"], c_nt["b_fr"] - hw), min(c_nt["e_fr"], c_nt["b_fr"] + hw)
+        sp_ = max(1, t1 - t0); use_hyst = (kg > 0.0) and (kg >= 0.45 or not c_nt["has_cons"])
+        h_exp = 1.0 + 1.85 * kg
         for t_ in range(t0, min(n, t1)):
-            u = (t_ - t0) / sp_; uw = (u ** 1.58) if use_hyst else u
+            u = (t_ - t0) / sp_; uw = (u ** h_exp) if use_hyst else u
             st_track[t_] = st0 + (st1 - st0) * (uw * uw * (3.0 - 2.0 * uw))
 
-    # 第2層②：音の入りのしゃくり＋下降音程の粘性ため息（16ms収束）＋句末マイクロ吐息ドロップ
+    # 第2層②：深い粘着しゃくり＋下降音程の溜め吐息＋句末大フォール（-2.9〜-5.1半音）
     if KT.get("uta_scoop"):
         base_sc, base_sm = KT["uta_scoop"]
         for idx, nt in enumerate(notes):
             if nt["tie"] or nt["melisma"]: continue
-            if nt["reattack"]: sc_u, sm_u = base_sc * 0.42, max(18.0, base_sm * 0.65)
-            elif idx == 0 or (nt["st"] - notes[idx - 1]["st"]) > 1e-3: sc_u, sm_u = min(float(base_sc) * 0.65, 0.85), min(float(base_sm), 32.0)
-            elif tr_ir_glide and idx > 0 and (notes[idx - 1]["st"] - nt["st"]) > 0.5:
-                sc_u, sm_u = -min(0.20, 0.09 * (notes[idx - 1]["st"] - nt["st"])), 16.0
+            if nt["reattack"]:
+                sc_u = base_sc * 0.42 + 0.95 * kg; sm_u = max(18.0, base_sm * 0.65) + 26.0 * kg
+            elif idx == 0 or (nt["st"] - notes[idx - 1]["st"]) > 1e-3:
+                sc_u = min(float(base_sc) * 0.65, 0.85) + 1.65 * kg; sm_u = min(float(base_sm), 32.0) + 40.0 * kg
+            elif kg > 0.0 and idx > 0 and (notes[idx - 1]["st"] - nt["st"]) > 0.5:
+                diff_st = notes[idx - 1]["st"] - nt["st"]
+                sc_u = -min(3.4, (0.09 * diff_st) if kg < 0.4 else (0.55 + 0.90 * kg) * (0.45 + 0.22 * diff_st))
+                sm_u = 16.0 if kg < 0.4 else (34.0 + 26.0 * kg)
             else: continue
             a_ = nt["b_fr"] if nt["has_cons"] else nt["a_fr"]
             for t_ in range(a_, min(nt["e_fr"], min(n, a_ + int(4.5 * sm_u / kotoba.FP)))):
                 st_track[t_] -= sc_u * math.exp(-(t_ - a_) * kotoba.FP / sm_u)
-    if tr_ir_glide:
+    if kg > 0.0:
+        drop_st = (0.24 / 0.22 * kg) if kg < 0.4 else (2.90 * kg)
         for t_ in range(n):
-            if s_tail[t_] > 0.0: st_track[t_] -= 0.24 * (s_tail[t_] ** 1.4)
+            if s_tail[t_] > 0.0: st_track[t_] -= drop_st * (s_tail[t_] ** 1.25)
 
-    # 第2層③：天邪鬼ビブラート＋90°直交リサージュ倍音軌道（vib_quad）
+    # 第2層③：酩酊スロービブラート＋90°直交＆低速うねりリサージュ軌道（vib_quad）
     tr_art_dyn = bool(KT.get("tr_art_dyn", False)); tr_harm_am = bool(KT.get("tr_harm_am", False))
     tr_vib_boost = bool(KT.get("tr_vib_boost", True)); tr_f_lock = bool(KT.get("tr_f_lock", True))
     tr_f_shift = bool(KT.get("tr_f_shift", tr_f_lock)); tr_sub_cut = bool(KT.get("tr_sub_cut", True))
@@ -1050,8 +1085,12 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
     raw_ = [0.0] * n; vib_q = [0.0] * n
     if KT.get("uta_vib"):
         vr_, vd_, vl_, vu_ = KT["uta_vib"]
+        vr_use = float(vr_) / (1.0 + 0.26 * kg) if kg >= 0.45 else float(vr_)
         vd_use = min(float(vd_) * 1.40, 44.0) if tr_vib_boost else min(float(vd_), 16.0)
-        vl_, vu_ = max(float(vl_), 180.0), max(float(vu_), 240.0); wv_ = max(3, int(round(1000.0 / kotoba.FP / vr_ / 2.0)))
+        if kg >= 0.45: vd_use = min(125.0, vd_use * (1.0 + 0.95 * kg))
+        vl_ = max(90.0, max(float(vl_), 180.0) * (1.0 - 0.42 * min(1.4, kg))) if kg >= 0.45 else max(float(vl_), 180.0)
+        vu_ = max(130.0, max(float(vu_), 240.0) * (1.0 - 0.30 * min(1.4, kg))) if kg >= 0.45 else max(float(vu_), 240.0)
+        wv_ = max(3, int(round(1000.0 / kotoba.FP / vr_use / 2.0)))
         vw_ = arakezuri(_comb(noise(random.Random(rc["seed"] + 33), n + 40 * wv_), [wv_] * (n + 40 * wv_), KT.get("uta_vib_g", 0.96)), max(2, wv_ // 2), 2)[40 * wv_:40 * wv_ + n]
         rm_ = (sum(v * v for v in vw_) / n) ** 0.5 or 1.0; vw_ = [max(-1.5, min(1.5, v / rm_ / 1.414)) for v in vw_]
         t0_sec = notes[0]["b_fr"] * fpz
@@ -1061,13 +1100,14 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
             for t_ in range(nt["a_fr"], min(n, nt["e_fr"])):
                 el_ = t_ * fpz - t0_sec - vl_ / 1000.0
                 if el_ > 0.0:
-                    raw_[t_] = min(1.0, el_ / (vu_ / 1000.0)) * vw_[t_] * ((1.0 - 0.62 * s_tail[t_]) if tr_ir_glide else 1.0)
+                    raw_[t_] = min(1.0, el_ / (vu_ / 1000.0)) * vw_[t_] * ((1.0 - 0.68 * s_tail[t_]) if kg > 0.0 else 1.0)
         for t_ in range(n): st_track[t_] += (vd_use / 100.0) * raw_[t_]
-        if tr_ir_liss:
-            q_lag = max(2, int(round(1000.0 / kotoba.FP / vr_ / 4.0))); ws_ = max(8, int(round(1000.0 / kotoba.FP / 3.1 / 2.0)))
-            sw_ = arakezuri(_comb(noise(random.Random(rc["seed"] + 37), n + 30 * ws_), [ws_] * (n + 30 * ws_), 0.92), max(2, ws_ // 2), 2)[30 * ws_:30 * ws_ + n]
-            rms_s = (sum(v * v for v in sw_) / n) ** 0.5 or 1.0; sw_ = [max(-1.3, min(1.3, v / rms_s / 1.414)) for v in sw_]
-            vib_q = [raw_[max(0, t_ - q_lag)] + 0.35 * (1.0 - min(1.0, abs(raw_[t_]))) * sw_[t_] * (1.0 - s_tail[t_]) for t_ in range(n)]
+        if kl > 0.0:
+            q_lag = max(2, int(round(1000.0 / kotoba.FP / vr_use / 4.0))); ws_ = max(8, int(round(1000.0 / kotoba.FP / 2.5 / 2.0)))
+            sw_ = arakezuri(_comb(noise(random.Random(rc["seed"] + 37), n + 30 * ws_), [ws_] * (n + 30 * ws_), 0.93), max(2, ws_ // 2), 2)[30 * ws_:30 * ws_ + n]
+            rms_s = (sum(v * v for v in sw_) / n) ** 0.5 or 1.0; sw_ = [max(-1.4, min(1.4, v / rms_s / 1.414)) for v in sw_]
+            sw_k = 0.35 if kl < 0.4 else min(1.15, 0.72 * kl)
+            vib_q = [raw_[max(0, t_ - q_lag)] + sw_k * (1.0 - 0.55 * min(1.0, abs(raw_[t_]))) * sw_[t_] * (1.0 - 0.5 * s_tail[t_]) for t_ in range(n)]
     r["vib_raw"] = raw_; r["vib_quad"] = vib_q; fr_ = [f_ref * (2.0 ** (s / 12.0)) for s in st_track]
 
     # 第2層④：母音内部フォルマント軌道制御（オプション実験用 tr_art_dyn）
@@ -1101,21 +1141,26 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
         for j in range(3):
             sm_df = kotoba.smooth1(f_delta[j], 20); k_ = "F%d" % (j + 1); r[k_] = [f_orig[j][t_] + sm_df[t_] for t_ in range(n)]
 
-    # 第2層⑤：運動としてのフォルマント・倍音収束（c_conv：位置・方向・速度・予兆 ＋ 電子色気 F3 サイレンロック）
+    # 第2層⑤：運動収束 c_conv ＋ 濡れ唇の「ウ→ア→ウ」ワウ開閉共鳴 ＆ F3 サイレンロック
     v_map = (["a"] * n) if tr_40b else ([None] * n); nas_cm = [0.0] * n; cons_cm = [0.0] * n
     for idx_m, m_ in enumerate(r["moras"]):
         if m_.get("kind") == "CV" and m_.get("v"):
             i_a, i_b, i_e = max(0, int(m_["a"] / fpz)), max(0, int(m_["b"] / fpz)), min(n, int(m_["e"] / fpz) + 1)
-            for t_ in range(i_a, i_e): v_map[t_] = m_["v"]
+            nxt_m = r["moras"][idx_m + 1] if idx_m + 1 < len(r["moras"]) else None
+            is_final = (nxt_m is None) or all(m2.get("kind") == "pau" for m2 in r["moras"][idx_m + 1:])
+            is_pau_end = is_final or (nxt_m is not None and nxt_m.get("kind") == "pau")
+            i_fill = i_e
+            if is_pau_end and k_tail_act >= 0.45:
+                lim_v = int(nxt_m["a"] / fpz) if (nxt_m is not None and nxt_m.get("kind") != "pau") else n
+                i_fill = min(n, max(i_e, min(lim_v, i_e + int(250.0 * max(kg, kp) / kotoba.FP))))
+            for t_ in range(i_a, i_fill): v_map[t_] = m_["v"]
             if not tr_40b:
-                nxt_m = r["moras"][idx_m + 1] if idx_m + 1 < len(r["moras"]) else None
-                is_final = (nxt_m is None) or all(m2.get("kind") == "pau" for m2 in r["moras"][idx_m + 1:])
                 if is_final or (nxt_m is not None and nxt_m.get("kind") in ("pau", "N", "Q")):
-                    tm_c = min(n - 1, (i_b + i_e) // 2); hold_e = min(n, i_e + (4 if is_final else 0))
+                    tm_c = min(n - 1, (i_b + i_e) // 2); hold_e = min(n, max(i_fill, i_e + (4 if is_final else 0)))
                     for j in (0, 1, 2):
                         k_ = "F%d" % (j + 1)
                         for t_ in range(tm_c, hold_e):
-                            if j > 0 or is_final: f_orig[j][t_] = f_orig[j][tm_c]; r[k_][t_] = f_orig[j][tm_c]
+                            if j > 0 or is_final or is_pau_end: f_orig[j][t_] = f_orig[j][tm_c]; r[k_][t_] = f_orig[j][tm_c]
         if m_.get("c"):
             for t_ in range(max(0, int((m_["a"] - 0.015) / fpz)), min(n, int((m_["b"] + 0.015) / fpz) + 1)): cons_cm[t_] = 1.0
         if m_.get("c") in ("m", "n"):
@@ -1131,18 +1176,20 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
         c_conv = [0.0] * n
         for idx_m, m_ in enumerate(r["moras"]):
             if m_.get("kind") != "CV" or not m_.get("v"): continue
-            b_t, e_t = float(m_["b"]), float(m_["e"]); tau_c = min(0.062, max(0.036, 0.22 * max(0.06, e_t - b_t)))
+            b_t, e_t = float(m_["b"]), float(m_["e"])
+            tau_c = min(0.115, max(0.055, 0.34 * max(0.06, e_t - b_t))) if kl >= 0.45 else min(0.062, max(0.036, 0.22 * max(0.06, e_t - b_t)))
             nxt_m = r["moras"][idx_m + 1] if idx_m + 1 < len(r["moras"]) else None
             has_adj_v = nxt_m is not None and nxt_m.get("kind") == "CV" and bool(nxt_m.get("v"))
             if has_adj_v:
                 t_a0 = max(0, int((e_t - 0.065) / fpz)); t_b1 = min(n, int((nxt_m["b"] + 0.030) / fpz) + 1)
                 for t_ in range(t_a0, t_b1): w_ant[t_] = 1.0
-            for t_ in range(max(0, int(m_["a"] / fpz)), min(n, int(e_t / fpz) + 1)):
+            e_fill = n * fpz if (nxt_m is None and k_tail_act >= 0.45) else e_t
+            for t_ in range(max(0, int(m_["a"] / fpz)), min(n, int(e_fill / fpz) + 1)):
                 t_sec = t_ * fpz
                 if t_sec <= b_t: c_conv[t_] = 0.14
                 else:
                     c_in = 0.14 + 0.86 * (1.0 - math.exp(-(t_sec - b_t) / tau_c)); rem = e_t - t_sec
-                    if rem < 0.065 and has_adj_v:
+                    if 0.0 < rem < 0.065 and has_adj_v:
                         u_rel = max(0.0, min(1.0, (0.065 - rem) / 0.065)); s_rel = u_rel * u_rel * (3.0 - 2.0 * u_rel)
                         c_in = 0.14 + (c_in - 0.14) * (1.0 - 0.85 * s_rel)
                     c_conv[t_] = c_in
@@ -1168,25 +1215,34 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
                 _, _, _, f2_round = COPERTURA.get(v_c, (450.0, 1.04, 0.75, 0.97))
                 f0_t = fr_[t_]; w_v = 1.0 - cons_cm[t_]; w_kin = w_v * c_conv[t_]
                 f1_0, f2_0, f3_0 = r["F1"][t_], r["F2"][t_], r["F3"][t_]
+                if kl >= 0.45:
+                    # 深い大人の声道シフト＋音節ごとの「ウ→ア→ウ」濡れ唇ワウ開閉
+                    w_pout = max(0.0, 1.0 - c_conv[t_]); st_w = s_tail[t_]
+                    s1 = (1.0 - min(0.18, 0.08 * kl)) * (1.0 - min(0.55, 0.34 * kl) * w_pout) * (1.0 - min(0.60, 0.38 * kl) * st_w) * (1.0 + 0.07 * kl * c_conv[t_] * (1.0 - st_w))
+                    s2 = (1.0 - min(0.20, 0.10 * kl)) * (1.0 - min(0.50, 0.30 * kl) * w_pout) * (1.0 - min(0.54, 0.34 * kl) * st_w) * (1.0 + 0.09 * kl * c_conv[t_] * (1.0 - st_w))
+                    s3 = (1.0 - min(0.18, 0.08 * kl)) * (1.0 - min(0.30, 0.18 * kl) * st_w)
+                    f1_t = f1_0 * (1.0 + w_v * (s1 - 1.0)); f2_t = f2_0 * (1.0 + w_v * (s2 - 1.0)); f3_t = f3_0 * (1.0 + w_v * (s3 - 1.0))
+                else:
+                    f1_t, f2_t, f3_t = f1_0, f2_0, f3_0
                 f_sub_min = (0.96 * f0_t * nas_cm[t_]) if tr_sub_cut else 0.0
-                f1_eff = max(f1_0, f_sub_min); df_sub = f1_eff - f1_0
+                f1_eff = max(f1_t, f_sub_min)
                 if (v_c in ("i", "u") and f0_t >= 330.0) or (v_c == "o" and f0_t >= 380.0) or f1_eff < 1.35 * f0_t:
                     cand_f1, k1 = f0_t * 1.03, 0.88
                 else:
                     m_h = max(1, int(round(f1_eff / f0_t))); cand_f1, k1 = max(f1_eff * 0.78, min(f1_eff * 1.22, m_h * f0_t * 1.01)), 0.86
-                df1_lock[t_] = df_sub + k1 * w_kin * (cand_f1 - f1_eff)
+                df1_lock[t_] = (f1_eff - f1_0) + k1 * w_kin * (cand_f1 - f1_eff)
                 w_cov = min(1.0, (f0_t - 440.0) / 320.0) if f0_t > 440.0 else 0.0
-                f2_base = f2_0 * (1.0 - w_cov * (1.0 - f2_round))
+                f2_base = f2_t * (1.0 - w_cov * (1.0 - f2_round))
                 k_h = max(2, int(round(f2_base / f0_t))); cand_f2 = max(f2_base * 0.82, min(f2_base * 1.15, k_h * f0_t))
-                df2_lock[t_] = w_kin * ((f2_base - f2_0) + 0.82 * (cand_f2 - f2_base))
-                if tr_ir_liss:
-                    k3_h = max(4, int(round(f3_0 / f0_t)))
-                    df3_lock[t_] = 0.72 * w_kin * (max(f3_0 * 0.88, min(f3_0 * 1.12, k3_h * f0_t)) - f3_0)
+                df2_lock[t_] = (f2_t - f2_0) + w_kin * ((f2_base - f2_t) + 0.82 * (cand_f2 - f2_base))
+                if kl > 0.0:
+                    k3_h = max(4, int(round(f3_t / f0_t)))
+                    df3_lock[t_] = (f3_t - f3_0) + 0.72 * w_kin * (max(f3_0 * 0.80, min(f3_0 * 1.15, k3_h * f0_t)) - f3_t)
             elif t_ > 0:
                 df1_lock[t_] = df1_lock[t_ - 1] * 0.80; df2_lock[t_] = df2_lock[t_ - 1] * 0.80; df3_lock[t_] = df3_lock[t_ - 1] * 0.80
         sm_w = 20 if tr_40b else 14
         sm_df1, sm_df2 = kotoba.smooth1(df1_lock, sm_w), kotoba.smooth1(df2_lock, sm_w)
-        sm_df3 = kotoba.smooth1(df3_lock, sm_w) if tr_ir_liss else None
+        sm_df3 = kotoba.smooth1(df3_lock, sm_w) if kl > 0.0 else None
         r["df1_lock"], r["df2_lock"] = sm_df1, sm_df2
         for t_ in range(n):
             r["F1"][t_] += sm_df1[t_]; r["F2"][t_] += sm_df2[t_]
@@ -1201,7 +1257,11 @@ def _trance_singing_layers(r, n, KT, L, rc, SR, cm=None):
         for t_ in range(n):
             if r["voiced"][t_] and fr_[t_] > 0.0:
                 for j in range(3): r["F%d" % (j + 1)][t_] *= (1.0 + art_drift_scale * art_drifts[j][t_] + vib_mod_scales[j] * raw_[t_])
-                if tr_ir_liss: r["F3"][t_] *= (1.0 + 0.018 * vib_q[t_])
+                if kl > 0.0:
+                    if kl >= 0.45:
+                        r["F1"][t_] = max(220.0, r["F1"][t_] * (1.0 - 0.045 * kl * vib_q[t_]))
+                        r["F2"][t_] = max(550.0, r["F2"][t_] * (1.0 + 0.085 * kl * vib_q[t_]))
+                    r["F3"][t_] *= (1.0 + (0.018 if kl < 0.4 else 0.11 * kl) * vib_q[t_])
     elif tr_art_dyn or tr_harm_am:
         for t_ in range(n):
             v_c = v_map[t_] or "a"
@@ -1231,7 +1291,9 @@ def _make_choir(rc):
     sh_mul = 2.0 ** (float(base_kt.get("uta_trance_shift_st", 3.0)) / 12.0)
     if base_kt.get("uta_hz"): lead_hz = _scale_uta_spec(base_kt["uta_hz"], sh_mul)
     else:
-        f0_rule = accent.f0_rule(r0["moras"], r0["n"], None, **dict(accent.CUTE, reg=392.0, **(base_kt.get("accent_kw") or {})))
+        kg_c, _, _, _ = _ir_levels(base_kt)
+        reg_c = 392.0 * (2.0 ** (-2.2 * kg_c / 12.0) if kg_c >= 0.45 else 1.0)
+        f0_rule = accent.f0_rule(r0["moras"], r0["n"], None, **dict(accent.CUTE, reg=reg_c, **(base_kt.get("accent_kw") or {})))
         fpz = kotoba.FP / 1000.0; lead_hz = [round(float(f0_rule[min(len(f0_rule) - 1, max(0, int(0.5 * (m["b"] + m["e"]) / fpz)))]), 2) for m in cv_moras]
     hz_v2, hz_v3, hz_pad = _build_choir_parts(lead_hz)
     vib_u = base_kt.get("uta_vib") or [5.4, 16, 180, 240]; sc_u = base_kt.get("uta_scoop") or [1.2, 35]
@@ -1298,7 +1360,9 @@ def make_text(rc):
         fs = fs if isinstance(fs, (list, tuple)) else [fs] * 3
         for j in range(3): r["F%d" % (j + 1)] = [min(f * fs[j], 9000.0) for f in r["F%d" % (j + 1)]]
     if is_trance and not KT.get("uta_hz"):
-        f0_tr = accent.f0_rule(r["moras"], n, None, **dict(accent.CUTE, reg=SR / (2 * L["D_center"]) * 1.12, **(KT.get("accent_kw") or {})))
+        kg_sp, _, _, _ = _ir_levels(KT)
+        reg_sp = SR / (2 * L["D_center"]) * 1.12 * (2.0 ** (-2.2 * kg_sp / 12.0) if kg_sp >= 0.45 else 1.0)
+        f0_tr = accent.f0_rule(r["moras"], n, None, **dict(accent.CUTE, reg=reg_sp, **(KT.get("accent_kw") or {})))
         fpz_ = kotoba.FP / 1000; uhz_ = [round(float(f0_tr[min(n - 1, max(0, int(0.5 * (m_["b"] + m_["e"]) / fpz_)))]), 2) for m_ in r["moras"] if m_.get("kind") != "pau"]
         if uhz_:
             KT["uta_hz"] = uhz_; KT.setdefault("uta_trance_shift_st", 0.0); KT.setdefault("uta_vib", [5.4, 16, 180, 240]); KT.setdefault("uta_scoop", [1.2, 35])
@@ -1358,11 +1422,9 @@ def make_text(rc):
     K = dict(rc["kugiri"]); r_k = random.Random(rc["seed"] + 6); Gs = K["tsubu"]
     _sx = KT.get("seedx") or {}            # 103: optional, replace the random stream of the one grain (its fixed spectrum colours the whole voice)
     if "grain" in _sx: r_k = random.Random(_sx["grain"])
+    sub_fry_norm = None
     if is_trance:
-        tr_40b = (KT.get("tr_mode") == "40b3d25"); tr_iroke = bool(KT.get("tr_iroke", True)) and not tr_40b
-        tr_ir_pulse = bool(KT.get("tr_ir_pulse", tr_iroke)) and not tr_40b
-        tr_ir_liss = bool(KT.get("tr_ir_liss", tr_iroke)) and not tr_40b
-        tr_ir_silk = bool(KT.get("tr_ir_silk", tr_iroke)) and not tr_40b
+        _kg, kp, kl, ks = _ir_levels(KT)
         tr_iki_mid = bool(KT.get("tr_iki_mid", False)); tr_grain2 = bool(KT.get("tr_grain2", tr_iki_mid))
         tr_yure_up = bool(KT.get("tr_yure_up", tr_iki_mid)); tr_iki_noise = bool(KT.get("tr_iki_noise", tr_iki_mid))
         tr_sub_cut = bool(KT.get("tr_sub_cut", True)); tr_harm_am = bool(KT.get("tr_harm_am", False)); tr_piri_notch = bool(KT.get("tr_piri_notch", False))
@@ -1370,34 +1432,58 @@ def make_text(rc):
         grain = arakezuri(noise(r_k, Gs * 3), 4, 3)[Gs:2 * Gs]; gm = sum(grain) / Gs; grain = kiridashi([v - gm for v in grain], 0, Gs, Gs // 4, Gs // 2, 1.5)
         grain2 = arakezuri(noise(r_k, Gs * 3), 5, 3)[Gs:2 * Gs]; gm2 = sum(grain2) / Gs; grain2 = kiridashi([v - gm2 for v in grain2], 0, Gs, Gs // 4, Gs // 2, 1.5)
         g1_r = (sum(v * v for v in grain) / Gs) ** 0.5 or 1.0; g2_r = (sum(v * v for v in grain2) / Gs) ** 0.5 or 1.0; grain2 = [v * (g1_r / g2_r) for v in grain2]
-        if tr_ir_pulse:
-            gv = _heikin(_heikin(grain, [13] * Gs), [9] * Gs); gvm = sum(gv) / Gs; gv = [v - gvm for v in gv]
+        use_fry = (kp >= 0.45)
+        if kp > 0.0:
+            w_gv1, w_gv2 = (17, 13) if use_fry else (13, 9)
+            gv = _heikin(_heikin(grain, [w_gv1] * Gs), [w_gv2] * Gs); gvm = sum(gv) / Gs; gv = [v - gvm for v in gv]
             gv_r = (sum(v * v for v in gv) / Gs) ** 0.5 or 1.0; grain_velv = [v * (g1_r / gv_r) for v in gv]
             s_tail_g = r.get("s_tail") or [0.0] * n; c_cv_g = r.get("c_conv") or [1.0] * n
-            velvS = _per_sample([min(0.90, 0.45 * (1.0 - c_cv_g[t]) + 0.86 * s_tail_g[t]) for t in range(n)], N)
+            if use_fry:
+                velvS = _per_sample([min(0.96, (0.42 + 0.36 * (1.0 - c_cv_g[t]) + 0.54 * s_tail_g[t]) * min(1.35, kp)) for t in range(n)], N)
+                sub_fr = [min(1.40, kp * (0.26 * (1.0 - c_cv_g[t]) + 0.92 * s_tail_g[t]) * (1.0 - 0.85 * cm[t])) for t in range(n)]
+                subS = _per_sample(sub_fr, N); y_sub = [0.0] * N
+            else:
+                velvS = _per_sample([min(0.90, (0.45 * (1.0 - c_cv_g[t]) + 0.86 * s_tail_g[t]) * (kp / 0.22)) for t in range(n)], N)
             tailS = _per_sample(s_tail_g, N)
-        y = [0.0] * N; pos = 0.0; r_pulse = random.Random(rc["seed"] + 16); g_mix = 0.0
+        y = [0.0] * N; pos = 0.0; r_pulse = random.Random(rc["seed"] + 16); g_mix = 0.0; p_cnt = 0
         yure_tr = min(float(K.get("yure", 0.0028)), 0.0032) if tr_yure_up else min(float(K.get("yure", 0.0018)), 0.0022)
         shim_tr = min(float(K.get("shimmer", 0.045)), 0.050) if tr_yure_up else min(float(K.get("shimmer", 0.032)), 0.038)
         while int(pos) < N:
-            idx = int(pos); frac = pos - idx
+            idx = int(pos); frac = pos - idx; idx_c = min(idx, N - 1)
             if tr_grain2: g_mix = max(-0.28, min(0.28, 0.88 * g_mix + r_pulse.uniform(-0.11, 0.11)))
-            wv_p = velvS[min(idx, N - 1)] if tr_ir_pulse else 0.0
-            amp_g = 1.0 + r_pulse.uniform(-1.0, 1.0) * shim_tr; w0, w1 = (1.0 - frac) * amp_g, frac * amp_g
+            wv_p = velvS[idx_c] if kp > 0.0 else 0.0
+            p_sgn = 1.0 if (p_cnt & 1) == 0 else -1.0; p_cnt += 1
+            sb_w = subS[idx_c] if use_fry else 0.0
+            amp_g = (1.0 + r_pulse.uniform(-1.0, 1.0) * shim_tr) * (1.0 + 0.24 * min(1.4, kp) * sb_w * p_sgn if use_fry else 1.0)
+            w0, w1 = (1.0 - frac) * amp_g, frac * amp_g
+            ws0, ws1 = (1.0 - frac) * p_sgn * sb_w, frac * p_sgn * sb_w
             for j in range(Gs):
                 g_v = ((1.0 - abs(g_mix)) * grain[j] + g_mix * grain2[j]) if tr_grain2 else grain[j]
                 if wv_p > 0.0: g_v = (1.0 - wv_p) * g_v + wv_p * grain_velv[j]
                 if idx + j < N: y[idx + j] += g_v * w0
                 if idx + j + 1 < N: y[idx + j + 1] += g_v * w1
-            pos += max(2.0, PER[min(idx, N - 1)] * (1.0 + r_pulse.uniform(-1.0, 1.0) * yure_tr))
+                if sb_w > 0.0:
+                    gv_j = grain_velv[j]
+                    if idx + j < N: y_sub[idx + j] += gv_j * ws0
+                    if idx + j + 1 < N: y_sub[idx + j + 1] += gv_j * ws1
+            pos += max(2.0, PER[idx_c] * (1.0 + r_pulse.uniform(-1.0, 1.0) * yure_tr))
         line = kubire_t(kubire_n(arakezuri(y, 2, 2), D, [0.45 if tr_yure_up else 0.46] * N, L["m"], 6), PER, [-0.12 if tr_yure_up else -0.14] * N, 2)
         line = karuku(line, min(int(L["karuku_w"]), 105) if tr_sub_cut else L["karuku_w"])
-        if tr_ir_pulse:
-            line = [line[i] - 0.48 * (1.0 - 0.78 * tailS[i]) * (1.0 - cmS[i]) * line[i - 1] if i else line[i] for i in range(N)]
+        if kp > 0.0:
+            if use_fry:
+                # 周期2*PER（0.5*f0, 1.5*f0 半整数サブ倍音のみを立て、整数倍音に零点を置く正帰還くびれ）による無雑音エッジボイスうなり
+                sub_c = karuku(arakezuri(kubire_t(arakezuri(y_sub, 4, 2), PER, [min(0.76, 0.58 + 0.08 * kp)] * N, 2), 14, 2), 155)
+                sr_ = rms(sub_c) or 1.0; lr_pre = rms(line) or 1.0
+                sub_fry_norm = [v / sr_ for v in sub_c]
+                k_sub_l = 0.45 * min(1.6, kp) * (lr_pre / sr_)
+                line = [line[i] + k_sub_l * sub_c[i] for i in range(N)]
+                line = [line[i] - 0.48 * max(0.08, 1.0 - 0.42 * min(1.4, kp) - 0.55 * tailS[i]) * (1.0 - cmS[i]) * line[i - 1] if i else line[i] for i in range(N)]
+            else:
+                line = [line[i] - 0.48 * (1.0 - 0.78 * tailS[i]) * (1.0 - cmS[i]) * line[i - 1] if i else line[i] for i in range(N)]
         else:
             line = [line[i] - 0.48 * (1.0 - cmS[i]) * line[i - 1] if i else line[i] for i in range(N)]
     else:
-        tr_sub_cut = tr_iki_noise = tr_ir_pulse = tr_ir_liss = tr_ir_silk = False
+        tr_sub_cut = tr_iki_noise = False; kp = kl = ks = 0.0
         grain = arakezuri(noise(r_k, Gs * 3), K["ara"], 3)[Gs:2 * Gs]; gm = sum(grain) / Gs; grain = [v - gm for v in grain]
         grain = kiridashi(grain, 0, Gs, Gs // 4, Gs // 2, 1.5)
         y = [0.0] * N; i = 0
@@ -1436,45 +1522,61 @@ def make_text(rc):
             f0_tr_e = r.get("f0_tr") or [SR / PER[min(N - 1, int(t * N / n))] for t in range(n)]
             c_cv = r.get("c_conv") or [1.0] * n
             tr_eff_conv = bool(KT.get("tr_eff_conv", KT.get("tr_c_conv", True))) and (KT.get("tr_mode") != "40b3d25")
-            j_list = (0, 1, 2) if tr_ir_liss else (0, 1)
+            j_list = (0, 1, 2) if kl > 0.0 else (0, 1)
+            g_e3 = 0.28 if kl < 0.4 else min(0.85, 0.48 * kl)
             for t_ in range(n):
                 fk = max(120.0, f0_tr_e[t_])
                 for j_ in j_list:
                     fj = r["F%d" % (j_ + 1)][t_]; dist = abs(fj / fk - round(fj / fk))
                     w_cm = (1.0 - cm[t_]) if j_ == 0 else (1.0 - 0.35 * cm[t_])
                     w_cv = (1.0 if j_ == 0 else c_cv[t_]) if tr_eff_conv else 1.0
-                    eff = 1.0 + (0.28 * max(0.0, 1.0 - 8.0 * dist * dist) if j_ == 2 else 0.36 * (1.0 - 8.0 * dist * dist)) * w_cm * w_cv
+                    eff = 1.0 + (g_e3 * max(0.0, 1.0 - 8.0 * dist * dist) if j_ == 2 else 0.36 * (1.0 - 8.0 * dist * dist)) * w_cm * w_cv
                     Ej[j_][t_] *= eff * eff
     else: Ef, Ej, Eb = _world_energy(r, KT["gk"])
     lo = [r["loud"][t] + (r["dl"][t] if KT["use_dl"] else 0.0) for t in range(n)]
     amp_base = [math.exp(v / 2) for v in lo]; amp = list(amp_base)
     if is_trance:
-        vib_raw = r.get("vib_raw") or [0.0] * n; am_k = 0.065 if tr_harm_am else 0.032
+        vib_raw = r.get("vib_raw") or [0.0] * n; am_k = 0.065 if tr_harm_am else (0.032 + (0.055 * kl if kl >= 0.45 else 0.0))
         for t_ in range(n):
             f_now = SR / PER[min(N - 1, int(t_ * N / n))]
             amp[t_] *= max(0.92, min(1.36, (f_now / 310.0) ** 0.50)) * (1.0 + am_k * vib_raw[t_])
         KT["bump"] = [2.85, 1.58, 1.52] if tr_harm_am else [2.86, 1.62, 1.54]
-        KT["g"] = [0.74, 0.76, 0.77] if tr_harm_am else [0.77, 0.75, 0.74]
+        if kl >= 0.45:
+            KT["g"] = [min(0.90, 0.77 + 0.075 * kl), min(0.92, 0.75 + 0.115 * kl), min(0.92, 0.74 + 0.130 * kl)]
+        else:
+            KT["g"] = [0.74, 0.76, 0.77] if tr_harm_am else [0.77, 0.75, 0.74]
         KT["p_low"] = [5, 4, 3]; KT["h1"] = 1.05; KT["hk"] = {"2": 1.75, "3": 0.90}
-    use_ir_mod = is_trance and (tr_ir_pulse or tr_ir_liss)
+    use_ir_mod = is_trance and (kp > 0.0 or kl > 0.0)
     if use_ir_mod:
         s_tail_m = r.get("s_tail") or [0.0] * n; c_cv_m = r.get("c_conv") or [1.0] * n; vib_q_m = r.get("vib_quad") or [0.0] * n
         m_f = [[1.0] * n for _ in range(3)]; m_h1 = [1.0] * n; m_h2 = [1.0] * n; m_h3 = [1.0] * n; m_f45 = [1.0] * n
         for t_ in range(n):
-            if tr_ir_pulse:
+            if kp > 0.0:
                 w_on = max(0.0, 1.0 - c_cv_m[t_]) * (1.0 - cm[t_]); st_ = s_tail_m[t_]
-                m_f[0][t_] *= (1.0 - 0.16 * w_on) * (1.0 - 0.56 * st_)
-                m_f[1][t_] *= (1.0 - 0.16 * w_on) * (1.0 - 0.70 * st_)
-                m_f[2][t_] *= (1.0 - 0.24 * w_on) * (1.0 - 0.78 * st_)
-                m_h1[t_] *= (1.0 + 0.75 * w_on + 2.10 * st_)
-                m_h2[t_] *= (1.0 - 0.22 * w_on) * (1.0 - 0.62 * st_)
-                m_h3[t_] *= (1.0 - 0.24 * w_on) * (1.0 - 0.76 * st_)
-                m_f45[t_] *= (1.0 - 0.28 * w_on) * (1.0 - 0.80 * st_)
-            if tr_ir_liss:
-                vq = vib_q_m[t_]
-                m_h1[t_] *= max(0.4, 1.0 - 0.24 * vq); m_h2[t_] *= max(0.4, 1.0 - 0.16 * vq)
-                m_f[1][t_] *= max(0.4, 1.0 + 0.14 * vq); m_f[2][t_] *= max(0.4, 1.0 + 0.38 * vq)
-                m_h3[t_] *= max(0.4, 1.0 + 0.30 * vq); m_f45[t_] *= max(0.4, 1.0 + 0.36 * vq)
+                if kp >= 0.45:
+                    # 音全体で濃密チェスト基音 H1 を立て、入りと語尾で高次を溶かす大変化モード
+                    core_h1 = 1.0 + 1.65 * kp; core_h2 = 1.0 / (1.0 + 0.95 * kp)
+                    m_f[0][t_] *= (1.0 - min(0.55, 0.28 * kp) * w_on) * (1.0 - min(0.82, 0.64 * kp) * st_)
+                    m_f[1][t_] *= (1.0 - min(0.60, 0.32 * kp) * w_on) * (1.0 - min(0.90, 0.78 * kp) * st_)
+                    m_f[2][t_] *= (1.0 - min(0.70, 0.40 * kp) * w_on) * (1.0 - min(0.92, 0.85 * kp) * st_)
+                    m_h1[t_] *= core_h1 * (1.0 + 0.85 * kp * w_on + 2.40 * kp * st_)
+                    m_h2[t_] *= core_h2 * (1.0 - min(0.75, 0.36 * kp) * w_on) * (1.0 - min(0.92, 0.78 * kp) * st_)
+                    m_h3[t_] *= (1.0 - min(0.75, 0.38 * kp) * w_on) * (1.0 - min(0.92, 0.84 * kp) * st_)
+                    m_f45[t_] *= (1.0 - min(0.78, 0.42 * kp) * w_on) * (1.0 - min(0.94, 0.86 * kp) * st_)
+                else:
+                    s_kp = kp / 0.22
+                    m_f[0][t_] *= (1.0 - 0.16 * s_kp * w_on) * (1.0 - 0.56 * s_kp * st_)
+                    m_f[1][t_] *= (1.0 - 0.16 * s_kp * w_on) * (1.0 - 0.70 * s_kp * st_)
+                    m_f[2][t_] *= (1.0 - 0.24 * s_kp * w_on) * (1.0 - 0.78 * s_kp * st_)
+                    m_h1[t_] *= (1.0 + 0.75 * s_kp * w_on + 2.10 * s_kp * st_)
+                    m_h2[t_] *= (1.0 - 0.22 * s_kp * w_on) * (1.0 - 0.62 * s_kp * st_)
+                    m_h3[t_] *= (1.0 - 0.24 * s_kp * w_on) * (1.0 - 0.76 * s_kp * st_)
+                    m_f45[t_] *= (1.0 - 0.28 * s_kp * w_on) * (1.0 - 0.80 * s_kp * st_)
+            if kl > 0.0:
+                vq = vib_q_m[t_]; sk_l = (kl / 0.22) if kl < 0.4 else (1.0 + 1.15 * kl)
+                m_h1[t_] *= max(0.22, 1.0 - 0.22 * sk_l * vq); m_h2[t_] *= max(0.22, 1.0 - 0.15 * sk_l * vq)
+                m_f[1][t_] *= max(0.22, 1.0 + 0.24 * sk_l * vq); m_f[2][t_] *= max(0.20, 1.0 + 0.42 * sk_l * vq)
+                m_h3[t_] *= max(0.22, 1.0 + 0.34 * sk_l * vq); m_f45[t_] *= max(0.20, 1.0 + 0.40 * sk_l * vq)
     win = KT["agc_ms"] * SR / 1000; sm = KT.get("gain_sm_ms", 0) * SR / 1000
     CFG["causal"] = False if is_trance else bool(KT.get("causal")); ser = KT.get("serial", 0.0); sacc = [0.0] * N
     mix = [0.0] * N
@@ -1483,8 +1585,9 @@ def make_text(rc):
     V45 = [_vtrack(r, n, KT["vf45"], j) for j in range(len(KT.get("f45", [])))] if KT.get("vf45") else None   # 102: per-vowel F4/F5 level
     # 床：元そのまま（谷の底）。OO.txt の vfloor を活かしつつ母音の濁りを抑える 0.25 倍
     fsrc = arakezuri(src, KT["floor_ara"][0], KT["floor_ara"][1]) if KT.get("floor_ara") else src
-    if is_trance and tr_ir_pulse:
-        fl_scale = [0.25 * (1.0 - 0.65 * s_tail_m[t]) if (r["voiced"][t] and cm[t] < 0.3) else 1.0 for t in range(n)]
+    if is_trance and kp > 0.0:
+        fl_base = 0.10 if kp >= 0.45 else 0.25
+        fl_scale = [fl_base * max(0.08, 1.0 - 0.72 * s_tail_m[t]) if (r["voiced"][t] and cm[t] < 0.3) else 1.0 for t in range(n)]
     else:
         fl_scale = [0.25 if (is_trance and r["voiced"][t] and cm[t] < 0.3) else 1.0 for t in range(n)]
     fl = _agc(fsrc, _per_sample([KT["floor"] * fl_scale[t] * math.sqrt(Ef) * amp[t] * (VF[t] if VF else 1.0) for t in range(n)], N), KT.get("floor_agc", KT["agc_ms"]) * SR / 1000, KT.get("floor_sm", KT.get("gain_sm_ms", 0)) * SR / 1000)
@@ -1525,16 +1628,20 @@ def make_text(rc):
                 hw[t] *= 1 - (1 - mn_) * max(0.0, min(1.0, (q - lo_) / (hi_ - lo_)))
         if KT.get("h1_hz"):
             lo_, hi_, mn_ = KT["h1_hz"]
-            if is_trance and tr_ir_pulse:
+            if is_trance and kp > 0.0:
                 for t in range(n):
                     base_hw = 1 - (1 - mn_) * max(0.0, min(1.0, (r["F1"][t] - lo_) / (hi_ - lo_)))
-                    rel_h1 = min(1.0, 0.55 * max(0.0, 1.0 - c_cv_m[t]) * (1.0 - cm[t]) + s_tail_m[t])
+                    rel_h1 = min(1.0, (0.68 * kp if kp >= 0.45 else 0.0) + 0.55 * max(0.0, 1.0 - c_cv_m[t]) * (1.0 - cm[t]) + s_tail_m[t])
                     hw[t] *= base_hw + (1.0 - base_hw) * rel_h1
             else:
                 for t in range(n): hw[t] *= 1 - (1 - mn_) * max(0.0, min(1.0, (r["F1"][t] - lo_) / (hi_ - lo_)))
         tg = _per_sample([KT["h1"] * m_h1[t] * hw[t] * math.sqrt(Ej[0][t]) * amp[t] for t in range(n)] if use_ir_mod else [KT["h1"] * hw[t] * math.sqrt(Ej[0][t]) * amp[t] for t in range(n)], N)
         bp = _agc(bp, tg, (22 if is_trance else KT.get("h1_agc", 20)) * SR / 1000, (24 if is_trance else KT.get("h1_sm", 20)) * SR / 1000)
         for i in range(N): mix[i] += vo[i] * bp[i]
+    if sub_fry_norm is not None:
+        # 0.5*f0 電子エッジボイス層を _agc 後に直接ブレンド（入りと句末フォールで喉のサブ倍音うなりが浮き上がる）
+        fry_env = _per_sample([0.82 * sub_fr[t] * math.sqrt(Ej[0][t]) * amp[t] for t in range(n)], N)
+        for i in range(N): mix[i] += vo[i] * fry_env[i] * sub_fry_norm[i]
     for kk, rel in sorted((KT.get("hk") or {}).items()):
         bp = yama_bp(src, [float(kk) * SR / PER[i] for i in range(N)], 0.72 if is_trance else KT.get("h1_g", 0.7))
         VK = _vtrack(r, n, {v: d.get(str(kk), 1.0) for v, d in KT["vhk"].items()}) if KT.get("vhk") else None
@@ -1589,8 +1696,19 @@ def make_text(rc):
     elif KT.get("iki"):
         mix = _iki_up(mix, r, SR, KT["iki"], random.Random(rc["seed"] + 31))
     if KT.get("ap_n") and KT.get("ap_on") == "mix":
-        KT_ap = dict(KT, ap_n=max(int(KT.get("ap_n", 24)), 24), ap_lo=850.0, ap_hi=6200.0, ap_bw=165.0, ap_drift=0.055, ap_drift_ms=95.0) if (is_trance and tr_ir_silk and not KT.get("ap_drift")) else KT
+        if is_trance and ks > 0.0 and not KT.get("ap_drift"):
+            KT_ap = (dict(KT, ap_n=max(int(KT.get("ap_n", 36)), 36), ap_lo=420.0, ap_hi=5200.0, ap_bw=max(42.0, 105.0 - 38.0 * ks), ap_drift=min(0.62, 0.34 * ks), ap_drift_ms=68.0)
+                     if ks >= 0.45 else dict(KT, ap_n=max(int(KT.get("ap_n", 24)), 24), ap_lo=850.0, ap_hi=6200.0, ap_bw=165.0, ap_drift=0.055, ap_drift_ms=95.0))
+        else: KT_ap = KT
         mix = _ap_cascade(mix, random.Random(rc["seed"] + 21), KT_ap)
+    if is_trance and ks >= 0.45:
+        # 双子声帯デチューン複屈折（furafura遅延変調くびれによる±15〜35cent揺動双子フィラメント干渉）
+        rng_tw = random.Random(rc["seed"] + 59); v_dry = [vo[i] * mix[i] for i in range(N)]
+        tw1 = kubire_t(v_dry, furafura(N, rng_tw, 0.0038 * SR, 0.0018 * min(1.8, ks) * SR, 0.36), [-min(0.62, 0.42 + 0.08 * ks)] * N, 2)
+        tw2 = kubire_t(v_dry, furafura(N, rng_tw, 0.0086 * SR, 0.0029 * min(1.8, ks) * SR, 0.26), [-min(0.58, 0.38 + 0.08 * ks)] * N, 3)
+        twin = karuku(arakezuri([0.55 * (tw1[i] - v_dry[i]) + 0.45 * (tw2[i] - v_dry[i]) for i in range(N)], 2, 1), 110)
+        mr_t = rms(v_dry) or 1.0; tr_t = rms(twin) or 1.0; w_tw = min(0.78, 0.42 * ks) * (mr_t / tr_t)
+        mix = [mix[i] + w_tw * vo[i] * twin[i] for i in range(N)]
     if KT.get("tilt") and not is_trance: mix = arakezuri(mix, KT["tilt"], 1)
     if is_trance: mix = _onaji_kuukan(mix, vo, N, SR, rc["seed"])
     pk = max(abs(v) for v in mix) or 1.0
