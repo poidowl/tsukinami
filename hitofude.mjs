@@ -1144,32 +1144,21 @@ export function makeHitofude(text, opts = {}) {
       for (let t_ = Math.max(0, Math.trunc(m_.a / fpz)); t_ < n; t_++) f0_fr[t_] = h_;
     }
     f0_fr = smooth1(f0_fr, 34);
+    var vibWave = null;
     if (vib_c > 0.0) {
-      const wv = Math.max(3, Math.round(1000.0 / FP / 5.2 / 2.0));
-      const lenV = n + 30 * wv;
       const rngV = makeRng(seed + 33);
+      const wv = Math.max(3, Math.round(1000.0 / FP / rngV.uniform(4.2, 6.0) / 2.0));
+      const lenV = n + 30 * wv;
       const vn = new Float64Array(lenV);
       for (let i = 0; i < lenV; i++) vn[i] = rngV.uniform(-1.0, 1.0);
-      const dWv = new Float64Array(lenV).fill(wv);
-      const vwFull = arakezuri(combHalf(vn, dWv, 0.94), Math.max(2, Math.floor(wv / 2)), 2);
-      const vw = vwFull.subarray(30 * wv, 30 * wv + n);
+      const vw = arakezuri(combHalf(vn, new Float64Array(lenV).fill(wv), 0.92), Math.max(2, Math.floor(wv / 2)), 2).subarray(30 * wv, 30 * wv + n);
       let vSq = 0.0;
       for (let i = 0; i < n; i++) vSq += vw[i] * vw[i];
-      const vrm = Math.sqrt(vSq / n) || 1.0;
-      let t0_s = 0.0, cur_h = null;
-      k_ = 0;
-      for (const m_ of r.moras) {
-        if (m_.kind === "pau") { cur_h = null; continue; }
-        const h_ = uta_hz[Math.min(k_, uta_hz.length - 1)];
-        k_++;
-        if (h_ !== cur_h) { cur_h = h_; t0_s = m_.b; }
-        const tEnd = Math.min(n, Math.trunc(m_.e / fpz));
-        for (let t_ = Math.max(0, Math.trunc(m_.b / fpz)); t_ < tEnd; t_++) {
-          const el = t_ * fpz - t0_s - 0.28;
-          if (el > 0.0) {
-            f0_fr[t_] *= Math.pow(2.0, (vib_c * Math.min(1.0, el / 0.26) * (vw[t_] / vrm / 1.414)) / 1200.0);
-          }
-        }
+      const invV = 1.0 / ((Math.sqrt(vSq / n) || 1.0) * 1.414);
+      vibWave = new Float64Array(n);
+      for (let t_ = 0; t_ < n; t_++) {
+        vibWave[t_] = vw[t_] * invV;
+        f0_fr[t_] *= Math.pow(2.0, (vib_c * 0.72 * vibWave[t_]) / 1200.0);
       }
     }
   } else {
@@ -1265,6 +1254,8 @@ export function makeHitofude(text, opts = {}) {
 
   // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、必要なら高域減衰 damp と乗算時間くびれ shin） ===
   const GS = perSample(g_fr, N);
+  const wNorm = wander_st > 0.0 ? (1.0 / wander_st) : 0.0;
+  if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
   x = combPeriod(x, PER, GS, damp);
   if (shin > 0.0) {
     let ph = 0.0;
@@ -1342,11 +1333,11 @@ export function makeHitofude(text, opts = {}) {
   }
 
   const loExp = new Array(n);
-  for (let t = 0; t < n; t++) loExp[t] = Math.exp((r.loud[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0);
+  for (let t = 0; t < n; t++) loExp[t] = Math.exp((r.loud[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
   const env = perSample(loExp, N);
   let pk = 0.0;
   for (let i = 0; i < N; i++) {
-    y[i] *= env[i];
+    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.55, 1.0 + 0.24 * wander[i] * wNorm) : 1.0);
     const av = Math.abs(y[i]);
     if (av > pk) pk = av;
   }
