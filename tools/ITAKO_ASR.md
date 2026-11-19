@@ -160,3 +160,8 @@ ITAKO_NODE=~/itako_kusanagi/node/bin/node python tools/itako_search.py \
 - 最良は低い声（hz 148）なので、声の性格が既定と別物。採用は P の耳で決める。
 - 关亡婆の詰め 20 回は粗い探索の最良を超えなかった（半分以上が失格枠に当たった）。
 - まだ落ちる文：歌を歌う（全滅）、屋根の上で、写真を撮りましょう、学校へ行きます、本当にすごいなあ。
+
+### kusanagi c2b67c4 の取り込み（run4）
+- `hitofude.mjs` / `yomu.mjs` を kusanagi@c2b67c4 と同じ中身にした（d81cca0 の `damp`/`shin`、c2b67c4 の /u/ 修正）。
+- `damp`（0〜0.95）と `shin`（0〜1）はプリセットに無い追加つまみ。`kusanagi_yomu.extra_knobs()` が yomu.mjs の対応を見て拾い、既定 0、範囲外は node に渡す前に弾く。`--knobs` に入れれば探索できる。
+- `itako_search.py --min hz=280` で女声域だけを探す。`tools/itako_rescore.py` で決めた組を新しい seed で測り直す。
