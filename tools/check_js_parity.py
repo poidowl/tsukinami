@@ -59,12 +59,15 @@ def describe_python_side():
         return "local-python(no-git)"
 
 
-def load_player_html(path_arg, ref_arg):
+def load_js_target(path_arg, ref_arg):
     if path_arg:
-        with open(path_arg, "r", encoding="utf-8") as f:
-            html = f.read()
-        h8 = hashlib.sha256(html.encode("utf-8")).hexdigest()[:8]
-        return html, f"file:{path_arg} (sha256:{h8})"
+        abs_p = os.path.abspath(path_arg)
+        with open(abs_p, "r", encoding="utf-8") as f:
+            content = f.read()
+        h8 = hashlib.sha256(content.encode("utf-8")).hexdigest()[:8]
+        rel_p = os.path.relpath(abs_p, REPO_ROOT) if abs_p.startswith(REPO_ROOT) else path_arg
+        is_mod = abs_p.endswith((".mjs", ".js"))
+        return content, f"file:{rel_p} (sha256:{h8})", is_mod, abs_p
 
     candidates = [ref_arg] if ref_arg else ["origin/main", "main"]
     last_err = None
@@ -76,7 +79,7 @@ def load_player_html(path_arg, ref_arg):
                 ["git", "-C", REPO_ROOT, "show", f"{ref}:hitofude_player.html"],
                 text=True,
             )
-            return html, f"{ref}@{commit_sha}:hitofude_player.html (blob:{blob_sha})"
+            return html, f"{ref}@{commit_sha}:hitofude_player.html (blob:{blob_sha})", False, None
         except Exception as e:
             last_err = e
     raise RuntimeError(f"Could not read hitofude_player.html from git refs {candidates}: {last_err}")
@@ -117,28 +120,31 @@ def _run_py_job(j):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Verify Python hitofude.py vs JS hitofude_player.html parity")
-    ap.add_argument("player_html", nargs="?", default=None, help="Local path to hitofude_player.html (overrides --ref)")
+    ap = argparse.ArgumentParser(description="Verify Python hitofude.py vs JS engine / hitofude_player.html parity")
+    ap.add_argument("target", nargs="?", default=None, help="Local path to hitofude_player.html or hitofude_engine.mjs (overrides --ref)")
     ap.add_argument("--ref", default=None, help="Git ref hosting hitofude_player.html (default: origin/main -> main)")
     ap.add_argument("--tol", type=float, default=1e-6, help="Max allowed sample abs diff (default: 1e-6, ~1/30 of 16-bit LSB)")
     args = ap.parse_args()
 
     py_desc = describe_python_side()
-    html, js_desc = load_player_html(args.player_html, args.ref)
+    raw_js_or_html, js_desc, is_mod, abs_mod_path = load_js_target(args.target, args.ref)
 
     print("=== hitofude Python <-> JS Parity Check ===")
     print(f"  Python side : {py_desc}")
-    print(f"  JS side     : {js_desc} ({len(html.encode('utf-8')):,} bytes)")
+    print(f"  JS side     : {js_desc} ({len(raw_js_or_html.encode('utf-8')):,} bytes)")
 
-    print("[1/3] Auditing X sandbox constraints...")
-    sb_errs = audit_sandbox_html(html)
-    if sb_errs:
-        for e in sb_errs:
-            print("  FAIL:", e)
-        sys.exit(1)
-    print("  OK: zero forbidden sandbox APIs or external asset requests.")
-
-    engine_js = extract_engine_js(html)
+    if is_mod:
+        print("[1/3] Standalone JS module mode (skipping HTML sandbox tag check)...")
+        engine_js = None
+    else:
+        print("[1/3] Auditing X sandbox constraints...")
+        sb_errs = audit_sandbox_html(raw_js_or_html)
+        if sb_errs:
+            for e in sb_errs:
+                print("  FAIL:", e)
+            sys.exit(1)
+        print("  OK: zero forbidden sandbox APIs or external asset requests.")
+        engine_js = extract_engine_js(raw_js_or_html)
 
     jobs = []
     for text in SENTENCES:
@@ -164,13 +170,16 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         f32_path = os.path.join(tmp, "js_samples.f32")
         meta_path = os.path.join(tmp, "js_meta.json")
-        runner_path = os.path.join(tmp, "runner.js")
+        runner_path = os.path.join(tmp, "runner.mjs" if is_mod else "runner.js")
         jobs_json = json.dumps(jobs, ensure_ascii=False)
+        header_code = (
+            f'import fs from "fs";\nimport {{ makeHitofude, hakaru, PRESETS }} from {json.dumps(abs_mod_path)};'
+            if is_mod
+            else f'"use strict";\nconst fs = require("fs");\n{engine_js}'
+        )
 
         runner_code = f"""
-"use strict";
-const fs = require("fs");
-{engine_js}
+{header_code}
 const jobs = {jobs_json};
 const metas = [];
 const chunks = [];
