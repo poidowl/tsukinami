@@ -9,8 +9,9 @@
 イタコのループ (tools/itako_asr_loop.py) は、既定でその2本を直接呼ぶ。
 8090 は Qwen3-30B-A3B の LLM 用なので、ここでも拒否する。
 
-やむを得ず別マシンでこのサーバーを使う場合の例（ポートは 8093 以降）:
-  python tools/itako_asr_server.py --port 8093 --backend mlx-whisper \
+やむを得ず別マシンでこのサーバーを使う場合の例（ポートは 8094 以降。
+8093 は关亡婆のオバケ wav 読み取り専用配信 obake_serve 用なので使わない）:
+  python tools/itako_asr_server.py --port 8094 --backend mlx-whisper \
       --model mlx-community/whisper-large-v3-turbo --name mlx-large-v3-turbo
 """
 import argparse
@@ -96,7 +97,7 @@ def make_transcriber(backend, model_spec):
 def main():
     ap = argparse.ArgumentParser(description="Itako local ASR HTTP server (must not use port 8090)")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8093, help="HTTP port (default: 8093; 8090/8091/8092 are reserved on 関亡婆)")
+    ap.add_argument("--port", type=int, default=8094, help="HTTP port (default: 8094; 8090/8091/8092/8093 are reserved on 関亡婆)")
     ap.add_argument(
         "--backend",
         choices=("mlx-whisper", "faster-whisper", "sherpa-sensevoice"),
@@ -107,7 +108,10 @@ def main():
     args = ap.parse_args()
 
     if args.port == 8090:
-        print("ERROR: Port 8090 is reserved for the LLM (Qwen3-30B-A3B) on 関亡婆. Choose 8093 or later.", file=sys.stderr)
+        print("ERROR: Port 8090 is reserved for the LLM (Qwen3-30B-A3B) on 関亡婆. Choose 8094 or later.", file=sys.stderr)
+        sys.exit(2)
+    if args.port == 8093:
+        print("ERROR: Port 8093 is reserved for obake_serve (read-only オバケ wavs) on 関亡婆. Choose 8094 or later.", file=sys.stderr)
         sys.exit(2)
     if args.port in (8091, 8092):
         print(

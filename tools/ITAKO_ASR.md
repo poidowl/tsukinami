@@ -66,13 +66,15 @@ hitofude の式は変えずに、パラメータだけを動かして ASR の聞
 
 ### 2. 关亡婆（M6 Mac mini 32GB）での ASR / LLM 構成と実行手順
 
-8090 / 8091 / 8092 はカフカが入れたサーバーがすでに待っている。`tools/itako_asr_server.py` を 8091 や 8092 で立てないこと（Qwen3-ASR / parakeet と衝突する）。mlx-whisper は使わない。
+8090 / 8091 / 8092 はカフカが入れたサーバーがすでに待っている。`tools/itako_asr_server.py` を 8091 や 8092 で立てないこと（Qwen3-ASR / parakeet と衝突する）。8093 はオバケ wav の読み取り専用配信（`/Users/p/obake_serve`）用なので、ここでも立てない。やむを得ずこの予備サーバーを使うときは既定の 8094 を使う。mlx-whisper は使わない。
 
 | ポート | 中身 | 待ち受け | 呼び方 |
 | --- | --- | --- | --- |
 | 8090 | Qwen3-30B-A3B-Instruct-2507-4bit (`mlx_lm.server`) | 0.0.0.0（LAN 可） | `POST /v1/chat/completions`、`"model": "default_model"` |
 | 8091 | Qwen3-ASR-1.7B-8bit | 127.0.0.1 のみ | `POST /v1/audio/transcriptions` |
 | 8092 | parakeet-tdt_ctc-0.6b-ja | 127.0.0.1 のみ | 同上 |
+| 8093 | obake_serve（wav 読み取り専用） | 0.0.0.0（LAN 可） | `GET /index` と許可ファイルのみ |
+| 8094 | `tools/itako_asr_server.py` の既定（予備。关亡婆では通常立てない） | 127.0.0.1 | `POST /transcribe` |
 
 ASR の送り方は JSON `{"path": "/Users/p/…/x.wav"}`（同じマシンならこちらが速い）か、multipart の `file`。返りは `{"text", "sec", "load_sec", "peak_gb"}`（`model` も付く）。`GET /health` で生きているか確認できる。読めるのは WAV と FLAC だけ（ffmpeg が無いので mp3 は不可）。アイドル 300 秒でモデルは降りる。接続が切れたり断られたりしたら、ループ側が 1・2・4・8 秒と空けて、合わせて約 90 秒までやり直す。1回の待ち上限は 120 秒以上。
 
