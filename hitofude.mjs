@@ -1259,20 +1259,22 @@ export function makeHitofude(text, opts = {}) {
   x = combPeriod(x, PER, GS, damp);
   if (shin > 0.0) {
     let ph = 0.0;
-    const p = 1.0 + 3.0 * shin;
     for (let i = 0; i < N; i++) {
       ph += 1.0 / PER[i];
       if (ph >= 1.0) ph -= 1.0;
-      const w = Math.pow(Math.max(0.0, 1.0 - Math.abs(ph - 0.5) * 2.0), p);
-      const s = shin * GS[i];
-      x[i] *= (1.0 - s) + s * (0.30 + 1.85 * w);
+      // Asymmetric smooth glottal arch (slow open 0..0.68, smooth return 0.68..1.0) — warm low energy, zero metallic spike!
+      const u = ph < 0.68 ? (ph / 0.68) : (1.0 - (ph - 0.68) / 0.32);
+      const w = u * u * (3.0 - 2.0 * u);
+      const breathMod = wNorm > 0.0 ? Math.max(0.4, Math.min(1.4, 1.0 + 0.35 * wander[i] * wNorm)) : 1.0;
+      const s = Math.min(1.0, shin * breathMod) * GS[i];
+      x[i] *= (1.0 - s) + s * (0.42 + 1.15 * w);
     }
   }
   x = combPeriod(x, PER, GS, damp);
   const x1 = captureSteps ? x.slice() : null;
 
   // === Step 2: 【引き算②】低域濁りと高域の角を引く ===
-  x = karuku(x, hz >= 200.0 ? 115 : 220);
+  x = karuku(x, hz >= 200.0 ? 220 : 440);
   const tw = Math.max(1, Math.round(tilt_w));
   x = arakezuriT(x, tw, 2, perSample(cons_sharp, N));
   if (sigh > 0.0) {
@@ -1283,12 +1285,12 @@ export function makeHitofude(text, opts = {}) {
   const x2 = captureSteps ? x.slice() : null;
 
   // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
-  let yc = resonator2Pole(x, perSample(F1, N), 80.0, 8.0);
-  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0);
-  yc = resonator2Pole(yc, perSample(F3, N), 150.0, 13.0);
-  yc = resonator2Pole(yc, perSample(F4, N), 220.0, 14.0);
+  let yc = resonator2Pole(x, perSample(F1, N), 70.0, 9.0);
+  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 9.5);
+  yc = resonator2Pole(yc, perSample(F3, N), 190.0, 7.0);
+  yc = resonator2Pole(yc, perSample(F4, N), 280.0, 6.0);
   const ycRad = new Float64Array(N);
-  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
+  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.48 * yc[i - 1];
   const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
   const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
   const G1S = perSample(r.G1, N);
