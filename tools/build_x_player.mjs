@@ -1,4 +1,4 @@
-// build_x_player.mjs — Builds hitofude_player.html + hitofude.html from verified hitofude_engine.mjs
+// build_x_player.mjs — Builds hitofude_player.html + hitofude.html directly from ../hitofude.mjs
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -7,11 +7,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = process.argv[2] ? path.resolve(process.argv[2]) : path.join(HERE, "..", "out");
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-let engineSrc = fs.readFileSync(path.join(HERE, "hitofude_engine.mjs"), "utf8");
+let engineSrc = fs.readFileSync(path.join(HERE, "..", "hitofude.mjs"), "utf8");
 // Strip ES module 'export ' keywords for self-contained inline IIFE execution
-engineSrc = engineSrc
-  .replace(/^\/\/ hitofude_engine\.mjs[^\n]*\n\/\/ Zero dependencies[^\n]*\n+/m, "")
-  .replace(/^export\s+(const|function)\s+/gm, "$1 ");
+engineSrc = engineSrc.replace(/^export\s+(const|function)\s+/gm, "$1 ");
 
 // Light whitespace/comment compaction for the inline engine (keeps readable structure, trims verbose comments)
 const compactEngine = engineSrc

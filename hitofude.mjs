@@ -1,79 +1,71 @@
-// hitofude_engine.mjs — Pure Vanilla JS port of kotoba.py + accent.py + hitofude.py
-// Zero dependencies, zero DOM assumptions; runs identically in Node.js and Browser.
+// hitofude.mjs — 一筆彫り / 草薙版 (Single-Wire Subtractive Speech & Singing Synthesis in Pure JS)
+// 外部パッケージ・外部データ・Node固有API 一切不使用（ブラウザ ES Module / Node.js / Deno / Bun 共通）。
+//
+// 【LLM向け設計原則】
+//   音になる信号線は最初から最後まで「たった1本のホワイトノイズ x」のみを4段階で削って声と吐息にする。
+//   - 正弦波オシレータ (sin/cos 音源)・固定波形の粒スタンプ (grain)・40段オールパス位相散らし 不要
+//   - 有声/無声・子音帯・吐息はすべて同じ1本のノイズ線 x から彫る（ピッチ漂い・ジッタ・ビブラートの制御揺らぎのみ別シード乱数）
+//   - 帯域ごとの自動利得制御 (AGC) なし → 各ノブは他の段で打ち消されずほぼ直交に効く
+//   - STFT 往復なし → 時間領域の1パス直列処理のみ
 
 export const SR = 44100;
-export const FP = 5.0;
+export const FP = 5.0; // 調音・韻律軌道のフレーム周期 (ms)
 
-function pyRound(x) {
-  const f = Math.floor(x);
-  const d = x - f;
-  if (Math.abs(d - 0.5) < 1e-12) return (Math.abs(f) % 2 === 0) ? f : f + 1;
-  return d < 0.5 ? f : f + 1;
-}
+export const KNOB_KEYS = ["seed", "hz", "fscale", "rate", "g_vo", "tilt_w", "sigh", "jitter", "wander_st"];
 
-// Exact CPython random.Random(int_seed) MT19937 + 53-bit random() for 100% Python bit-parity
+export const PRESETS = {
+  hitofude: {
+    label: "澄み",
+    description: "澄み（標準：1本のホワイトノイズから4手で彫る透明女声）",
+    seed: 2024, hz: 350.0, fscale: 1.17, rate: 1.26,
+    g_vo: 0.92, tilt_w: 5, sigh: 0.0, jitter: 0.0013, wander_st: 0.18,
+  },
+  toiki: {
+    label: "吐息",
+    description: "吐息（句末でくびれGを緩め、声が同じ1本のノイズ線の吐息へほどけて戻る女声）",
+    seed: 2024, hz: 312.0, fscale: 1.15, rate: 1.30,
+    g_vo: 0.895, tilt_w: 6, sigh: 0.78, jitter: 0.0013, wander_st: 0.18,
+  },
+  sasayaki: {
+    label: "囁き",
+    description: "半有声囁き（浅いくびれG=0.58で倍音の谷に元のノイズの風を残す耳元ささやき）",
+    seed: 2024, hz: 305.0, fscale: 1.15, rate: 1.30,
+    g_vo: 0.58, tilt_w: 6, sigh: 0.85, jitter: 0.0018, wander_st: 0.15,
+  },
+  chibi: {
+    label: "ちびっ子",
+    description: "ちびっ子（短い声道 fscale=1.32・高ピッチ 400Hz・明るい粗削り tilt_w=4）",
+    seed: 2024, hz: 400.0, fscale: 1.32, rate: 1.20,
+    g_vo: 0.92, tilt_w: 4, sigh: 0.0, jitter: 0.0015, wander_st: 0.22,
+  },
+  ossan: {
+    label: "おっさん",
+    description: "おっさん（長い声道 fscale=0.88・低音 148Hz）",
+    seed: 2024, hz: 148.0, fscale: 0.88, rate: 1.22,
+    g_vo: 0.93, tilt_w: 5, sigh: 0.0, jitter: 0.0016, wander_st: 0.14,
+  },
+  robot: {
+    label: "ロボ",
+    description: "冷凍ロボット（周期ジッタ0・漂い0・強いくびれG=0.96）",
+    seed: 2024, hz: 220.0, fscale: 1.06, rate: 1.15,
+    g_vo: 0.96, tilt_w: 4, sigh: 0.0, jitter: 0.0, wander_st: 0.0,
+  },
+};
+
+// 軽量・決定論的 32-bit PRNG (Mulberry32)：ブラウザでも Node でも同じ種から完全に同じ波形を返す
 export function makeRng(seed) {
-  const N = 624, M = 397, mt = new Uint32Array(N);
-  let mti = N + 1;
-  mt[0] = 19650218;
-  for (mti = 1; mti < N; mti++) {
-    const p = mt[mti - 1] ^ (mt[mti - 1] >>> 30);
-    mt[mti] = (Math.imul(1812433253, p) + mti) >>> 0;
-  }
-  const key = [];
-  let x = Math.abs(Math.trunc(seed));
-  while (x > 0) { key.push(x & 0xffffffff); x = Math.floor(x / 4294967296); }
-  if (!key.length) key.push(0);
-  let i = 1, j = 0;
-  for (let k = Math.max(N, key.length); k > 0; k--) {
-    const p = mt[i - 1] ^ (mt[i - 1] >>> 30);
-    mt[i] = ((mt[i] ^ Math.imul(p, 1664525)) + (key[j] >>> 0) + j) >>> 0;
-    if (++i >= N) { mt[0] = mt[N - 1]; i = 1; }
-    if (++j >= key.length) j = 0;
-  }
-  for (let k = N - 1; k > 0; k--) {
-    const p = mt[i - 1] ^ (mt[i - 1] >>> 30);
-    mt[i] = ((mt[i] ^ Math.imul(p, 1566083941)) - i) >>> 0;
-    if (++i >= N) { mt[0] = mt[N - 1]; i = 1; }
-  }
-  mt[0] = 0x80000000;
-  const uint32 = () => {
-    let y;
-    if (mti >= N) {
-      let kk = 0;
-      for (; kk < N - M; kk++) {
-        y = (mt[kk] & 0x80000000) | (mt[kk + 1] & 0x7fffffff);
-        mt[kk] = mt[kk + M] ^ (y >>> 1) ^ ((y & 1) ? 0x9908b0df : 0);
-      }
-      for (; kk < N - 1; kk++) {
-        y = (mt[kk] & 0x80000000) | (mt[kk + 1] & 0x7fffffff);
-        mt[kk] = mt[kk + (M - N)] ^ (y >>> 1) ^ ((y & 1) ? 0x9908b0df : 0);
-      }
-      y = (mt[N - 1] & 0x80000000) | (mt[0] & 0x7fffffff);
-      mt[N - 1] = mt[M - 1] ^ (y >>> 1) ^ ((y & 1) ? 0x9908b0df : 0);
-      mti = 0;
-    }
-    y = mt[mti++];
-    y ^= (y >>> 11);
-    y ^= (y << 7) & 0x9d2c5680;
-    y ^= (y << 15) & 0xefc60000;
-    return (y ^ (y >>> 18)) >>> 0;
+  let a = (Math.trunc(seed) ^ 0x6d2b79f5) >>> 0;
+  const random = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296.0;
   };
-  const random = () => ((uint32() >>> 5) * 67108864.0 + (uint32() >>> 6)) * (1.0 / 9007199254740992.0);
   return { random, uniform: (lo, hi) => lo + (hi - lo) * random() };
 }
 
-export const PRESETS = {
-  hitofude: { label: "澄み", seed: 2024, hz: 350.0, fscale: 1.17, rate: 1.26, g_vo: 0.92, tilt_w: 5, sigh: 0.0, jitter: 0.0013, wander_st: 0.18 },
-  toiki:    { label: "吐息", seed: 2024, hz: 312.0, fscale: 1.15, rate: 1.30, g_vo: 0.895, tilt_w: 6, sigh: 0.78, jitter: 0.0013, wander_st: 0.18 },
-  sasayaki: { label: "囁き", seed: 2024, hz: 305.0, fscale: 1.15, rate: 1.30, g_vo: 0.58, tilt_w: 6, sigh: 0.85, jitter: 0.0018, wander_st: 0.15 },
-  chibi:    { label: "ちびっ子", seed: 2024, hz: 400.0, fscale: 1.32, rate: 1.20, g_vo: 0.92, tilt_w: 4, sigh: 0.0, jitter: 0.0015, wander_st: 0.22 },
-  ossan:    { label: "おっさん", seed: 2024, hz: 148.0, fscale: 0.88, rate: 1.22, g_vo: 0.93, tilt_w: 5, sigh: 0.0, jitter: 0.0016, wander_st: 0.14 },
-  robot:    { label: "ロボ", seed: 2024, hz: 220.0, fscale: 1.06, rate: 1.15, g_vo: 0.96, tilt_w: 4, sigh: 0.0, jitter: 0.0, wander_st: 0.0 },
-};
-
 // ============================================================================
-// 1. kotoba (kana -> 5ms articulatory tracks)
+// 1. kotoba — かな文字列 -> 5msフレーム調音軌道 (F1..F3, 帯域ゲイン G1..G3, 子音帯 bands, 音量 loud)
 // ============================================================================
 const K2V = {};
 for (const [row, cons] of [
@@ -103,6 +95,7 @@ const MANNER = {
 const VOICELESS = new Set(["k", "s", "sh", "t", "ch", "ts", "h", "f", "p"]);
 const VOICED_OBS = new Set(["g", "d", "b", "z", "j"]);
 
+// 日本語母音・子音の教科書テーブルと一筆彫り用の確定値
 const KOTOBA_PRM = {
   alpha: 1.15, alpha3: 1.3, T: 30, Tvc: 30, Tvv: 40, Tpal: 40, undershoot: 80, f1on: 280, f1drop: true,
   smooth: 30, smooth_j: [30, 30, 30], fric_hold: 20, vl_hold: true, ou_long: true,
@@ -170,7 +163,7 @@ function parseKana(t, pv) {
   return [c, v, false];
 }
 
-function fi(s) { return pyRound(s * 1000 / FP); }
+function fi(s) { return Math.round((s * 1000) / FP); }
 
 function linspace(a, b, k) {
   if (k <= 0) return [];
@@ -258,7 +251,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       pv = (t === "、" || t === "ッ" || t === "ン") ? null : parseKana(ms[j], pv || "a")[1];
     }
   }
-  // mora_info
+  // モーラ種別と無声化判定 (i/u が無声子音に挟まれたとき母音無声化)
   const ml = [];
   let pv = "a";
   for (let j = 0; j < ms.length; j++) {
@@ -281,7 +274,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     const nvl = nx !== null && ((nx.kind === "CV" && VOICELESS.has(nx.c)) || nx.kind === "Q");
     q.dev = (q.v === "i" || q.v === "u") && VOICELESS.has(q.c) && (nvl || (q.final && q.c === "s"));
   }
-  // rule_durations
+  // 拍ごとの子音長 cd / 母音長 vd
   const cd_s = P.cd_s !== undefined ? P.cd_s : 1.0;
   const vd_s = P.vd_s !== undefined ? P.vd_s : 1.0;
   for (const q of ml) {
@@ -301,7 +294,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       k++;
     }
   }
-  // segments
+  // 時間境界 a (開始), b (母音開始), e (終了)
   const seq = [];
   let tt = pre;
   for (const q of ml) {
@@ -312,7 +305,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   }
   const n = fi(tt + post) + 1;
 
-  // build_tracks
+  // フォルマント軌道 F1..F3 (ローカス方程式 LE と調音点別ターゲット補間)
   const al = P.alpha, al3 = P.alpha3;
   const sc = (f) => [f[0] * al, f[1] * al, f[2] * al3];
   const vt = (s) => sc(P.VT[s.v]);
@@ -424,13 +417,13 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   } else {
     kp.sort((a, b) => a[0] - b[0]);
     const tfr = new Array(n);
-    for (let i = 0; i < n; i++) tfr[i] = i * FP / 1000;
+    for (let i = 0; i < n; i++) tfr[i] = (i * FP) / 1000;
     const xp = kp.map((q) => q[0]);
     const smj = P.smooth_j || [P.smooth, P.smooth, P.smooth];
     Tr = [0, 1, 2].map((j) => smooth1(interp(tfr, xp, kp.map((q) => q[j + 1])), smj[j]));
   }
 
-  // build_cues
+  // 子音ノイズ帯域 bands とフォルマント減衰 G1..G3 / 閉鎖減衰 dl
   const G = [new Array(n).fill(1.0), new Array(n).fill(1.0), new Array(n).fill(1.0)];
   const dl = new Array(n).fill(0.0);
   const rawBands = [];
@@ -471,7 +464,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   const Gs = G.map((g) => smooth1(g, 10));
   const dls = smooth1(dl, 10);
 
-  // rule_loud
+  // 音量対数曲線 loud と有声フラグ voiced
   const nxcls = (nx) => {
     if (!nx || nx.kind === "pau") return "end";
     if (nx.kind !== "CV") return nx.kind;
@@ -525,7 +518,6 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   for (let i = 0; i < n; i++) if (L[i] > mx) mx = L[i];
   const loud = L.map((v) => v - mx);
 
-  // rule_source (voicing)
   const vo = new Array(n).fill(false);
   for (const s of seq) {
     const a = s.a, b = s.a + s.cd, e = s.e;
@@ -539,13 +531,13 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     F1: Tr[0], F2: Tr[1], F3: Tr[2],
     G1: Gs[0], G2: Gs[1], G3: Gs[2],
     dl: dls, loud, voiced: vo,
-    bands: rawBands.map(([a, b, c, d, g]) => [a * FP / 1000, b * FP / 1000, c, d, g]),
+    bands: rawBands.map(([a, b, c, d, g]) => [(a * FP) / 1000, (b * FP) / 1000, c, d, g]),
     moras: seq.map((s) => ({ t: s.t, kind: s.kind, c: s.c, v: s.v, a: s.a, b: s.b, e: s.e })),
   };
 }
 
 // ============================================================================
-// 2. accent (rule-based Tokyo pitch accent)
+// 2. accent — 東京式ピッチアクセント推定 & 手動韻律記号 (' 核, 0 平板, / 句切れ, 、 間, ? 疑問)
 // ============================================================================
 const SPECIAL = new Set(["ン", "ッ", "ー"]);
 const PART = new Set(Array.from("モニガヲデヘテ"));
@@ -758,7 +750,7 @@ export function f0Rule(moras, n, opts = {}) {
     st[i] = kv[j] + w * (kv[j + 1] - kv[j]);
   }
   st = smoothTri(st, Math.max(1, Math.trunc(sm / fp_ms)));
-  let vs = st.slice().sort((a, b) => a - b);
+  const vs = st.slice().sort((a, b) => a - b);
   if (fit_range && rng) {
     const lo = vs[Math.trunc(0.05 * (vs.length - 1))];
     const hi = vs[Math.trunc(0.95 * (vs.length - 1))];
@@ -775,7 +767,7 @@ export function f0Rule(moras, n, opts = {}) {
 }
 
 // ============================================================================
-// 3. hitofude DSP (1-wire 4-step noise subtraction)
+// 3. 基礎ノミ（時間領域の引き算・移動平均プリミティブ：正弦波オシレータ不使用）
 // ============================================================================
 function perSample(fr, N, fp_ms = 5.0) {
   const n = fr.length;
@@ -793,6 +785,7 @@ function perSample(fr, N, fp_ms = 5.0) {
   return out;
 }
 
+// 粗削り（ローパス）：幅 w サンプルの移動平均を p 回かける。最初の零点は SR / w Hz
 function arakezuri(x, w, p = 1) {
   const n = x.length;
   let cur = Float64Array.from(x);
@@ -809,6 +802,7 @@ function arakezuri(x, w, p = 1) {
   return cur;
 }
 
+// 時間可変の粗削り：H[i]=1 の区間（破裂・摩擦子音）は高域の鋭さを削り残す
 function arakezuriT(x, w, p, H) {
   const s = arakezuri(x, w, p);
   const n = x.length;
@@ -817,6 +811,7 @@ function arakezuriT(x, w, p, H) {
   return out;
 }
 
+// 軽くする（ハイパス）：幅 w の移動平均を引いて DC〜低域の濁りを落とす
 function karuku(x, w) {
   const a = arakezuri(x, w, 1);
   const n = x.length;
@@ -825,6 +820,7 @@ function karuku(x, w) {
   return out;
 }
 
+// ピッチのゆっくりした自然な漂い（平滑化ランダムウォーク）
 function furafura(n, rng, d0, haba, osoi) {
   const out = new Float64Array(n);
   if (haba === 0.0) { out.fill(d0); return out; }
@@ -860,6 +856,7 @@ function ensureScratch(n) {
   }
 }
 
+// 前後に位相ずれのない中心移動平均（累積和で O(N)）
 function heikin(x, W, out = null) {
   const n = x.length;
   ensureScratch(n);
@@ -885,6 +882,7 @@ function heikin(x, W, out = null) {
   return y;
 }
 
+// 半周期 D 前の自分を反転フィードバックして奇数倍音 (SR / 2D) を立てる
 function combHalf(x, D, g, out = null) {
   const n = x.length;
   const y = out || new Float64Array(n);
@@ -898,6 +896,7 @@ function combHalf(x, D, g, out = null) {
   return y;
 }
 
+// 前後双方向コムフィルタ（ゼロ位相共振）
 function ffbb(x, D, g) {
   const n = x.length;
   ensureScratch(n);
@@ -913,6 +912,7 @@ function ffbb(x, D, g) {
   return out;
 }
 
+// 受動フォルマント帯域通過：周波数 F[i] Hz の山1つだけを残し、上下の裾を引き算で削る
 function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
   const n = x.length;
   ensureScratch(n);
@@ -936,7 +936,8 @@ function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
   return bp;
 }
 
-
+// 引き算①（音源くびれ）：周期 PER[i] と食い違う倍音間の谷を3次ラグランジュ補間コムで削る
+// 入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする
 export function combPeriod(x, PER, G) {
   const n = x.length;
   const y = new Float64Array(n);
@@ -999,12 +1000,27 @@ function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gat
   return out;
 }
 
+// ============================================================================
+// 4. 本体：1本のホワイトノイズから4手で彫る音声・歌声合成
+// ============================================================================
 export function makeHitofude(text, opts = {}) {
   const {
-    seed = 2024, hz = 350.0, fscale = 1.17, rate = 1.26, g_vo = 0.92, tilt_w = 5, sigh = 0.0,
-    jitter = 0.0013, wander_st = 0.18, level_k = 0.65, pre = 0.6, post = 0.1,
-    uta_hz = null, vd_ms = null, vib_c = 6.0, captureSteps = false,
-    injectedRandom = null, // optional parity test hook: { noise, wander, perJitter, vwNoise }
+    seed = 2024,
+    hz = 350.0,       // 基準ピッチ高さ (Hz)。女声 300〜360、子ども 400、男声 135〜165
+    fscale = 1.17,    // 声道長逆スケール（フォルマント倍率）。1.15〜1.22=女声、0.88=太い男声
+    rate = 1.26,      // 話速倍率（小さいほど速い、1.25〜1.30=自然な会話）
+    g_vo = 0.92,      // 有声くびれ深さ G (0.0〜0.97)。2段直列の谷深さ ≒ 40*log10((1+G)/(1-G)) dB
+    tilt_w = 5,       // 高域粗削り幅 w (整数 >=1)。4〜5=明るい女声、6=柔らかい吐息、>=8=こもった暗声
+    sigh = 0.0,       // 句末の息抜き量 (0.0〜1.0)。句末母音後半で G を緩め、声を元の吐息へ戻す
+    jitter = 0.0013,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
+    wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
+    level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
+    pre = 0.6,        // 発話前の無音長 (秒)
+    post = 0.1,       // 発話後の無音長 (秒)
+    uta_hz = null,    // 歌モード：モーラごとの目標周波数配列 [Hz, ...]
+    vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
+    vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
+    captureSteps = false, // true のとき [原石0, ①倍音谷, ②粗削り, ③声道, ④完成] の5波形を返す
   } = opts;
 
   let accentKw = null, targetText = text;
@@ -1026,6 +1042,7 @@ export function makeHitofude(text, opts = {}) {
     return { samples: z, steps: captureSteps ? [z, z, z, z, z] : null, r: Object.assign({}, r, { f0_tr: new Array(n).fill(0.0) }) };
   }
 
+  // ピッチ軌道 f0_fr (Hz, 5ms フレーム)
   let f0_fr;
   if (uta_hz && uta_hz.length) {
     f0_fr = new Array(n).fill(uta_hz[0]);
@@ -1038,15 +1055,11 @@ export function makeHitofude(text, opts = {}) {
     }
     f0_fr = smooth1(f0_fr, 34);
     if (vib_c > 0.0) {
-      const wv = Math.max(3, pyRound(1000.0 / FP / 5.2 / 2.0));
+      const wv = Math.max(3, Math.round(1000.0 / FP / 5.2 / 2.0));
       const lenV = n + 30 * wv;
-      let vn;
-      if (injectedRandom && injectedRandom.vwNoise) vn = Float64Array.from(injectedRandom.vwNoise);
-      else {
-        const rngV = makeRng(seed + 33);
-        vn = new Float64Array(lenV);
-        for (let i = 0; i < lenV; i++) vn[i] = rngV.uniform(-1.0, 1.0);
-      }
+      const rngV = makeRng(seed + 33);
+      const vn = new Float64Array(lenV);
+      for (let i = 0; i < lenV; i++) vn[i] = rngV.uniform(-1.0, 1.0);
       const dWv = new Float64Array(lenV).fill(wv);
       const vwFull = arakezuri(combHalf(vn, dWv, 0.94), Math.max(2, Math.floor(wv / 2)), 2);
       const vw = vwFull.subarray(30 * wv, 30 * wv + n);
@@ -1076,6 +1089,7 @@ export function makeHitofude(text, opts = {}) {
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
   }
 
+  // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
   const sigh_fr = new Array(n).fill(0.0);
   if (sigh > 0.0) {
     for (let idx_m = 0; idx_m < r.moras.length; idx_m++) {
@@ -1098,13 +1112,14 @@ export function makeHitofude(text, opts = {}) {
           if (u > 0.30) {
             const s_v = Math.min(1.0, sigh) * Math.pow((u - 0.30) / 0.70, 1.10);
             sigh_fr[t_] = s_v;
-            f0_fr[t_] *= Math.pow(2.0, -0.18 * s_v / 12.0);
+            f0_fr[t_] *= Math.pow(2.0, (-0.18 * s_v) / 12.0);
           }
         }
       }
     }
   }
 
+  // 声道共鳴周波数 F1..F4 と子音共鳴中心 f_cons_cen
   const fs = fscale;
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
@@ -1119,7 +1134,7 @@ export function makeHitofude(text, opts = {}) {
   const cons_sharp = new Array(n).fill(0.0);
   const sortedBands = r.bands.slice().sort((a, b) => a[0] - b[0]);
   for (const [t0, t1, cen, , lev] of sortedBands) {
-    const ia = Math.max(0, pyRound(t0 / fpz)), ib = Math.min(n, pyRound(t1 / fpz) + 1);
+    const ia = Math.max(0, Math.round(t0 / fpz)), ib = Math.min(n, Math.round(t1 / fpz) + 1);
     for (let t_ = Math.max(0, ia - 2); t_ < Math.min(n, ib + 2); t_++) f_cons_cen[t_] = cen;
     for (let t_ = ia; t_ < ib; t_++) {
       f_cons_w[t_] = Math.max(f_cons_w[t_], Math.min(3.4, 0.58 * lev));
@@ -1135,36 +1150,27 @@ export function makeHitofude(text, opts = {}) {
   const g_fr = new Array(n);
   for (let t = 0; t < n; t++) g_fr[t] = vo_sm[t] * g_vo * (1.0 - 0.88 * sigh_sm[t]);
 
+  // サンプル単位の基本周期 PER[i] (自然漂い wander + 周期ごとの微細ジッタ)
   const f0S = perSample(f0_fr, N);
-  let PER;
-  if (injectedRandom && injectedRandom.PER) {
-    PER = Float64Array.from(injectedRandom.PER);
-  } else {
-    const wander = furafura(N, makeRng(seed + 1), 0.0, wander_st, 0.09);
-    PER = new Float64Array(N);
-    for (let i = 0; i < N; i++) PER[i] = SR / Math.max(60.0, f0S[i] * Math.pow(2.0, wander[i] / 12.0));
-    if (jitter > 0.0) {
-      const rngJ = makeRng(seed + 7);
-      let idxP = 0;
-      while (idxP < N) {
-        const pl = Math.max(2, Math.trunc(PER[idxP]));
-        const jf = 1.0 + rngJ.uniform(-jitter, jitter);
-        const end = Math.min(N, idxP + pl);
-        for (let k = idxP; k < end; k++) PER[k] *= jf;
-        idxP += pl;
-      }
+  const wander = furafura(N, makeRng(seed + 1), 0.0, wander_st, 0.09);
+  const PER = new Float64Array(N);
+  for (let i = 0; i < N; i++) PER[i] = SR / Math.max(60.0, f0S[i] * Math.pow(2.0, wander[i] / 12.0));
+  if (jitter > 0.0) {
+    const rngJ = makeRng(seed + 7);
+    let idxP = 0;
+    while (idxP < N) {
+      const pl = Math.max(2, Math.trunc(PER[idxP]));
+      const jf = 1.0 + rngJ.uniform(-jitter, jitter);
+      const end = Math.min(N, idxP + pl);
+      for (let k = idxP; k < end; k++) PER[k] *= jf;
+      idxP += pl;
     }
   }
 
-  // === Step 0: 原石ホワイトノイズ ===
-  let x;
-  if (injectedRandom && injectedRandom.noise) {
-    x = Float64Array.from(injectedRandom.noise);
-  } else {
-    const rng = makeRng(seed);
-    x = new Float64Array(N);
-    for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
-  }
+  // === Step 0: 原石ホワイトノイズ（音になる信号線はこの1本だけ） ===
+  const rng = makeRng(seed);
+  let x = new Float64Array(N);
+  for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
   const x0 = captureSteps ? x.slice() : null;
 
   // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列） ===
@@ -1175,7 +1181,7 @@ export function makeHitofude(text, opts = {}) {
 
   // === Step 2: 【引き算②】低域濁りと高域の角を引く ===
   x = karuku(x, hz >= 200.0 ? 115 : 220);
-  const tw = Math.max(1, pyRound(tilt_w));
+  const tw = Math.max(1, Math.round(tilt_w));
   x = arakezuriT(x, tw, 2, perSample(cons_sharp, N));
   if (sigh > 0.0) {
     const sighKeep = new Array(n);
@@ -1184,7 +1190,7 @@ export function makeHitofude(text, opts = {}) {
   }
   const x2 = captureSteps ? x.slice() : null;
 
-  // === Step 3: 【引き算③】受動声道共鳴 ===
+  // === Step 3: 【引き算③】受動声道共鳴（帯域別 AGC ゼロ） ===
   const bp1 = yamaBp(x, perSample(F1, N), 0.56, 3, 1);
   const bp2 = yamaBp(x, perSample(F2, N), 0.73, 3, 2);
   const bp3 = yamaBp(x, perSample(F3, N), 0.75, 3, 2);
@@ -1204,7 +1210,7 @@ export function makeHitofude(text, opts = {}) {
   const W4S = perSample(w4Fr, N);
   const FCW = perSample(smooth1(f_cons_w, 6), N);
 
-  let y = new Float64Array(N);
+  const y = new Float64Array(N);
   for (let i = 0; i < N; i++) {
     y[i] = 0.025 * x[i] + 1.35 * G1S[i] * bp1[i] + 0.72 * G2S[i] * bp2[i] + 0.56 * G3S[i] * bp3[i] + W4S[i] * G3S[i] * bp4[i] + 0.90 * FCW[i] * bpc[i];
   }
@@ -1258,7 +1264,6 @@ export function makeHitofude(text, opts = {}) {
 
   let steps = null;
   if (captureSteps) {
-    // Match active voiced RMS so stepping 0 -> ① -> ② -> ③ -> ④ has smooth, ear-safe loudness
     let vSq = 0.0, vCnt = 0;
     for (let t = 0; t < n; t++) {
       if (r.voiced[t]) {
@@ -1279,12 +1284,36 @@ export function makeHitofude(text, opts = {}) {
     ];
   }
 
-  return { samples: out, steps, r: Object.assign({}, r, { f0_tr: f0_fr }) };
+  return { samples: out, steps, r: Object.assign({}, r, { f0_tr: f0_fr }), moras: r.moras };
 }
 
 // ============================================================================
-// 4. hakaru (radix-2 FFT acoustic self-measurement, stdlib-free JS)
+// 5. WAV エンコード & 音響自己計測 hakaru（ブラウザ・Node 共通、外部依存ゼロ）
 // ============================================================================
+export function encodeWav(samples, sampleRate = SR) {
+  const n = samples.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const view = new DataView(buf);
+  const writeAscii = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + n * 2, true);
+  writeAscii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const clamped = Math.max(-1.0, Math.min(1.0, samples[i]));
+    view.setInt16(44 + i * 2, Math.round(clamped * 32767.0), true);
+  }
+  return new Uint8Array(buf);
+}
+
 const FFT_CACHE = new Map();
 
 export function fftRadix2(reIn) {
