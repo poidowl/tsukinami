@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>聴く kiku — 草薙(kusanagi)の引き算だけで日本語を聴く極小ASR</title>
+<style>
+  :root {
+    --bg: #080d15;
+    --panel: #111a28;
+    --border: #243347;
+    --text: #f3efe6;
+    --muted: #94a3b8;
+    --amber: #f59e0b;
+    --emerald: #26cc9b;
+    --sky: #38bdf8;
+    --rose: #fb7185;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 14px 48px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  header { margin-bottom: 16px; }
+  h1 { margin: 0 0 4px; font-size: 1.45rem; letter-spacing: 0.02em; }
+  .sub { color: var(--muted); font-size: 0.88rem; margin: 0; }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .badge {
+    font-size: 0.74rem; padding: 2px 8px; border-radius: 999px;
+    background: #172336; border: 1px solid var(--border); color: var(--emerald);
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input[type="text"], select {
+    background: #0b1220; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 0.95rem;
+  }
+  input[type="text"] { flex: 1 1 220px; }
+  button {
+    background: #1d2d44; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; font-size: 0.9rem; cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: #263b59; border-color: var(--sky); }
+  button.primary { background: #14532d; border-color: var(--emerald); color: #ecfdf5; font-weight: 600; }
+  button.primary:hover { background: #166534; }
+  button.rec { background: #4c1d24; border-color: var(--rose); color: #ffe4e6; font-weight: 600; }
+  button.rec.active { background: #be123c; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.65; } }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 0.8rem; padding: 4px 10px; border-radius: 999px; }
+  .result-box {
+    font-size: 2rem; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--amber); min-height: 2.6rem; padding: 6px 0;
+  }
+  .meta { color: var(--muted); font-size: 0.82rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  canvas {
+    width: 100%; height: 220px; display: block;
+    background: #060a11; border: 1px solid var(--border); border-radius: 8px;
+  }
+  .legend { display: flex; gap: 14px; font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .dropzone {
+    border: 1px dashed var(--border); border-radius: 8px; padding: 10px;
+    text-align: center; color: var(--muted); font-size: 0.82rem; margin-top: 10px;
+  }
+  .dropzone.over { border-color: var(--emerald); color: var(--emerald); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>聴く kiku — 草薙(kusanagi)の引き算ASR</h1>
+    <p class="sub">外部ライブラリ 0・学習重み 0・FFT / sin / cos 不使用。hitofude.mjs の式をそのまま鏡写しにして日本語を聴く。</p>
+    <div class="badge-row">
+      <span class="badge">ゼロCDN / 純JS</span>
+      <span class="badge">hitofude.mjs VT 直結</span>
+      <span class="badge">引き算 + 移動平均のみ</span>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <input id="txt" type="text" value="アイウエオ" placeholder="カナを入力（例: アイウエオ / オエウイア / サシスセソ）">
+      <select id="preset">
+        <option value="hitofude">澄み (hitofude / 女声)</option>
+        <option value="ossan">おっさん (ossan / 低声)</option>
+        <option value="chibi">ちびっ子 (chibi / 高声)</option>
+        <option value="robot">ロボ (robot)</option>
+        <option value="toiki">吐息 (toiki)</option>
+      </select>
+      <button id="btnSay" class="primary">喋らせて聴く</button>
+      <button id="btnMic" class="rec">🎙 マイクで聴く</button>
+    </div>
+    <div class="presets">
+      <button class="chip" data-text="アイウエオ">アイウエオ</button>
+      <button class="chip" data-text="オエウイア">オエウイア</button>
+      <button class="chip" data-text="アオイウエア">アオイウエア</button>
+      <button class="chip" data-text="サシスセソ">サシスセソ</button>
+      <button class="chip" data-text="ワタシ、ニホンゴ、チョットシャベレマス">ワタシ、ニホンゴ…</button>
+    </div>
+    <div id="drop" class="dropzone">WAV ファイルをここにドロップしても聴けます</div>
+  </section>
+
+  <section class="card">
+    <div class="meta" id="status">準備完了 — 「喋らせて聴く」か「マイクで聴く」を押してみてね</div>
+    <div class="result-box" id="out">—</div>
+    <canvas id="scope" width="740" height="220"></canvas>
+    <div class="legend">
+      <span><i class="dot" style="background:#38bdf8"></i>F1 (対数 200–4000Hz)</span>
+      <span><i class="dot" style="background:#f59e0b"></i>F2 (対数 200–4000Hz)</span>
+      <span><i class="dot" style="background:#26cc9b"></i>音量バー + 判定ラベル</span>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import { makeHitofude, PRESETS, SR } from "./hitofude.mjs";
+import { analyze, decode, decodeWavBytes } from "./kiku.mjs";
+
+const $ = (id) => document.getElementById(id);
+const canvas = $("scope");
+const ctx = canvas.getContext("2d");
+let audioCtx = null;
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+function playSamples(samples, sr) {
+  const ac = ensureAudio();
+  const buf = ac.createBuffer(1, samples.length, sr);
+  buf.getChannelData(0).set(samples);
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  src.connect(ac.destination);
+  src.start();
+}
+
+function drawScope(res) {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = "#060a11";
+  ctx.fillRect(0, 0, W, H);
+  const tr = res.trace;
+  if (!tr.length) return;
+
+  // 対数周波数グリッド (300, 600, 1200, 2400 Hz)
+  const logMin = Math.log(200), logMax = Math.log(4200);
+  const yOf = (f) => H - 24 - ((Math.log(Math.max(200, Math.min(4200, f))) - logMin) / (logMax - logMin)) * (H - 42);
+  ctx.strokeStyle = "#162234";
+  ctx.fillStyle = "#475569";
+  ctx.font = "11px monospace";
+  for (const hz of [300, 600, 1200, 2400, 3600]) {
+    const y = yOf(hz);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillText(`${hz}Hz`, 4, y - 3);
+  }
+
+  const pk = tr.reduce((m, f) => Math.max(m, f.rms), 0) || 1;
+  const dx = W / Math.max(1, tr.length);
+
+  // 音量バー
+  ctx.fillStyle = "rgba(38, 204, 155, 0.22)";
+  for (let i = 0; i < tr.length; i++) {
+    const bh = (tr[i].rms / pk) * 52;
+    ctx.fillRect(i * dx, H - 20 - bh, Math.max(1, dx - 0.5), bh);
+  }
+
+  // F1 / F2 軌跡（有声区間のみ）
+  const drawLine = (key, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let pen = false;
+    for (let i = 0; i < tr.length; i++) {
+      if (tr[i].lab === "_") { pen = false; continue; }
+      const x = (i + 0.5) * dx, y = yOf(tr[i][key]);
+      if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+  drawLine("sf1", "#38bdf8");
+  drawLine("sf2", "#f59e0b");
+
+  // ラベル変化点に文字を描画
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "bold 12px monospace";
+  let prev = "_";
+  for (let i = 0; i < tr.length; i++) {
+    const lab = tr[i].lab;
+    if (lab !== prev && lab !== "_") {
+      ctx.fillText(lab, i * dx + 2, H - 6);
+    }
+    prev = lab;
+  }
+}
+
+function runAsr(samples, sr, label) {
+  const t0 = performance.now();
+  const res = decode(analyze(samples, sr));
+  const ms = (performance.now() - t0).toFixed(0);
+  $("out").textContent = res.text || "(無音)";
+  $("status").textContent = `${label} | 処理 ${ms}ms | f0=${res.medF0.toFixed(0)}Hz | fscale=${res.fscale.toFixed(2)} | ${(samples.length / sr).toFixed(2)}s`;
+  drawScope(res);
+}
+
+$("btnSay").onclick = () => {
+  const text = $("txt").value.trim() || "アイウエオ";
+  const key = $("preset").value;
+  const prm = PRESETS[key] || PRESETS.hitofude;
+  const { samples } = makeHitofude(text, prm);
+  playSamples(samples, SR);
+  runAsr(samples, SR, `kusanagi[${key}]: ${text}`);
+};
+
+for (const b of document.querySelectorAll(".chip")) {
+  b.onclick = () => { $("txt").value = b.dataset.text; $("btnSay").click(); };
+}
+
+// WAV ドロップ
+const drop = $("drop");
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = async (e) => {
+  e.preventDefault(); drop.classList.remove("over");
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const { samples, sr } = decodeWavBytes(buf);
+  playSamples(samples, sr);
+  runAsr(samples, sr, `WAV: ${file.name}`);
+};
+
+// マイク録音
+let mediaStream = null, processor = null, recChunks = [], recording = false;
+$("btnMic").onclick = async () => {
+  if (!recording) {
+    try {
+      const ac = ensureAudio();
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = ac.createMediaStreamSource(mediaStream);
+      processor = ac.createScriptProcessor(4096, 1, 1);
+      recChunks = [];
+      processor.onaudioprocess = (ev) => {
+        recChunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+      };
+      src.connect(processor);
+      processor.connect(ac.destination);
+      recording = true;
+      $("btnMic").textContent = "⏹ 停止して聴く";
+      $("btnMic").classList.add("active");
+      $("status").textContent = "録音中… 喋り終わったらもう一度押してね";
+    } catch (err) {
+      $("status").textContent = `マイク取得エラー: ${err.message}`;
+    }
+  } else {
+    recording = false;
+    $("btnMic").textContent = "🎙 マイクで聴く";
+    $("btnMic").classList.remove("active");
+    processor.disconnect();
+    mediaStream.getTracks().forEach((t) => t.stop());
+    const total = recChunks.reduce((s, c) => s + c.length, 0);
+    const merged = new Float32Array(total);
+    let off = 0;
+    for (const c of recChunks) { merged.set(c, off); off += c.length; }
+    runAsr(merged, audioCtx.sampleRate, "マイク入力");
+  }
+};
+</script>
+</body>
+</html>
