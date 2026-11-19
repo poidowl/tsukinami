@@ -330,7 +330,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     if (q.kind !== "CV") continue;
     const nx = j + 1 < ml.length ? ml[j + 1] : null;
     const nvl = nx !== null && ((nx.kind === "CV" && VOICELESS.has(nx.c)) || nx.kind === "Q");
-    q.dev = (q.v === "i" || q.v === "u") && VOICELESS.has(q.c) && (nvl || (q.final && q.c === "s"));
+    q.dev = !P.no_dev && (q.v === "i" || q.v === "u") && VOICELESS.has(q.c) && (nvl || (q.final && q.c === "s"));
   }
   // 拍ごとの子音長 cd / 母音長 vd
   const cd_s = P.cd_s !== undefined ? P.cd_s : 1.0;
@@ -1124,6 +1124,7 @@ export function makeHitofude(text, opts = {}) {
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
+  if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; }
   const r = tracksFromKana(targetText, pre, post, prm);
   const n = r.n;
   const N = Math.trunc(n * fpz * SR);
