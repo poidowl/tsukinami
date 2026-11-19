@@ -137,3 +137,26 @@ python tools/itako_asr_loop.py \
 - https://huggingface.co/mlx-community/parakeet-tdt_ctc-0.6b-ja
 
 Qwen3-ASR-1.7B は Apache-2.0。
+
+---
+
+## 草薙版の2段探索 `tools/itako_search.py`
+
+1組を「調整用の全文 × seed 2つ」で採点する（文ごと・seed ごとに 8091/8092 の悪いほう → sum(edits)/sum(len)）。yomu の seed は決定論（同じ組・同じ seed なら同じ点）なので、seed を変えた平均でつまみ微小変化のぶれをならす。
+
+1. 粗い探索：hz, fscale, rate, g_vo, tilt_w, jitter, wander_st をラテン超方格で広く撃つ（`--coarse`）。
+2. 詰め：上位3点を关亡婆 (8090 `default_model`) に渡し、歩幅を範囲幅の 20% → 10% → 5% と明示して `--refine` 回。確認用の文は見せない。
+3. 検証：既定値と最良値を調整用＋確認用で採点し、最良値をさらに2回採点。既定と最良の wav を `wavs_default/` `wavs_best/` に残す。
+
+```bash
+ITAKO_NODE=~/itako_kusanagi/node/bin/node python tools/itako_search.py \
+  --items tools/itako_items_run3.json --out ../out/run3 --coarse 90 --refine 20
+```
+
+### run3（2026-11-19 関亡婆、調整用12文＋確認用4文、seed 2024/7）
+- 既定 (hz 350, fscale 1.17, rate 1.26, g_vo 0.92, tilt_w 5)：調整用 0.430・確認用 0.537
+- 最良 (粗い探索 63 番: hz 148.1, fscale 0.973, rate 1.317, g_vo 0.747, tilt_w 4, jitter 0.0002, wander_st 0.331)：調整用 0.290・確認用 0.256
+- 別の seed (11/42, 99/123) で測り直しても 調整用 0.43→0.36、確認用 0.39〜0.48→0.20〜0.24。下がり方は本物寄りだが、粗い探索の「当たりくじ」ぶんの上乗せもある。主に parakeet が良くなり、Qwen3-ASR 単独では調整用がやや悪化。
+- 最良は低い声（hz 148）なので、声の性格が既定と別物。採用は P の耳で決める。
+- 关亡婆の詰め 20 回は粗い探索の最良を超えなかった（半分以上が失格枠に当たった）。
+- まだ落ちる文：歌を歌う（全滅）、屋根の上で、写真を撮りましょう、学校へ行きます、本当にすごいなあ。
