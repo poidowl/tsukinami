@@ -183,7 +183,7 @@ class TestSymmetricKana(unittest.TestCase):
             fake = os.path.join(td, "fake_openjtalk.py")
             with open(fake, "w", encoding="utf-8") as f:
                 f.write(
-                    "#!/usr/bin/env python3\n"
+                    f"#!{sys.executable}\n"  # never /usr/bin/env python3 (system python on M6)
                     "import sys, json\n"
                     "print('ONNX Runtime warning: initializer is not used')\n"
                     "print('loading model...')\n"
@@ -202,7 +202,7 @@ class TestSymmetricKana(unittest.TestCase):
             wrapper = os.path.join(td, "wrapper")
             with open(wrapper, "w", encoding="utf-8") as f:
                 f.write(
-                    "#!/usr/bin/env python3\n"
+                    f"#!{sys.executable}\n"  # never /usr/bin/env python3 (system python on M6)
                     "import sys, json, re\n"
                     "# Recreate smoke.py's stdout-marking contract, plus a warning.\n"
                     "print('ONNX Runtime warning: initializer is not used')\n"
