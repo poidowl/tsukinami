@@ -1300,11 +1300,12 @@ export function makeHitofude(text, opts = {}) {
   for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
   const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
   const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
+  const G1S = perSample(r.G1, N);
   const FCW = perSample(smooth1(f_cons_w, 6), N);
 
   const y = new Float64Array(N);
   for (let i = 0; i < N; i++) {
-    y[i] = vScale * ycRad[i] + 0.90 * FCW[i] * bpc[i];
+    y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i];
   }
   const x3 = captureSteps ? y.slice() : null;
 
