@@ -100,7 +100,7 @@ const KOTOBA_PRM = {
   alpha: 1.15, alpha3: 1.3, T: 30, Tvc: 30, Tvv: 40, Tpal: 40, undershoot: 80, f1on: 280, f1drop: true,
   smooth: 30, smooth_j: [30, 30, 30], fric_hold: 20, vl_hold: true, ou_long: true,
   vdl: -4.0, vbg: 4.0, rdl: -4.0,
-  VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [380, 1600, 2700], e: [520, 2350, 3000], o: [650, 1050, 2850] },
+  VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [380, 1300, 2650], e: [520, 2350, 3000], o: [650, 1050, 2850] },
   LE: { lab: [0.75, 280], alv: [0.40, 1250], pal: [0.30, 1850], velF: [0.95, 300], velB: [1.05, 350] },
   gl: { y: [300, 2700, 3300], w: [360, 800, 2600] },
   fricT: { s: [2600, 4600, 6400], z: [2600, 4600, 6400], ts: [2600, 4600, 6400], sh: [1500, 3000, 4000], j: [1500, 3000, 4000], ch: [1500, 3000, 4000] },
@@ -111,8 +111,8 @@ const KOTOBA_PRM = {
   rate: 1.0, fin: 1.5, pau: 0.35, qn: 0.10,
   sil: -30.0, qlev: -18.0, decl: 1.5, f0: 220.0, devmax: 0.045, Nlev: -1.0, fend: -6.0, fend_at: 0.16,
   CDUR: { "": 0, k: 70, g: 50, s: 100, z: 70, sh: 100, j: 70, t: 60, d: 40, ch: 80, ts: 80, n: 50, h: 70, f: 70, m: 50, y: 60, r: 25, w: 55, b: 40, p: 70 },
-  VDUR: { a: 90, e: 90, i: 80, o: 90, u: 75 },
-  VL: { a: 0.0, e: -0.5, i: -0.8, o: -0.3, u: -0.8 },
+  VDUR: { a: 90, e: 90, i: 80, o: 90, u: 85 },
+  VL: { a: 0.0, e: -0.5, i: -0.8, o: -0.3, u: -0.3 },
   CL: {
     k: [-12, -5], t: [-12, -5], p: [-12, -5], ch: [-12, -4], ts: [-12, -4], g: [-4, -2], d: [-4, -2], b: [-4, -2],
     s: [-3, -3], sh: [-3, -3], z: [-3, -2], j: [-3, -2], h: [-5, -4], f: [-5, -4], m: [-1.5, -1.5], n: [-1.5, -1.5],
@@ -997,12 +997,14 @@ function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
 
 // 引き算①（音源くびれ）：周期 PER[i] と食い違う倍音間の谷を3次ラグランジュ補間コムで削る
 // 入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする
-export function combPeriod(x, PER, G) {
+// damp > 0 のときはフィードバック帰還路に1極ローパス平滑を混ぜ、高域ほど自然に元のノイズの息を残す
+export function combPeriod(x, PER, G, damp = 0.0) {
   const n = x.length;
   const y = new Float64Array(n);
+  let lp = 0.0;
   for (let i = 0; i < n; i++) {
     const g = G[i];
-    if (g <= 1e-4) { y[i] = x[i]; continue; }
+    if (g <= 1e-4) { y[i] = x[i]; lp = x[i]; continue; }
     const cIn = Math.sqrt(1.0 - g * g);
     const p = PER[i];
     const k = Math.trunc(p);
@@ -1021,6 +1023,10 @@ export function combPeriod(x, PER, G) {
       fb = y[i0] * (1.0 - u) + y[i0 - 1] * u;
     } else {
       fb = 0.0;
+    }
+    if (damp > 0.0) {
+      lp = (1.0 - damp) * fb + damp * lp;
+      fb = lp;
     }
     y[i] = cIn * x[i] + g * fb;
   }
@@ -1073,6 +1079,8 @@ export function makeHitofude(text, opts = {}) {
     sigh = 0.0,       // 句末の息抜き量 (0.0〜1.0)。句末母音後半で G を緩め、声を元の吐息へ戻す
     jitter = 0.0013,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
     wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
+    damp = 0.0,       // コム帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
+    shin = 0.0,       // 周期内の純粋乗算時間くびれ (0.0..1.0、パルス加算なしで声の芯を整える)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1233,10 +1241,21 @@ export function makeHitofude(text, opts = {}) {
   for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
   const x0 = captureSteps ? x.slice() : null;
 
-  // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列） ===
+  // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、必要なら高域減衰 damp と乗算時間くびれ shin） ===
   const GS = perSample(g_fr, N);
-  x = combPeriod(x, PER, GS);
-  x = combPeriod(x, PER, GS);
+  x = combPeriod(x, PER, GS, damp);
+  if (shin > 0.0) {
+    let ph = 0.0;
+    const p = 1.0 + 3.0 * shin;
+    for (let i = 0; i < N; i++) {
+      ph += 1.0 / PER[i];
+      if (ph >= 1.0) ph -= 1.0;
+      const w = Math.pow(Math.max(0.0, 1.0 - Math.abs(ph - 0.5) * 2.0), p);
+      const s = shin * GS[i];
+      x[i] *= (1.0 - s) + s * (0.30 + 1.85 * w);
+    }
+  }
+  x = combPeriod(x, PER, GS, damp);
   const x1 = captureSteps ? x.slice() : null;
 
   // === Step 2: 【引き算②】低域濁りと高域の角を引く ===
