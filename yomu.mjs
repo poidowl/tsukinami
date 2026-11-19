@@ -31,6 +31,8 @@ export function synth(text, prm, utaHz = null) {
     sigh: Number(prm.sigh),
     jitter: Number(prm.jitter),
     wander_st: Number(prm.wander_st),
+    damp: prm.damp === undefined ? 0.0 : Number(prm.damp),
+    shin: prm.shin === undefined ? 0.0 : Number(prm.shin),
     uta_hz: utaHz,
   });
 }
@@ -135,6 +137,8 @@ Options:
   --sigh <float>           句末の息抜き量 (0.0..1.0)
   --jitter <float>         周期ジッタ率
   --wander <float>         ピッチ緩徐漂い幅 (半音)
+  --damp <float>           コム帰還路の高域減衰 (0.0..0.95、高域に元の息を残す)
+  --shin <float>           周期内の純粋乗算時間くびれ (0.0..1.0、パルス加算なし)
   -h, --help               このヘルプを表示`);
 }
 
@@ -163,6 +167,8 @@ function main() {
       sigh: { type: "string" },
       jitter: { type: "string" },
       wander: { type: "string" },
+      damp: { type: "string" },
+      shin: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -193,6 +199,7 @@ function main() {
   const flagMap = {
     seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
     "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
+    damp: "damp", shin: "shin",
   };
   for (const [flag, key] of Object.entries(flagMap)) {
     if (values[flag] !== undefined) {
@@ -210,6 +217,12 @@ function main() {
   if (prm.rate <= 0) dieParam(`rate must be > 0, got ${prm.rate}`);
   if (prm.g_vo < 0 || prm.g_vo >= 1) dieParam(`g_vo must be in [0, 1), got ${prm.g_vo}`);
   if (Math.round(prm.tilt_w) < 1) dieParam(`tilt_w must be >= 1, got ${prm.tilt_w}`);
+  if (prm.damp !== undefined && (!Number.isFinite(Number(prm.damp)) || Number(prm.damp) < 0 || Number(prm.damp) >= 1)) {
+    dieParam(`damp must be in [0, 1), got ${prm.damp}`);
+  }
+  if (prm.shin !== undefined && (!Number.isFinite(Number(prm.shin)) || Number(prm.shin) < 0 || Number(prm.shin) > 1)) {
+    dieParam(`shin must be in [0, 1], got ${prm.shin}`);
+  }
 
   if (values["save-recipe"]) {
     const dst = path.resolve(values["save-recipe"]);
