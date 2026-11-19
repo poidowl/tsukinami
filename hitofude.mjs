@@ -40,9 +40,10 @@ export const PRESETS = {
   },
   ossan: {
     label: "おっさん",
-    description: "おっさん（長い声道 fscale=0.88・低音 148Hz）",
-    seed: 2024, hz: 148.0, fscale: 0.88, rate: 1.22,
-    g_vo: 0.93, tilt_w: 5, sigh: 0.0, jitter: 0.0016, wander_st: 0.14,
+    description: "おっさん（低音実験Cチェックポイント：開相ダンプ＋声門間隙 chink=0.18＋F1吐息棚 f1_shelf=0.06）",
+    seed: 2024, hz: 115.0, fscale: 0.86, rate: 1.32,
+    g_vo: 0.90, damp: 0.54, shin: 0.76, chink: 0.18, f1_shelf: 0.06,
+    tilt_w: 1, sigh: 0.32, jitter: 0.0025, wander_st: 0.25,
   },
   robot: {
     label: "ロボ",
@@ -995,8 +996,26 @@ function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
   return bp;
 }
 
-// 因果2極声道共振器（直列カスケード用、DCゲイン=1、高域は Q <= qMax で自然に帯域幅を広げる）
-function resonator2Pole(x, F, bwMin, qMax = 12.0) {
+// 梨状窩などの声道分岐による受動反共振（2零点ノッチ、DCゲイン=1）
+function antiresonator2Zero(x, fNotch, bwNotch) {
+  const n = x.length;
+  const y = new Float64Array(n);
+  const r = Math.exp((-Math.PI * bwNotch) / SR);
+  const b = -2.0 * r * Math.cos((2.0 * Math.PI * fNotch) / SR);
+  const c = r * r;
+  const norm = 1.0 / (1.0 + b + c);
+  let x1 = 0.0, x2 = 0.0;
+  for (let i = 0; i < n; i++) {
+    const xi = x[i];
+    y[i] = (xi + b * x1 + c * x2) * norm;
+    x2 = x1;
+    x1 = xi;
+  }
+  return y;
+}
+
+// 因果2極声道共振器（直列カスケード用、DCゲイン=1、openW 指定時は声門開相だけ帯域幅を広げて肺へ抜く）
+function resonator2Pole(x, F, bwMin, qMax = 12.0, openW = null, openDamp = 0.0, shelf = 0.0) {
   const n = x.length;
   const y = new Float64Array(n);
   const k = (2.0 * Math.PI) / SR;
@@ -1004,13 +1023,13 @@ function resonator2Pole(x, F, bwMin, qMax = 12.0) {
   let y1 = 0.0, y2 = 0.0;
   for (let i = 0; i < n; i++) {
     const f = F[i];
-    const bw = Math.max(bwMin, f / qMax);
+    const bw = Math.max(bwMin, f / qMax) + (openW ? openDamp * openW[i] : 0.0);
     const r = Math.exp(-piOverSR * bw);
     const c = -r * r;
     const b = 2.0 * r * Math.cos(k * f);
     const a = 1.0 - b - c;
     const yi = a * x[i] + b * y1 + c * y2;
-    y[i] = yi;
+    y[i] = shelf > 0.0 ? ((1.0 - shelf) * yi + shelf * x[i]) : yi;
     y2 = y1;
     y1 = yi;
   }
@@ -1019,14 +1038,14 @@ function resonator2Pole(x, F, bwMin, qMax = 12.0) {
 
 // 引き算①（音源くびれ）：周期 PER[i] と食い違う倍音間の谷を3次ラグランジュ補間コムで削る
 // 入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする
-// damp > 0 のときはフィードバック帰還路に1極ローパス平滑を混ぜ、高域ほど自然に元のノイズの息を残す
-export function combPeriod(x, PER, G, damp = 0.0) {
+// damp > 0 のときはフィードバック帰還路に1極ローパス平滑を混ぜ、keepHiBreath=true 時は高域入力も cIn で削らず元の吐息を残す
+export function combPeriod(x, PER, G, damp = 0.0, keepHiBreath = false) {
   const n = x.length;
   const y = new Float64Array(n);
-  let lp = 0.0;
+  let lp = 0.0, xLp = 0.0;
   for (let i = 0; i < n; i++) {
     const g = G[i];
-    if (g <= 1e-4) { y[i] = x[i]; lp = x[i]; continue; }
+    if (g <= 1e-4) { y[i] = x[i]; lp = x[i]; xLp = x[i]; continue; }
     const cIn = Math.sqrt(1.0 - g * g);
     const p = PER[i];
     const k = Math.trunc(p);
@@ -1050,7 +1069,12 @@ export function combPeriod(x, PER, G, damp = 0.0) {
       lp = (1.0 - damp) * fb + damp * lp;
       fb = lp;
     }
-    y[i] = cIn * x[i] + g * fb;
+    if (keepHiBreath && damp > 0.0) {
+      xLp = (1.0 - damp) * x[i] + damp * xLp;
+      y[i] = (cIn * xLp + g * fb) + (x[i] - xLp);
+    } else {
+      y[i] = cIn * x[i] + g * fb;
+    }
   }
   return y;
 }
@@ -1103,6 +1127,8 @@ export function makeHitofude(text, opts = {}) {
     wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
     damp = 0.0,       // コム帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
     shin = 0.0,       // 周期内の純粋乗算時間くびれ (0.0..1.0、パルス加算なしで声の芯を整える)
+    chink = 0.18,     // 声門間隙 (shin>0 時、閉じ切らず残す元の吐息割合)
+    f1_shelf = 0.06,  // 直列1段目 F1 の高域吐息棚 (shin>0 時、F2/F3帯の吐息を残す割合)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1252,14 +1278,12 @@ export function makeHitofude(text, opts = {}) {
     }
   }
 
-  // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、必要なら高域減衰 damp と乗算時間くびれ shin） ===
+  // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、shin > 0 時は脱力声門くびれ＋開相連動＋声門間隙） ===
   const GS = perSample(g_fr, N);
   const wNorm = wander_st > 0.0 ? (1.0 / wander_st) : 0.0;
   if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
-  x = combPeriod(x, PER, GS, damp);
+  const openW = shin > 0.0 ? new Float64Array(N) : null;
   if (shin > 0.0) {
-    // Unidirectional lung airflow through an asymmetric glottal valve (closed -> slow open -> crisp close)
-    // Runs after 1-stage comb (no 2-stage metallic ring, no bipolar AM vocoder buzz)
     let ph = 0.0;
     let cycJit = 0.0;
     for (let i = 0; i < N; i++) {
@@ -1268,8 +1292,8 @@ export function makeHitofude(text, opts = {}) {
         ph -= 1.0;
         cycJit = jitter > 0.0 ? Math.max(-1.0, Math.min(1.0, x[i])) : 0.0;
       }
-      const cEnd = 0.34 + 0.03 * cycJit;
-      const oEnd = 0.91 + 0.02 * cycJit;
+      const cEnd = 0.14 + 0.03 * cycJit;
+      const oEnd = 0.82 + 0.02 * cycJit;
       let w = 0.0;
       if (ph >= cEnd && ph < oEnd) {
         const u = (ph - cEnd) / (oEnd - cEnd);
@@ -1279,12 +1303,16 @@ export function makeHitofude(text, opts = {}) {
         w = v * v;
       }
       const breathMod = wNorm > 0.0 ? Math.max(0.4, Math.min(1.4, 1.0 + 0.35 * wander[i] * wNorm)) : 1.0;
-      const s = Math.min(1.0, shin * breathMod) * GS[i];
-      const shim = 1.0 + 0.09 * cycJit;
-      const puff = w * shim * (0.80 + 0.25 * x[i]);
-      x[i] = (1.0 - s) * x[i] + s * (puff + 0.22 * x[i]);
+      const vo = Math.min(1.0, GS[i] / (g_vo || 1.0));
+      openW[i] = (chink + (1.0 - chink) * w) * vo;
+      const s = Math.min(1.0 - chink, shin * breathMod) * vo;
+      const shim = 1.0 + 0.08 * cycJit;
+      const puff = Math.abs(x[i]) * w * shim;
+      x[i] = (1.0 - s) * x[i] + s * puff;
     }
+    x = combPeriod(x, PER, GS, damp, true);
   } else {
+    x = combPeriod(x, PER, GS, damp);
     x = combPeriod(x, PER, GS, damp);
   }
   const x1 = captureSteps ? x.slice() : null;
@@ -1301,14 +1329,25 @@ export function makeHitofude(text, opts = {}) {
   }
   const x2 = captureSteps ? x.slice() : null;
 
-  // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
-  let yc = resonator2Pole(x, perSample(F1, N), 75.0, 8.5);
-  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0);
-  yc = resonator2Pole(yc, perSample(F3, N), 160.0, 10.5);
-  yc = resonator2Pole(yc, perSample(F4, N), 240.0, 9.5);
-  const radAlpha = 0.42 + 0.26 * Math.min(1.0, Math.max(0.0, (hz - 150.0) / 110.0));
+  // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3[→F4] ＋ 開相肺ダンプ ＋ 梨状窩ノッチ ＋ 唇放射） ===
+  let yc = resonator2Pole(x, perSample(F1, N), 75.0, 8.5, openW, 450.0, shin > 0.0 ? f1_shelf : 0.0);
+  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0, openW, 70.0);
+  yc = resonator2Pole(yc, perSample(F3, N), 160.0, 10.5, openW, 20.0);
   const ycRad = new Float64Array(N);
-  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - radAlpha * yc[i - 1];
+  if (shin > 0.0) {
+    yc = antiresonator2Zero(yc, 4600.0, 750.0);
+    const cKeep = Math.exp((-2.0 * Math.PI * 240.0) / SR);
+    let lp = 0.0, lpPrev = 0.0;
+    for (let i = 1; i < N; i++) {
+      lp = (1.0 - cKeep) * yc[i] + cKeep * lp;
+      ycRad[i] = yc[i] - 0.96 * (yc[i - 1] - 0.03 * lpPrev);
+      lpPrev = lp;
+    }
+  } else {
+    yc = resonator2Pole(yc, perSample(F4, N), 240.0, 9.5);
+    const radAlpha = 0.42 + 0.26 * Math.min(1.0, Math.max(0.0, (hz - 150.0) / 110.0));
+    for (let i = 1; i < N; i++) ycRad[i] = yc[i] - radAlpha * yc[i - 1];
+  }
   const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
   const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
   const G1S = perSample(r.G1, N);
