@@ -881,8 +881,7 @@ function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       else setslice(dl, i0, ce, -6);
       const [cen, sd] = (c === "k" || c === "g") ? [((v === "i" || v === "e") ? 3000 : 1900), 500]
         : (["t", "d", "ch", "ts"].includes(c) ? [4500, 1000] : [1200, 900]);
-      const bg = VOICED_OBS.has(c) ? P.vbg : P.bg;
-      rawBands.push([ce, Math.min(ce + 2, ib + 1), cen, sd, bg + cen / 2500.0]);
+      if (!VOICED_OBS.has(c)) rawBands.push([ce, Math.min(ce + 2, ib + 1), cen, sd, P.bg + cen / 2500.0]);
       if (c !== "ch" && c !== "ts") gset(ce, ib, VOICED_OBS.has(c) ? [1, 1, 1] : [0.4, 1, 1]);
     }
     if (c === "r") setslice(dl, i0, ib, P.rdl);
