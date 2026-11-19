@@ -193,6 +193,7 @@ def main():
     ap.add_argument("--coarse", type=int, default=80)
     ap.add_argument("--refine", type=int, default=20)
     ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--min", action="append", default=[], help="tighter lower bound, e.g. --min hz=280 (female-range search)")
     ap.add_argument("--rng-seed", type=int, default=20261119)
     ap.add_argument("--llm-url", default=asrlib.DEFAULT_LLM_URL)
     ap.add_argument("--llm-model", default=asrlib.DEFAULT_LLM_MODEL)
@@ -207,6 +208,10 @@ def main():
     for k in knobs:
         if k not in loop.PARAM_BOUNDS:
             raise SystemExit(f"unknown knob {k}")
+    for spec in args.min:
+        k, v = spec.split("=")
+        lo, hi, nd, desc = loop.PARAM_BOUNDS[k]
+        loop.PARAM_BOUNDS[k] = (max(lo, float(v)), hi, nd, desc)  # 粗い探索も关亡婆の提案もこの範囲に丸める
     seeds = [int(s) for s in args.seeds.split(",")]
     tune_items, check_items = loop.load_items(args.items)
     asr_specs = args.asr or list(asrlib.DEFAULT_ASR_URLS)
@@ -214,6 +219,7 @@ def main():
                                      allow_fallback=(asr_specs == ["mock"]))
     gate, _ = loop.measure_hakaru_gate_from_presets(tune_items[0]["synth"])
     base = {k: KY.presets()["hitofude"][k] for k in KY.knob_keys()}
+    base.update({k: v[2] for k, v in KY.extra_knobs().items()})
     default_knobs = {k: base[k] for k in knobs}
     os.makedirs(args.out, exist_ok=True)
     log_path = os.path.join(args.out, "log.jsonl")

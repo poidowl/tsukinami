@@ -331,6 +331,21 @@ class TestKusanagiYomu(unittest.TestCase):
             with self.assertRaises(ValueError, msg=k):
                 self.KY.validate_prm(dict(base, **{k: v}))
 
+    def test_extra_knobs_damp_shin(self):
+        ex = self.KY.extra_knobs()
+        self.assertEqual(set(ex), {"damp", "shin"})
+        base = {k: self.KY.presets()["hitofude"][k] for k in self.KY.knob_keys()}
+        self.assertEqual(self.KY.validate_prm(base)["damp"], 0.0)  # 省略時は既定0
+        for k, v in (("damp", 0.96), ("damp", float("nan")), ("shin", 1.01), ("shin", -0.1)):
+            with self.assertRaises(ValueError, msg=(k, v)):
+                self.KY.validate_prm(dict(base, **{k: v}))
+        with tempfile.TemporaryDirectory() as td:
+            p0, p1 = os.path.join(td, "a.wav"), os.path.join(td, "b.wav")
+            self.KY.synth_many(["うたをうたう"], base, [p0])
+            self.KY.synth_many(["うたをうたう"], dict(base, damp=0.5, shin=0.5), [p1])
+            with open(p0, "rb") as f0, open(p1, "rb") as f1:
+                self.assertNotEqual(f0.read(), f1.read())  # damp/shin が実際に node まで届く
+
     def test_synth_many_writes_wavs_and_measures(self):
         base = {k: self.KY.presets()["hitofude"][k] for k in self.KY.knob_keys()}
         with tempfile.TemporaryDirectory() as td:

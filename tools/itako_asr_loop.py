@@ -59,6 +59,8 @@ PARAM_BOUNDS = {
     "sigh":      (0.0,   0.90,  2, "句末息抜き量"),
     "jitter":    (0.0,   0.005, 4, "周期ジッタ"),
     "wander_st": (0.0,   0.45,  3, "ピッチ緩徐漂い幅 (半音)"),
+    "damp":      (0.0,   0.95,  3, "コム帰還路の高域減衰（kusanagi d81cca0〜、既定0）"),
+    "shin":      (0.0,   1.0,   3, "周期内の乗算時間くびれ（kusanagi d81cca0〜、既定0）"),
 }
 
 # 現行6プリセット (hitofude, toiki, sasayaki, chibi, ossan, robot) の utt_00 実測値から決めた失格枠:
@@ -617,6 +619,7 @@ def main():
     os.makedirs(args.wav_archive, exist_ok=True)
 
     base_prm = {k: KY.presets()[args.preset][k] for k in KY.knob_keys()}
+    base_prm.update({k: v[2] for k, v in KY.extra_knobs().items()})
     base_prm["seed"] = FIXED_SEED
 
     tune_refs = [it["ref"] for it in tune_items]

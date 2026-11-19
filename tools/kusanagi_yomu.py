@@ -22,6 +22,10 @@ YOMU_MJS = os.path.join(REPO_ROOT, "yomu.mjs")
 HITOFUDE_MJS = os.path.join(REPO_ROOT, "hitofude.mjs")
 NODE_TIMEOUT_SEC = 300
 
+# プリセットに無い追加つまみ（d81cca0 以降の kusanagi）。範囲は hitofude.mjs の注記と yomu.mjs の検査に合わせる:
+#   damp: コム帰還路の高域減衰 0.0..0.95（yomu は [0,1) で検査）, shin: 乗算時間くびれ 0.0..1.0
+# 既定 0.0（= 入れない時と同じ音）。yomu.mjs の flagMap に名前がある時だけ有効にする。
+EXTRA_KNOBS = {"damp": (0.0, 0.95, 0.0), "shin": (0.0, 1.0, 0.0)}
 _MEASURE_RE = re.compile(r"^\s*\[Measure\]\s*(\{.*\})\s*$")
 _cache = {}
 
@@ -46,6 +50,9 @@ def _load():
         d = json.loads(out.strip().splitlines()[-1])
         _cache["presets"] = d["PRESETS"]
         _cache["knob_keys"] = list(d["KNOB_KEYS"])
+        with open(YOMU_MJS, encoding="utf-8") as f:
+            ysrc = f.read()
+        _cache["extra"] = {k: v for k, v in EXTRA_KNOBS.items() if f'{k}: "{k}"' in ysrc}
     return _cache["presets"], _cache["knob_keys"]
 
 
@@ -55,6 +62,12 @@ def presets():
 
 def knob_keys():
     return _load()[1]
+
+
+def extra_knobs():
+    """この yomu.mjs が受け付ける追加つまみ {name: (lo, hi, default)}。"""
+    _load()
+    return dict(_cache["extra"])
 
 
 def validate_prm(prm):
@@ -72,6 +85,14 @@ def validate_prm(prm):
         raise ValueError("hz / fscale / rate must be > 0")
     if not (0.0 <= clean["g_vo"] < 1.0):
         raise ValueError(f"g_vo must be in [0, 1), got {clean['g_vo']}")
+    for k, (lo, hi, dflt) in extra_knobs().items():
+        v = float(prm.get(k, dflt))
+        if not math.isfinite(v) or v < lo or v > hi:
+            raise ValueError(f"{k} must be in [{lo}, {hi}], got {prm.get(k)!r}")
+        clean[k] = v
+    unknown = [k for k in ("damp", "shin") if k in prm and k not in clean]
+    if unknown:
+        raise ValueError(f"this yomu.mjs does not support knobs {unknown}")
     clean["tilt_w"] = int(round(clean["tilt_w"]))
     if clean["tilt_w"] < 1:
         raise ValueError(f"tilt_w must be >= 1, got {clean['tilt_w']}")
