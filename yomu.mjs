@@ -86,11 +86,17 @@ export function compareAcoustic(baseSig, baseR, testSig, testR) {
   };
 }
 
+function splitStemAndExt(filePath) {
+  const rawExt = path.extname(filePath);
+  const ext = rawExt || ".wav";
+  const stem = rawExt ? filePath.slice(0, -rawExt.length) : filePath;
+  return { stem, ext };
+}
+
 function resolveOutPath(argsOut, nTexts, idx, outDir, preset) {
   if (argsOut) {
     if (nTexts === 1) return argsOut;
-    const ext = path.extname(argsOut) || ".wav";
-    const stem = ext ? argsOut.slice(0, -ext.length) : argsOut;
+    const { stem, ext } = splitStemAndExt(argsOut);
     return `${stem}_${idx + 1}${ext}`;
   }
   let seq = 1;
@@ -130,6 +136,11 @@ Options:
   --jitter <float>         周期ジッタ率
   --wander <float>         ピッチ緩徐漂い幅 (半音)
   -h, --help               このヘルプを表示`);
+}
+
+function dieParam(msg) {
+  console.error(`[kusanagi] Invalid parameter: ${msg}`);
+  process.exit(2);
 }
 
 function main() {
@@ -184,8 +195,21 @@ function main() {
     "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
   };
   for (const [flag, key] of Object.entries(flagMap)) {
-    if (values[flag] !== undefined) prm[key] = Number(values[flag]);
+    if (values[flag] !== undefined) {
+      const raw = values[flag].trim();
+      const num = Number(raw);
+      if (!raw || !Number.isFinite(num)) dieParam(`--${flag} expects a finite number, got '${values[flag]}'`);
+      prm[key] = num;
+    }
   }
+  for (const key of KNOB_KEYS) {
+    if (!Number.isFinite(Number(prm[key]))) dieParam(`'${key}' must be a finite number, got '${prm[key]}'`);
+  }
+  if (prm.hz <= 0) dieParam(`hz must be > 0, got ${prm.hz}`);
+  if (prm.fscale <= 0) dieParam(`fscale must be > 0, got ${prm.fscale}`);
+  if (prm.rate <= 0) dieParam(`rate must be > 0, got ${prm.rate}`);
+  if (prm.g_vo < 0 || prm.g_vo >= 1) dieParam(`g_vo must be in [0, 1), got ${prm.g_vo}`);
+  if (Math.round(prm.tilt_w) < 1) dieParam(`tilt_w must be >= 1, got ${prm.tilt_w}`);
 
   if (values["save-recipe"]) {
     const dst = path.resolve(values["save-recipe"]);
@@ -194,7 +218,14 @@ function main() {
     console.log(`[kusanagi] Saved recipe -> ${values["save-recipe"]}`);
   }
 
-  const utaHz = values.uta ? values.uta.split(",").filter((s) => s.trim()).map(Number) : null;
+  let utaHz = null;
+  if (values.uta !== undefined) {
+    const parts = values.uta.split(",").map((s) => s.trim());
+    if (!parts.length || parts.some((s) => !s || !Number.isFinite(Number(s)) || Number(s) <= 0)) {
+      dieParam(`--uta expects comma-separated positive numbers, got '${values.uta}'`);
+    }
+    utaHz = parts.map(Number);
+  }
   const texts = positionals.length ? positionals : ["わたし、にほんご、ちょっとしゃべれます"];
   const outDir = path.join(HERE, "out");
   fs.mkdirSync(outDir, { recursive: true });
@@ -216,8 +247,7 @@ function main() {
     }
     if (values.compare) {
       const baseRes = synth(t, PRESETS.hitofude, utaHz);
-      const ext = path.extname(outPath) || ".wav";
-      const stem = ext ? outPath.slice(0, -ext.length) : outPath;
+      const { stem, ext } = splitStemAndExt(outPath);
       const basePath = `${stem}_base${ext}`;
       fs.writeFileSync(basePath, encodeWav(baseRes.samples));
       const cmp = Object.assign({ base: basePath }, compareAcoustic(baseRes.samples, baseRes.r, samples, r));

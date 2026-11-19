@@ -131,19 +131,39 @@ export function toKata(s) {
   return out;
 }
 
-export function splitMoras(text) {
-  const out = [];
+// 句切れ前の「は→ワ」変換から除外する語彙（母・父母・笑い声・連体詞＋歯/葉・固有名詞）
+const HA_LEXICAL_END = new Set(["ハハ", "チチハハ", "コノハ", "ソノハ", "アノハ", "ドノハ", "イロハ", "アロハ", "ヤマハ", "ナハ"]);
+const HA_LAUGH_RE = /^(?:[アワウガエオ]|キャ|ギャ|ニャ)?ハ{2,}$/;
+// 助詞「の・と・も」の直後で「おう→おー」長音化を止める自立語「う〜」語頭（農園=ノウエン・投影=トウエイ・初詣=ハツモウデ等は除外）
+const NO_TO_MO_U_RE = /^(?:ウエ(?![ンイ])|ウチ|ウシロ|ウラ|ウミ|ウタ(?![ンイ])|ウン|ウワサ|ウワギ|ウゴキ|ウサギ|ウナギ)/;
+const NO_ONLY_U_RE = /^(?:ウデ|ウソ|ウマ|ウシ)/;
+
+function tokenizeKana(text, extraCuts = null) {
+  const ms = [];
+  const cuts = new Set();
+  let moraIdx = 0;
+  if (extraCuts) for (const c of extraCuts) cuts.add(c);
   for (const ch of toKata(text)) {
+    if (ch === "'" || ch === "’") continue;
+    if (ch === "/" || ch === "|") {
+      if (moraIdx > 0) cuts.add(moraIdx);
+      continue;
+    }
     if (PAUSE.has(ch)) {
-      if (out.length && out[out.length - 1] !== "、") out.push("、");
-    } else if (SMALL[ch] && out.length && !["、", "ッ", "ン", "ー"].includes(out[out.length - 1])) {
-      out[out.length - 1] += ch;
+      if (ms.length && ms[ms.length - 1] !== "、") ms.push("、");
+    } else if (SMALL[ch] && ms.length && !["、", "ッ", "ン", "ー"].includes(ms[ms.length - 1])) {
+      ms[ms.length - 1] += ch;
     } else {
-      out.push(ch);
+      ms.push(ch);
+      moraIdx++;
     }
   }
-  while (out.length && out[out.length - 1] === "、") out.pop();
-  return out;
+  while (ms.length && ms[ms.length - 1] === "、") ms.pop();
+  return { ms, cuts };
+}
+
+export function splitMoras(text) {
+  return tokenizeKana(text).ms;
 }
 
 function parseKana(t, pv) {
@@ -242,13 +262,51 @@ export function smooth1(x, ms) {
 
 export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   const P = Object.assign({}, KOTOBA_PRM, params || {});
-  const ms = splitMoras(text);
-  if (P.ou_long) {
-    let pv = null;
-    for (let j = 0; j < ms.length; j++) {
-      const t = ms[j];
-      if ((t === "ウ" && pv === "o") || (P.ei_long && t === "イ" && pv === "e")) ms[j] = "ー";
-      pv = (t === "、" || t === "ッ" || t === "ン") ? null : parseKana(ms[j], pv || "a")[1];
+  const { ms, cuts } = tokenizeKana(text, P.phraseCuts || null);
+  // 読点「、」および空白・スラッシュ句切れごとにチャンク分けし、句末助詞「は→ワ」と「おう→おー」を適用
+  const chunks = [];
+  let curChunk = [], mOrd = 0;
+  for (let j = 0; j < ms.length; j++) {
+    if (ms[j] === "、") {
+      if (curChunk.length) { chunks.push(curChunk); curChunk = []; }
+      continue;
+    }
+    if (cuts.has(mOrd) && curChunk.length) {
+      chunks.push(curChunk);
+      curChunk = [];
+    }
+    curChunk.push(j);
+    mOrd++;
+  }
+  if (curChunk.length) chunks.push(curChunk);
+
+  for (const idxs of chunks) {
+    if (P.ha_wa !== false && idxs.length >= 2 && ms[idxs[idxs.length - 1]] === "ハ") {
+      const prev = ms[idxs[idxs.length - 2]];
+      const chunkStr = idxs.map((i) => ms[i]).join("");
+      if (prev !== "ッ" && !HA_LEXICAL_END.has(chunkStr) && !HA_LAUGH_RE.test(chunkStr)) {
+        ms[idxs[idxs.length - 1]] = "ワ";
+      }
+    }
+    if (P.ou_long) {
+      let pv = null;
+      for (let k = 0; k < idxs.length; k++) {
+        const idx = idxs[k];
+        const t = ms[idx];
+        if (t === "ウ" && pv === "o") {
+          const prev = k > 0 ? ms[idxs[k - 1]] : "";
+          const prev2 = k > 1 ? ms[idxs[k - 2]] : "";
+          const tail = idxs.slice(k).map((i) => ms[i]).join("");
+          const blocked = prev === "ヲ" || (k >= 2 && (
+            (prev === "ノ" && (NO_TO_MO_U_RE.test(tail) || NO_ONLY_U_RE.test(tail))) ||
+            (prev2 !== "ン" && (prev === "ト" || prev === "モ") && NO_TO_MO_U_RE.test(tail))
+          ));
+          if (!blocked) ms[idx] = "ー";
+        } else if (P.ei_long && t === "イ" && pv === "e") {
+          ms[idx] = "ー";
+        }
+        pv = (ms[idx] === "ッ" || ms[idx] === "ン") ? null : parseKana(ms[idx], pv || "a")[1];
+      }
     }
   }
   // モーラ種別と無声化判定 (i/u が無声子音に挟まれたとき母音無声化)
@@ -846,6 +904,7 @@ function furafura(n, rng, d0, haba, osoi) {
   return out;
 }
 
+// 注意: ensureScratch の作業配列 (_cs, _tmp, _D, _wHi) は heikin/ffbb/yamaBp 内で共有するため入れ子呼び出し禁止
 let _cs = new Float64Array(0), _tmp = new Float64Array(0), _D = new Float64Array(0), _wHi = new Float64Array(0);
 function ensureScratch(n) {
   if (_cs.length < n + 1) {
@@ -1023,23 +1082,24 @@ export function makeHitofude(text, opts = {}) {
     captureSteps = false, // true のとき [原石0, ①倍音谷, ②粗削り, ③声道, ④完成] の5波形を返す
   } = opts;
 
-  let accentKw = null, targetText = text;
+  let accentKw = null, targetText = text, phraseCuts = null;
   const hasMarks = /['’0/| 　?？]/.test(text);
   if (hasMarks && !uta_hz) {
     const [clean, phrases] = annotate(text);
     accentKw = { phrases, question: /[?？]$/.test(text.trim()) };
     targetText = clean;
+    phraseCuts = phrases.slice(1).map((p) => p[0]);
   }
 
   const fpz = FP / 1000.0;
-  const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16 };
+  const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
   const r = tracksFromKana(targetText, pre, post, prm);
   const n = r.n;
   const N = Math.trunc(n * fpz * SR);
   if (!r.voiced.some(Boolean) && r.bands.length === 0) {
     const z = new Float32Array(N);
-    return { samples: z, steps: captureSteps ? [z, z, z, z, z] : null, r: Object.assign({}, r, { f0_tr: new Array(n).fill(0.0) }) };
+    return { samples: z, steps: captureSteps ? [z, z, z, z, z] : null, r: Object.assign({}, r, { f0_tr: new Array(n).fill(0.0) }), moras: r.moras };
   }
 
   // ピッチ軌道 f0_fr (Hz, 5ms フレーム)
