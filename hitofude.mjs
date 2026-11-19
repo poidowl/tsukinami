@@ -995,6 +995,25 @@ function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
   return bp;
 }
 
+// 因果2極声道共振器（直列カスケード用、DCゲイン=1）
+function resonator2Pole(x, F, bw) {
+  const n = x.length;
+  const y = new Float64Array(n);
+  const k = (2.0 * Math.PI) / SR;
+  const r = Math.exp(-Math.PI * bw / SR);
+  const c = -r * r;
+  let y1 = 0.0, y2 = 0.0;
+  for (let i = 0; i < n; i++) {
+    const b = 2.0 * r * Math.cos(k * F[i]);
+    const a = 1.0 - b - c;
+    const yi = a * x[i] + b * y1 + c * y2;
+    y[i] = yi;
+    y2 = y1;
+    y1 = yi;
+  }
+  return y;
+}
+
 // 引き算①（音源くびれ）：周期 PER[i] と食い違う倍音間の谷を3次ラグランジュ補間コムで削る
 // 入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする
 // damp > 0 のときはフィードバック帰還路に1極ローパス平滑を混ぜ、高域ほど自然に元のノイズの息を残す
@@ -1269,29 +1288,20 @@ export function makeHitofude(text, opts = {}) {
   }
   const x2 = captureSteps ? x.slice() : null;
 
-  // === Step 3: 【引き算③】受動声道共鳴（帯域別 AGC ゼロ） ===
-  const bp1 = yamaBp(x, perSample(F1, N), 0.56, 3, 1);
-  const bp2 = yamaBp(x, perSample(F2, N), 0.73, 3, 2);
-  const bp3 = yamaBp(x, perSample(F3, N), 0.75, 3, 2);
-  const bp4 = yamaBp(x, perSample(F4, N), 0.72, 3, 2);
+  // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
+  let yc = resonator2Pole(x, perSample(F1, N), 80.0);
+  yc = resonator2Pole(yc, perSample(F2, N), 110.0);
+  yc = resonator2Pole(yc, perSample(F3, N), 150.0);
+  yc = resonator2Pole(yc, perSample(F4, N), 220.0);
+  const ycRad = new Float64Array(N);
+  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
+  const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
   const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
-
-  const uvG2 = new Array(n), uvG3 = new Array(n), w4Fr = new Array(n);
-  for (let t = 0; t < n; t++) {
-    const lift = 1.0 + 1.15 * (1.0 - vo_sm[t] + 0.55 * sigh_sm[t]);
-    uvG2[t] = r.G2[t] * lift;
-    uvG3[t] = r.G3[t] * lift;
-    w4Fr[t] = 0.34 * (1.0 - 0.45 * sigh_sm[t]) * (1.0 - cons_sharp[t]);
-  }
-  const G1S = perSample(r.G1, N);
-  const G2S = perSample(uvG2, N);
-  const G3S = perSample(uvG3, N);
-  const W4S = perSample(w4Fr, N);
   const FCW = perSample(smooth1(f_cons_w, 6), N);
 
   const y = new Float64Array(N);
   for (let i = 0; i < N; i++) {
-    y[i] = 0.025 * x[i] + 1.35 * G1S[i] * bp1[i] + 0.72 * G2S[i] * bp2[i] + 0.56 * G3S[i] * bp3[i] + W4S[i] * G3S[i] * bp4[i] + 0.90 * FCW[i] * bpc[i];
+    y[i] = vScale * ycRad[i] + 0.90 * FCW[i] * bpc[i];
   }
   const x3 = captureSteps ? y.slice() : null;
 
