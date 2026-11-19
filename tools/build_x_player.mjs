@@ -1,4 +1,4 @@
-// build_x_player.mjs — Builds hitofude_player.html + hitofude.html directly from ../hitofude.mjs
+// build_x_player.mjs — Builds kusanagi_player.html + kusanagi.html directly from ../hitofude.mjs
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -29,8 +29,8 @@ const playerHtml = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="robots" content="noindex">
-<link rel="canonical" href="${PAGES_BASE}/hitofude.html">
-<title>一筆彫り hitofude — WebAudio Subtractive TTS Player</title>
+<link rel="canonical" href="${PAGES_BASE}/kusanagi.html">
+<title>草薙 kusanagi — Pure JS Single-Wire Subtractive TTS Player</title>
 <style>
   :root {
     --bg: #0b111b;
@@ -362,12 +362,12 @@ const playerHtml = `<!DOCTYPE html>
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <h1>一筆彫り hitofude</h1>
-      <span class="sub">1本の乱数から4手で声を彫る</span>
+      <h1>草薙 kusanagi</h1>
+      <span class="sub">純JS・1本の乱数から4手で声を彫る</span>
     </div>
     <div class="top-links">
       <span class="pill-stat" id="perfBadge">録音 0B · 準備中</span>
-      <a class="gh-link" href="https://github.com/poidowl/tsukinami/tree/hitofude" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+      <a class="gh-link" href="https://github.com/poidowl/tsukinami/tree/kusanagi" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
     </div>
   </header>
 
@@ -955,20 +955,20 @@ const shareHtml = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="twitter:card" content="player">
-<meta name="twitter:title" content="一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る">
-<meta name="twitter:description" content="録音0 Byte・学習モデルなし・外部通信ゼロ。1本のホワイトノイズから4回の引き算だけで日本語の声と吐息を削り出す純JSシンセ（0原石→①谷→②角→③山→④完成をその場で聴き比べ）">
-<meta name="twitter:image" content="${PAGES_BASE}/assets/hitofude_square.jpg">
-<meta name="twitter:player" content="${PAGES_BASE}/hitofude_player.html?v=2">
+<meta name="twitter:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
+<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから4回の引き算だけで日本語の声と歌を彫る純JSシンセ（0原石→①谷→②角→③山→④完成をその場で聴き比べ）">
+<meta name="twitter:image" content="${PAGES_BASE}/assets/kusanagi_square.jpg">
+<meta name="twitter:player" content="${PAGES_BASE}/kusanagi_player.html?v=1">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="480">
 <meta property="og:type" content="website">
-<meta property="og:url" content="${PAGES_BASE}/hitofude.html">
-<meta property="og:title" content="一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る">
-<meta property="og:description" content="録音0 Byte・学習モデルなし・外部通信ゼロ。1本のホワイトノイズから4回の引き算だけで日本語の声と吐息を削り出す純JSシンセ。">
-<meta property="og:image" content="${PAGES_BASE}/assets/hitofude_square.jpg">
+<meta property="og:url" content="${PAGES_BASE}/kusanagi.html">
+<meta property="og:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
+<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから4回の引き算だけで日本語の声と吐息を削り出す純JSシンセ。">
+<meta property="og:image" content="${PAGES_BASE}/assets/kusanagi_square.jpg">
 <meta property="og:image:width" content="1024">
 <meta property="og:image:height" content="1024">
-<title>一筆彫り hitofude — 1本のホワイトノイズから4手で声を彫る | poidowl/tsukinami</title>
+<title>草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る | poidowl/tsukinami</title>
 <style>
   :root {
     --bg: #080d15;
@@ -1083,35 +1083,35 @@ const shareHtml = `<!DOCTYPE html>
 <div class="wrap">
   <header class="hero">
     <div>
-      <h1>一筆彫り hitofude</h1>
-      <p>外部音源 0 Byte・正弦波オシレータ不使用。1本のホワイトノイズから4回の引き算だけで日本語を彫る。</p>
+      <h1>草薙 kusanagi</h1>
+      <p>Pythonゼロ・録音 0 Byte・正弦波オシレータ不使用。1本のホワイトノイズから4回の引き算だけで日本語を彫る純JSシンセ。</p>
     </div>
   </header>
 
   <div class="frame-shell">
-    <iframe src="./hitofude_player.html?v=2" title="一筆彫り hitofude インタラクティブシンセ"
+    <iframe src="./kusanagi_player.html?v=1" title="草薙 kusanagi インタラクティブシンセ"
       sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
   </div>
 
   <section class="card">
     <h2>4回の引き算だけで声になる仕組み</h2>
     <ol class="steps-list">
-      <li><strong>0 原石：</strong><code>uniform(-1, 1)</code> の一様ホワイトノイズを1本だけ用意する。</li>
-      <li><strong>① 倍音の谷：</strong>2段フィードバックコムで倍音の隙間の谷を引き、ピッチと息のくびれ（<code>g_vo</code>）を作る。</li>
+      <li><strong>0 原石：</strong>軽量PRNG（<code>Mulberry32</code>）で <code>[-1, 1]</code> のホワイトノイズを1本だけ用意する。</li>
+      <li><strong>① 倍音の谷：</strong>2段フィードバックコム（<code>combPeriod</code>）で倍音の隙間の谷を引き、ピッチと息のくびれ（<code>g_vo</code>）を作る。</li>
       <li><strong>② 角落とし：</strong>移動平均の引き算でDC濁りと高域の角を引き、子音の鋭さと吐息の丸みを分ける。</li>
-      <li><strong>③ 声道の山：</strong>5本の受動共鳴（<code>yama_bp</code>）で母音 F1–F4 と子音帯の山だけを残す。</li>
+      <li><strong>③ 声道の山：</strong>5本の受動共鳴（<code>yamaBp</code>）で母音 F1–F4 と子音帯の山だけを残す。</li>
       <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線のコム <code>G</code> を緩めて吐息へ戻す。</li>
     </ol>
     <div class="share-bar">
       <button id="copyUrlBtn" class="btn primary" type="button">X投稿用URLをコピー</button>
       <a class="btn" href="./index.html">🎛️ 月並みTTS オモチャ箱へ</a>
-      <a class="btn" href="https://github.com/poidowl/tsukinami/tree/hitofude" target="_blank" rel="noopener noreferrer">Python原典 (71KB・hitofude branch) ↗</a>
+      <a class="btn" href="https://github.com/poidowl/tsukinami/tree/kusanagi" target="_blank" rel="noopener noreferrer">純JSソース (67KB・kusanagi branch) ↗</a>
     </div>
   </section>
 </div>
 <script>
 document.getElementById("copyUrlBtn").addEventListener("click", function () {
-  const url = "${PAGES_BASE}/hitofude.html?v=2";
+  const url = "${PAGES_BASE}/kusanagi.html";
   const btn = this;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(() => {
@@ -1125,9 +1125,9 @@ document.getElementById("copyUrlBtn").addEventListener("click", function () {
 </html>
 `;
 
-fs.writeFileSync(path.join(OUT_DIR, "hitofude_player.html"), playerHtml, "utf8");
-fs.writeFileSync(path.join(OUT_DIR, "hitofude.html"), shareHtml, "utf8");
+fs.writeFileSync(path.join(OUT_DIR, "kusanagi_player.html"), playerHtml, "utf8");
+fs.writeFileSync(path.join(OUT_DIR, "kusanagi.html"), shareHtml, "utf8");
 
 console.log("compactEngine bytes:", Buffer.byteLength(compactEngine, "utf8"));
-console.log("hitofude_player.html bytes:", Buffer.byteLength(playerHtml, "utf8"));
-console.log("hitofude.html bytes:", Buffer.byteLength(shareHtml, "utf8"));
+console.log("kusanagi_player.html bytes:", Buffer.byteLength(playerHtml, "utf8"));
+console.log("kusanagi.html bytes:", Buffer.byteLength(shareHtml, "utf8"));

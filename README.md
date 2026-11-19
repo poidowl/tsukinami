@@ -22,7 +22,7 @@ Web取得型LLMには、以下の **Raw プレーンテキスト URL 3本**を�
 | :--- | ---: | :--- |
 | [`hitofude.mjs`](hitofude.mjs) | 1,452行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、4手引き算合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
 | [`yomu.mjs`](yomu.mjs) | 231行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
-| [`tools/build_x_player.mjs`](tools/build_x_player.mjs) | 補助 | [`hitofude.mjs`](hitofude.mjs) から X Player Card / GitHub Pages 用の単一HTML（`hitofude.html` + `hitofude_player.html`）を直接生成 |
+| [`tools/build_x_player.mjs`](tools/build_x_player.mjs) | 補助 | [`hitofude.mjs`](hitofude.mjs) から X Player Card / GitHub Pages 用の単一HTML（`kusanagi.html` + `kusanagi_player.html`）を直接生成（公開URL: https://poidowl.github.io/tsukinami/kusanagi.html ） |
 
 ---
 
@@ -80,7 +80,7 @@ node yomu.mjs --preset toiki --measure --compare "わたし、にほんご、ち
 # 3) 歌モード（モーラごとの Hz 指定）
 node yomu.mjs --preset toiki --uta 349,392,440,523,523,440,392,440,466,523,587,523,440,392 --measure "ワタシノナマエツキナミノコエ"
 
-# 4) X Player Card / GitHub Pages 用 HTML 2枚のビルド（out/ に出力）
+# 4) X Player Card / GitHub Pages 用 HTML 2枚のビルド（out/kusanagi.html, out/kusanagi_player.html）
 node tools/build_x_player.mjs
 ```
 
