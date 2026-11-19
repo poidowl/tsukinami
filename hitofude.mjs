@@ -4,7 +4,7 @@
 // 【LLM向け設計原則】
 //   音になる信号線は最初から最後まで「たった1本のホワイトノイズ x」のみを4段階で削って声と吐息にする。
 //   - 正弦波オシレータ (sin/cos 音源)・固定波形の粒スタンプ (grain)・40段オールパス位相散らし 不要
-//   - 有声/無声・子音帯・吐息はすべて同じ1本のノイズ線 x から彫る（ピッチ漂い・ジッタ・ビブラートの制御揺らぎのみ別シード乱数）
+//   - 有声/無声・子音帯・吐息はもちろん、呼気圧の漂い・ジッタ・ビブラートもすべて同じ1本のノイズ線 x からダシをとって彫る
 //   - 帯域ごとの自動利得制御 (AGC) なし → 各ノブは他の段で打ち消されずほぼ直交に効く
 //   - STFT 往復なし → 時間領域の1パス直列処理のみ
 
@@ -877,14 +877,15 @@ function karuku(x, w) {
   return out;
 }
 
-// ピッチのゆっくりした自然な漂い（平滑化ランダムウォーク）
-function furafura(n, rng, d0, haba, osoi) {
+// 原石ホワイトノイズからダシをとるゆっくりした自然な漂い（平滑化ランダムウォーク）
+function furafura(src, d0, haba, osoi) {
+  const n = src.length;
   const out = new Float64Array(n);
   if (haba === 0.0) { out.fill(d0); return out; }
   let v = 0.0;
   const walk = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    v = (v + rng.uniform(-1.0, 1.0)) * 0.9995;
+    v = (v + src[i]) * 0.9995;
     walk[i] = v;
   }
   const sm = arakezuri(walk, Math.max(1, Math.trunc(osoi * SR)), 2);
@@ -1132,6 +1133,12 @@ export function makeHitofude(text, opts = {}) {
     return { samples: z, steps: captureSteps ? [z, z, z, z, z] : null, r: Object.assign({}, r, { f0_tr: new Array(n).fill(0.0) }), moras: r.moras };
   }
 
+  // === Step 0: 原石ホワイトノイズ（声・息・漂い・ジッタ・ビブラートのすべてをこの1本から彫る） ===
+  const rng = makeRng(seed);
+  let x = new Float64Array(N);
+  for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
+  const x0 = captureSteps ? x.slice() : null;
+
   // ピッチ軌道 f0_fr (Hz, 5ms フレーム)
   let f0_fr;
   if (uta_hz && uta_hz.length) {
@@ -1146,11 +1153,11 @@ export function makeHitofude(text, opts = {}) {
     f0_fr = smooth1(f0_fr, 34);
     var vibWave = null;
     if (vib_c > 0.0) {
-      const rngV = makeRng(seed + 33);
-      const wv = Math.max(3, Math.round(1000.0 / FP / rngV.uniform(4.2, 6.0) / 2.0));
+      const vHz = 4.2 + 1.8 * (x[0] * 0.5 + 0.5);
+      const wv = Math.max(3, Math.round(1000.0 / FP / vHz / 2.0));
       const lenV = n + 30 * wv;
       const vn = new Float64Array(lenV);
-      for (let i = 0; i < lenV; i++) vn[i] = rngV.uniform(-1.0, 1.0);
+      for (let i = 0; i < lenV; i++) vn[i] = x[(i * 220) % N];
       const vw = arakezuri(combHalf(vn, new Float64Array(lenV).fill(wv), 0.92), Math.max(2, Math.floor(wv / 2)), 2).subarray(30 * wv, 30 * wv + n);
       let vSq = 0.0;
       for (let i = 0; i < n; i++) vSq += vw[i] * vw[i];
@@ -1229,28 +1236,21 @@ export function makeHitofude(text, opts = {}) {
   const g_fr = new Array(n);
   for (let t = 0; t < n; t++) g_fr[t] = vo_sm[t] * g_vo * (1.0 - 0.88 * sigh_sm[t]);
 
-  // サンプル単位の基本周期 PER[i] (自然漂い wander + 周期ごとの微細ジッタ)
+  // サンプル単位の基本周期 PER[i] (原石ノイズ x からダシをとった自然漂い wander + 周期ごとの微細ジッタ)
   const f0S = perSample(f0_fr, N);
-  const wander = furafura(N, makeRng(seed + 1), 0.0, wander_st, 0.09);
+  const wander = furafura(x, 0.0, wander_st, 0.09);
   const PER = new Float64Array(N);
   for (let i = 0; i < N; i++) PER[i] = SR / Math.max(60.0, f0S[i] * Math.pow(2.0, wander[i] / 12.0));
   if (jitter > 0.0) {
-    const rngJ = makeRng(seed + 7);
     let idxP = 0;
     while (idxP < N) {
       const pl = Math.max(2, Math.trunc(PER[idxP]));
-      const jf = 1.0 + rngJ.uniform(-jitter, jitter);
+      const jf = 1.0 + jitter * x[idxP];
       const end = Math.min(N, idxP + pl);
       for (let k = idxP; k < end; k++) PER[k] *= jf;
       idxP += pl;
     }
   }
-
-  // === Step 0: 原石ホワイトノイズ（音になる信号線はこの1本だけ） ===
-  const rng = makeRng(seed);
-  let x = new Float64Array(N);
-  for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
-  const x0 = captureSteps ? x.slice() : null;
 
   // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、必要なら高域減衰 damp と乗算時間くびれ shin） ===
   const GS = perSample(g_fr, N);
