@@ -7,7 +7,7 @@
 <meta name="twitter:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
 <meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから4回の引き算だけで日本語の声と歌を彫る純JSシンセ（0原石→①谷→②角→③山→④完成をその場で聴き比べ）">
 <meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
-<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=1">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=2">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="480">
 <meta property="og:type" content="website">
@@ -138,7 +138,7 @@
   </header>
 
   <div class="frame-shell">
-    <iframe src="./kusanagi_player.html?v=1" title="草薙 kusanagi インタラクティブシンセ"
+    <iframe src="./kusanagi_player.html?v=2" title="草薙 kusanagi インタラクティブシンセ"
       sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
   </div>
 
@@ -148,7 +148,7 @@
       <li><strong>0 原石：</strong>軽量PRNG（<code>Mulberry32</code>）で <code>[-1, 1]</code> のホワイトノイズを1本だけ用意する。</li>
       <li><strong>① 倍音の谷：</strong>2段フィードバックコム（<code>combPeriod</code>）で倍音の隙間の谷を引き、ピッチと息のくびれ（<code>g_vo</code>）を作る。</li>
       <li><strong>② 角落とし：</strong>移動平均の引き算でDC濁りと高域の角を引き、子音の鋭さと吐息の丸みを分ける。</li>
-      <li><strong>③ 声道の山：</strong>5本の受動共鳴（<code>yamaBp</code>）で母音 F1–F4 と子音帯の山だけを残す。</li>
+      <li><strong>③ 声道の山：</strong>母音は F1–F4 因果直列カスケード（<code>resonator2Pole</code>）＋唇放射で1本の管として響かせ、子音帯だけ <code>yamaBp</code> で添える。</li>
       <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線のコム <code>G</code> を緩めて吐息へ戻す。</li>
     </ol>
     <div class="share-bar">
