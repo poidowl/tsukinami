@@ -1,13 +1,13 @@
 # tsukinami (`kusanagi` branch — Pure JavaScript Edition)
 
-> **約67KBのピュアJavaScript（`.py` ゼロ）で、1本のホワイトノイズから4手で日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
-> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,683行（67.0 KB）。
+> **約71KBのピュアJavaScript（`.py` ゼロ）で、1本のホワイトノイズから4手で日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
+> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,773行（71.0 KB）。
 
 `hitofude`（一筆彫り）から Python 依存と互換用の乱数・丸めギプスをすべて外し、純粋な ES Module 2本（エンジン [`hitofude.mjs`](hitofude.mjs) ＋ CLI [`yomu.mjs`](yomu.mjs)）にまとめた「草薙（kusanagi）」ブランチです。
 
 ## 1. コンテキスト投入コマンド ＆ Raw URL（全コード一括）
 
-本体の実装は以下の2ファイルだけで完結しています（`README.md` 込み合計 約73 KB）：
+本体の実装は以下の2ファイルだけで完結しています（`README.md` 込み合計 約79 KB）：
 
 ```bash
 cat README.md hitofude.mjs yomu.mjs
@@ -20,8 +20,8 @@ Web取得型LLMには、以下の **Raw プレーンテキスト URL 3本**を�
 
 | ファイル | 行数 | 役割 |
 | :--- | ---: | :--- |
-| [`hitofude.mjs`](hitofude.mjs) | 1,452行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、4手引き算合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
-| [`yomu.mjs`](yomu.mjs) | 231行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
+| [`hitofude.mjs`](hitofude.mjs) | 1,512行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、4手引き算合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
+| [`yomu.mjs`](yomu.mjs) | 261行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱、引数バリデーション（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
 | [`tools/build_x_player.mjs`](tools/build_x_player.mjs) | 補助 | [`hitofude.mjs`](hitofude.mjs) から X Player Card / GitHub Pages 用の単一HTML（`kusanagi.html` + `kusanagi_player.html`）を直接生成（公開URL: https://poidowl.github.io/tsukinami/kusanagi.html ） |
 
 ---
@@ -83,6 +83,8 @@ node yomu.mjs --preset toiki --uta 349,392,440,523,523,440,392,440,466,523,587,5
 # 4) X Player Card / GitHub Pages 用 HTML 2枚のビルド（out/kusanagi.html, out/kusanagi_player.html）
 node tools/build_x_player.mjs
 ```
+
+- **かな入力と句切れ記号**: 読点 `、` は無音の間（ポーズ）を入れ、半角空白または `/` は間を入れずに文節・アクセント句だけを切ります（`'` はアクセント核、`0` は平板、`?` は疑問上昇）。句末（`、`・半角空白・`/`・文末の直前）の助詞 `は` は自動で `ワ` に変換され、ベタ書き文中の `は` は誤変換防止のため `ハ` のまま残ります。
 
 ### LLMがコードを改造するときの鉄則（アンチパターン防止）
 1. **帯域別 AGC を足さない**：`bp1..bp4` の各帯域に個別正規化を入れると、`tilt_w` や音源の傾きが打ち消されて再度多段補正が必要になる。
