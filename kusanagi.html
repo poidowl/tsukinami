@@ -7,7 +7,7 @@
 <meta name="twitter:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
 <meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから4回の引き算だけで日本語の声と歌を彫る純JSシンセ（0原石→①谷→②角→③山→④完成をその場で聴き比べ）">
 <meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
-<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=4">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=5">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="480">
 <meta property="og:type" content="website">
@@ -138,7 +138,7 @@
   </header>
 
   <div class="frame-shell">
-    <iframe src="./kusanagi_player.html?v=4" title="草薙 kusanagi インタラクティブシンセ"
+    <iframe src="./kusanagi_player.html?v=5" title="草薙 kusanagi インタラクティブシンセ"
       sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
   </div>
 
@@ -161,6 +161,7 @@
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
+      <li><strong>v5 (<a href="https://github.com/poidowl/tsukinami/commit/3026d36" target="_blank" rel="noopener noreferrer"><code>3026d36</code></a>)：</strong>歌モード（<code>uta_hz</code>）時に話し声用の母音無声化と <code>ou</code> 長音同化を無効化し、歌唱時の音抜け（ち・つ・し・す・ぴ・ぷ等）を解消。</li>
       <li><strong>v4 (<a href="https://github.com/poidowl/tsukinami/commit/8e95bfa" target="_blank" rel="noopener noreferrer"><code>8e95bfa</code></a>)：</strong>無声子音中の母音声道ゲート <code>G1S</code> を復活させ <code>bpc</code> 係数を <code>0.40</code> へ再調整（大合唱時の「しゅー」過多を解消・発話子音の輪郭改善）。</li>
       <li><strong>v3 (<a href="https://github.com/poidowl/tsukinami/commit/a79bb1b" target="_blank" rel="noopener noreferrer"><code>a79bb1b</code></a>)：</strong>高音時の笛・スパイク化を抑えるため <code>resonator2Pole</code> に Q 上限つきの周波数連動 <code>bw</code> と F1/F2/F3 衝突ガードを追加。</li>
       <li><strong>v2 (<a href="https://github.com/poidowl/tsukinami/commit/24d4965" target="_blank" rel="noopener noreferrer"><code>24d4965</code></a>)：</strong>Step ③ の母音声道を並列 <code>yamaBp</code>×4 から <strong>F1→F2→F3→F4 因果直列カスケード＋唇放射</strong>へ刷新（ボコーダー感低減・高速化）。</li>
