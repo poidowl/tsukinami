@@ -995,16 +995,19 @@ function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
   return bp;
 }
 
-// 因果2極声道共振器（直列カスケード用、DCゲイン=1）
-function resonator2Pole(x, F, bw) {
+// 因果2極声道共振器（直列カスケード用、DCゲイン=1、高域は Q <= qMax で自然に帯域幅を広げる）
+function resonator2Pole(x, F, bwMin, qMax = 12.0) {
   const n = x.length;
   const y = new Float64Array(n);
   const k = (2.0 * Math.PI) / SR;
-  const r = Math.exp(-Math.PI * bw / SR);
-  const c = -r * r;
+  const piOverSR = Math.PI / SR;
   let y1 = 0.0, y2 = 0.0;
   for (let i = 0; i < n; i++) {
-    const b = 2.0 * r * Math.cos(k * F[i]);
+    const f = F[i];
+    const bw = Math.max(bwMin, f / qMax);
+    const r = Math.exp(-piOverSR * bw);
+    const c = -r * r;
+    const b = 2.0 * r * Math.cos(k * f);
     const a = 1.0 - b - c;
     const yi = a * x[i] + b * y1 + c * y2;
     y[i] = yi;
@@ -1211,8 +1214,8 @@ export function makeHitofude(text, opts = {}) {
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
     F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
-    F2[t] = Math.min(r.F2[t] * fs, 8500.0);
-    F3[t] = Math.min(r.F3[t] * fs, 9000.0);
+    F2[t] = Math.min(Math.max(r.F2[t] * fs, F1[t] + 280.0), 8500.0);
+    F3[t] = Math.min(Math.max(r.F3[t] * fs, F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
   }
 
@@ -1289,10 +1292,10 @@ export function makeHitofude(text, opts = {}) {
   const x2 = captureSteps ? x.slice() : null;
 
   // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
-  let yc = resonator2Pole(x, perSample(F1, N), 80.0);
-  yc = resonator2Pole(yc, perSample(F2, N), 110.0);
-  yc = resonator2Pole(yc, perSample(F3, N), 150.0);
-  yc = resonator2Pole(yc, perSample(F4, N), 220.0);
+  let yc = resonator2Pole(x, perSample(F1, N), 80.0, 8.0);
+  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0);
+  yc = resonator2Pole(yc, perSample(F3, N), 150.0, 13.0);
+  yc = resonator2Pole(yc, perSample(F4, N), 220.0, 14.0);
   const ycRad = new Float64Array(N);
   for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
   const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
