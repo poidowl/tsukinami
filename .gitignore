@@ -1,0 +1,23 @@
+# Virtual environments
+.venv/
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# ASR runtime outputs, generated datasets & checkpoints
+checkpoints/
+data/
+out/
+
+# Internal agent workspace logs
+.agents/

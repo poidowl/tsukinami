@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月並み ASR — 遊べる音声認識プレイグラウンド</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131b31;
+    --panel2: #192340;
+    --border: #2a3966;
+    --text: #eef2ff;
+    --muted: #94a3b8;
+    --cyan: #38bdf8;
+    --amber: #f59e0b;
+    --emerald: #10b981;
+    --rose: #f43f5e;
+    --violet: #a78bfa;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .container {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 16px 16px 40px;
+  }
+  .hero {
+    background: linear-gradient(135deg, rgba(56,189,248,0.14), rgba(245,158,11,0.12));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .hero h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .hero .sub {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  .pipeline-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    background: rgba(19, 27, 49, 0.85);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+  }
+  .pill.cyan { border-color: rgba(56,189,248,0.5); color: var(--cyan); }
+  .pill.amber { border-color: rgba(245,158,11,0.5); color: var(--amber); }
+  .pill.emerald { border-color: rgba(16,185,129,0.5); color: var(--emerald); }
+  .pill.rose { border-color: rgba(244,63,94,0.5); color: var(--rose); }
+  .pill.violet { border-color: rgba(167,139,250,0.5); color: var(--violet); }
+  .arrow { color: var(--muted); font-size: 12px; }
+
+  .banner {
+    display: none;
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .banner.show { display: flex; }
+  .banner.warn {
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    color: #fde68a;
+  }
+  .banner.err {
+    background: rgba(244, 63, 94, 0.14);
+    border: 1px solid rgba(244, 63, 94, 0.55);
+    color: #fecdd3;
+  }
+  .banner button {
+    background: transparent;
+    border: 1px solid currentColor;
+    color: inherit;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  @media (min-width: 900px) {
+    .grid-2 {
+      grid-template-columns: 1.15fr 0.85fr;
+    }
+    .grid-2.even {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(42, 57, 102, 0.65);
+  }
+  .panel-title {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .panel-sub {
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 120px;
+  }
+  .field label {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .field label .val {
+    font-family: var(--font-mono);
+    color: var(--cyan);
+  }
+  input[type="text"], select {
+    width: 100%;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    outline: none;
+  }
+  input[type="text"]:focus, select:focus {
+    border-color: var(--cyan);
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--cyan);
+    cursor: pointer;
+  }
+  input[type="range"]:disabled, select:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 13px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  }
+  .btn:hover:not(:disabled) {
+    border-color: var(--cyan);
+    background: #202d52;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, #0284c7, #2563eb);
+    border-color: rgba(56,189,248,0.6);
+    color: #fff;
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+  }
+  .btn.danger {
+    background: rgba(244,63,94,0.18);
+    border-color: rgba(244,63,94,0.6);
+    color: #fda4af;
+  }
+  .btn.small {
+    padding: 4px 9px;
+    font-size: 11.5px;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .sample-chip {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .sample-chip:hover {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .result-box {
+    background: #090e1c;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-top: 10px;
+  }
+  .result-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  #resultText {
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.04em;
+    word-break: break-all;
+    min-height: 30px;
+  }
+  #groundTruthRow {
+    display: none;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(42, 57, 102, 0.7);
+    font-size: 12.5px;
+  }
+  #groundTruthRow.show { display: block; }
+  .gt-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .metrics-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  audio {
+    width: 100%;
+    height: 36px;
+    margin-top: 8px;
+    border-radius: 8px;
+  }
+
+  .mic-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .level-track {
+    flex: 1;
+    min-width: 90px;
+    height: 10px;
+    background: #090e1c;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  #micLevelBar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--emerald), var(--amber), var(--rose));
+    transition: width 0.06s linear;
+  }
+  #micTimer {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--amber);
+    min-width: 48px;
+    text-align: right;
+  }
+
+  #dropZone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    background: rgba(9, 14, 28, 0.55);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  #dropZone.dragover {
+    border-color: var(--cyan);
+    background: rgba(56, 189, 248, 0.1);
+  }
+  #dropZone p {
+    margin: 4px 0;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .checkbox-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--cyan);
+    cursor: pointer;
+  }
+  .dimmed { opacity: 0.45; }
+
+  .knob-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px 14px;
+    margin-bottom: 12px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  th, td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(42, 57, 102, 0.55);
+    text-align: left;
+  }
+  th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 11.5px;
+  }
+  td.mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  tr.top-hyp td {
+    background: rgba(56, 189, 248, 0.08);
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .viz-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .viz-block {
+    background: #070b14;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px 6px;
+  }
+  .viz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .viz-header strong {
+    color: var(--text);
+    font-size: 12.5px;
+  }
+  canvas.viz-canvas {
+    width: 100%;
+    display: block;
+    border-radius: 6px;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .info-card {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+  }
+  .info-card .k {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .info-card .v {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text);
+    margin-top: 2px;
+    word-break: break-all;
+  }
+  .info-card .s {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  #vocabPreview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 76px;
+    overflow-y: auto;
+    padding: 8px;
+    background: #090e1c;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .tok-pill {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .tok-pill.blank {
+    border-color: rgba(245,158,11,0.55);
+    color: var(--amber);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="hero">
+    <div>
+      <h1>🎙️ 月並み ASR — 遊べる音声認識プレイグラウンド</h1>
+      <p class="sub">Interactive Japanese CTC Speech Recognition &amp; Tsukinami TTS Closed-Loop Playground (Zero-CDN)</p>
+      <div class="pipeline-pills">
+        <span class="pill cyan">TTS / Mic / WAV</span>
+        <span class="arrow">→</span>
+        <span class="pill amber">Corruption Lab</span>
+        <span class="arrow">→</span>
+        <span class="pill violet">Log-Mel</span>
+        <span class="arrow">→</span>
+        <span class="pill emerald">Neural CTC</span>
+        <span class="arrow">→</span>
+        <span class="pill cyan">Live Beam Search</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+      <span id="statusPill" class="pill cyan">初期化中... / Loading...</span>
+      <span id="redecodeLatencyBadge" class="pill emerald" style="display:none;">⚡ Redecode: -- ms</span>
+    </div>
+  </header>
+
+  <div id="noModelBanner" class="banner warn">
+    <span>⚠️ モデルが読み込まれていません (No ASR model loaded)。<code>python -m asr serve --checkpoint PATH</code> でチェックポイントを指定して起動すると推論が有効になります。</span>
+  </div>
+  <div id="errorBanner" class="banner err">
+    <span id="errorBannerText"></span>
+    <button type="button" id="btnDismissError">閉じる</button>
+  </div>
+
+  <!-- Row 1: TTS Round-Trip + Audio Input -->
+  <div class="grid-2">
+    <section id="panelTts" class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">🔊 Tsukinami TTS → ASR ラウンドトリップ</h2>
+        <span class="panel-sub">合成して即座に認識＆CER測定</span>
+      </div>
+
+      <div class="chips" id="sampleChips">
+        <button type="button" class="sample-chip" data-text="オハヨウゴザイマス">オハヨウゴザイマス</button>
+        <button type="button" class="sample-chip" data-text="ワタシ、ニホンゴ、チョットシャベレマス">ワタシ、ニホンゴ、チョットシャベレマス</button>
+        <button type="button" class="sample-chip" data-text="キョウモイッショニガンバロウネ">キョウモイッショニガンバロウネ</button>
+        <button type="button" class="sample-chip" data-text="オンガクヲサイセイシテ">オンガクヲサイセイシテ</button>
+        <button type="button" class="sample-chip" data-text="ウシロニ、ダレカ、イマスヨ">ウシロニ、ダレカ、イマスヨ</button>
+        <button type="button" class="sample-chip" data-text="アリガトウゴザイマス">アリガトウゴザイマス</button>
+      </div>
+
+      <div class="row">
+        <div class="field" style="flex: 2 1 260px;">
+          <label for="ttsTextInput">発話テキスト (カタカナ / ひらがな)</label>
+          <input type="text" id="ttsTextInput" value="ワタシ、ニホンゴ、チョットシャベレマス" placeholder="カタカナ・ひらがなを入力...">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="ttsPresetSelect">声質プリセット (Preset)</label>
+          <select id="ttsPresetSelect">
+            <option value="default">default (標準)</option>
+            <option value="ossan">ossan (おっさん)</option>
+            <option value="robot">robot (ロボ)</option>
+            <option value="horror">horror (ホラー)</option>
+            <option value="whisper">whisper (ささやき)</option>
+            <option value="chibi">chibi (ちびっ子)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ttsEngineSelect">合成エンジン (Synth Engine)</label>
+          <select id="ttsEngineSelect">
+            <option value="fast">fast — 高速フォルマント合成</option>
+            <option value="tsukinami">tsukinami — 実機 carve.py</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <button type="button" id="btnRoundtrip" class="btn primary">🔊 合成して認識 / Synth &amp; Transcribe</button>
+      </div>
+
+      <audio id="audioPlayer" controls></audio>
+
+      <div class="result-box">
+        <div class="result-label">ASR 認識結果 (Hypothesis)</div>
+        <div id="resultText"><span style="color:var(--muted);font-size:14px;font-weight:400;">上のボタンを押すか、録音 / WAVアップロードで認識を開始します</span></div>
+        <div id="groundTruthRow">
+          <div class="gt-line">
+            <span style="color:var(--muted);">正解 (Ground Truth):</span>
+            <strong id="gtText"></strong>
+          </div>
+          <div class="metrics-row">
+            <span id="cerBadge" class="pill emerald">CER: --%</span>
+            <span id="cerBreakdown" class="pill">S:0 D:0 I:0</span>
+            <span id="rtfBadge" class="pill violet">RTF: --</span>
+            <span id="durationBadge" class="pill">0.00s</span>
+          </div>
+        </div>
+        <div id="nonRtMetrics" class="metrics-row" style="display:none;">
+          <span id="rtfBadge2" class="pill violet">RTF: --</span>
+          <span id="durationBadge2" class="pill">0.00s</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="panelAudioInput" class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">🎤 マイク録音 &amp; WAVアップロード</h2>
+        <span class="panel-sub">Web Audio 16kHz PCM</span>
+      </div>
+
+      <div class="mic-box">
+        <button type="button" id="btnMicRecord" class="btn primary">🎙️ 録音開始 / Start Mic</button>
+        <button type="button" id="btnMicStop" class="btn danger" disabled>⏹️ 停止して認識 / Stop</button>
+        <span id="micTimer">00.0s</span>
+        <div class="level-track"><div id="micLevelBar"></div></div>
+      </div>
+
+      <div id="dropZone">
+        <p style="font-size:13.5px;color:var(--text);font-weight:600;">📂 WAVファイルをドロップ、または選択</p>
+        <p>16kHz / 44.1kHz モノラル・ステレオ対応 (サーバー側で自動リサンプル)</p>
+        <input type="file" id="wavFileInput" accept=".wav,audio/wav,audio/*" style="display:none;">
+        <button type="button" id="btnPickWav" class="btn small" style="margin-top:6px;">ファイルを選択 / Pick WAV</button>
+      </div>
+
+      <div class="row" style="margin-top:10px;margin-bottom:0;justify-content:space-between;">
+        <span id="uploadedFileName" class="panel-sub">音声未選択</span>
+        <button type="button" id="btnRetranscribeAudio" class="btn small" disabled>🔁 現在の音声を再認識 / Re-run</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Row 2: Corruption Lab + Live CTC Decoding Knobs -->
+  <div class="grid-2 even">
+    <section id="panelCorruption" class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">🌪️ ノイズ＆フィルタ実験室 (Corruption Lab)</h2>
+        <button type="button" id="btnResetCorruption" class="btn small">リセット</button>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="corrNoiseEnabled">
+        <span>ノイズを加える (Add Additive Noise)</span>
+      </label>
+
+      <div class="row" id="corrNoiseControls">
+        <div class="field">
+          <label for="corrSnrSlider">SNR (信号対雑音比) <span class="val" id="corrSnrVal">15 dB</span></label>
+          <input type="range" id="corrSnrSlider" min="-5" max="35" step="1" value="15">
+        </div>
+        <div class="field" style="max-width:190px;">
+          <label for="corrNoiseType">ノイズ種別</label>
+          <select id="corrNoiseType">
+            <option value="white">white (ホワイトノイズ)</option>
+            <option value="pink">pink (ピンクノイズ)</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="corrBandpass">
+        <span>📞 電話帯域フィルタ (Telephone Band-Pass 300–3400 Hz)</span>
+      </label>
+
+      <div class="row" style="margin-bottom:0;">
+        <div class="field">
+          <label for="corrSpeedSlider">話速変更 (Speed Perturbation) <span class="val" id="corrSpeedVal">1.00x</span></label>
+          <input type="range" id="corrSpeedSlider" min="0.70" max="1.35" step="0.05" value="1.00">
+        </div>
+      </div>
+    </section>
+
+    <section id="panelDecoding" class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">🎛️ リアルタイム CTC デコーダ調整</h2>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="panel-sub">スライダー操作で即座に再デコード</span>
+          <button type="button" id="btnResetDecode" class="btn small">リセット</button>
+        </div>
+      </div>
+
+      <div class="knob-grid">
+        <div class="field">
+          <label for="decMethod">デコード方式 (Method)</label>
+          <select id="decMethod">
+            <option value="beam">beam (Prefix Beam Search)</option>
+            <option value="greedy">greedy (Greedy CTC)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="decBeamWidth">Beam Width <span class="val" id="decBeamWidthVal">8</span></label>
+          <input type="range" id="decBeamWidth" min="1" max="32" step="1" value="8">
+        </div>
+        <div class="field">
+          <label for="decTemperature">Temperature <span class="val" id="decTemperatureVal">1.00</span></label>
+          <input type="range" id="decTemperature" min="0.20" max="3.00" step="0.05" value="1.00">
+        </div>
+        <div class="field">
+          <label for="decBlankBias">Blank Bias <span class="val" id="decBlankBiasVal">0.0</span></label>
+          <input type="range" id="decBlankBias" min="-4.0" max="4.0" step="0.1" value="0.0">
+        </div>
+        <div class="field">
+          <label for="decLmWeight">LM Weight <span class="val" id="decLmWeightVal">0.00</span></label>
+          <input type="range" id="decLmWeight" min="0.00" max="2.00" step="0.05" value="0.00">
+        </div>
+        <div class="field">
+          <label for="decInsertionBonus">Insertion Bonus <span class="val" id="decInsertionBonusVal">0.0</span></label>
+          <input type="range" id="decInsertionBonus" min="-2.0" max="2.0" step="0.1" value="0.0">
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table id="hypothesesTable">
+          <thead>
+            <tr>
+              <th style="width:36px;">#</th>
+              <th>候補テキスト (Top-N Beam Hypotheses)</th>
+              <th style="width:76px;">Total</th>
+              <th style="width:76px;">Acoustic</th>
+              <th style="width:68px;">LM</th>
+            </tr>
+          </thead>
+          <tbody id="hypothesesBody">
+            <tr><td colspan="5" style="color:var(--muted);text-align:center;">まだ認識結果がありません</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Row 3: 4 Canvas 2D Visualizers -->
+  <section id="panelVisualizers" class="panel" style="margin-bottom:14px;">
+    <div class="panel-header">
+      <h2 class="panel-title">📊 音声・特徴量・CTC 事後確率・アライメント可視化</h2>
+      <span class="panel-sub">4つのパネルは時間軸で垂直に整列しています</span>
+    </div>
+
+    <div class="viz-stack">
+      <div class="viz-block">
+        <div class="viz-header">
+          <strong>1. 波形 &amp; VAD 発話区間 (Waveform + Energy VAD)</strong>
+          <span>緑帯 = 発話区間 (VAD)</span>
+        </div>
+        <canvas id="canvasWaveform" class="viz-canvas" height="110"></canvas>
+      </div>
+
+      <div class="viz-block">
+        <div class="viz-header">
+          <strong>2. 対数メルスペクトログラム (Log-Mel Spectrogram)</strong>
+          <span>下 = 低周波 / 上 = 高周波</span>
+        </div>
+        <canvas id="canvasMel" class="viz-canvas" height="150"></canvas>
+      </div>
+
+      <div class="viz-block">
+        <div class="viz-header">
+          <strong>3. CTC フレーム事後確率ヒートマップ (CTC Frame Posteriors)</strong>
+          <span>各時刻の Top トークン確率</span>
+        </div>
+        <canvas id="canvasPosterior" class="viz-canvas" height="190"></canvas>
+      </div>
+
+      <div class="viz-block">
+        <div class="viz-header">
+          <strong>4. モーラ / トークン アライメント (Viterbi Alignment &amp; Ground-Truth Moras)</strong>
+          <span>上段 = ASR 推定 / 下段 = 正解モーラ (TTS時)</span>
+        </div>
+        <canvas id="canvasAlignment" class="viz-canvas" height="118"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Row 4: Model & Training History Inspector -->
+  <section id="panelModelInfo" class="panel">
+    <div class="panel-header">
+      <h2 class="panel-title">🧠 モデル情報 &amp; 学習曲線インスペクタ (Model &amp; Training History)</h2>
+      <span id="lmHintBadge" class="pill">LM: --</span>
+    </div>
+
+    <div id="modelInfoGrid" class="info-grid">
+      <div class="info-card">
+        <div class="k">Architecture</div>
+        <div class="v" id="infoArch">--</div>
+        <div class="s" id="infoArchSub">--</div>
+      </div>
+      <div class="info-card">
+        <div class="k">Parameters</div>
+        <div class="v" id="infoParams">--</div>
+        <div class="s" id="infoStride">--</div>
+      </div>
+      <div class="info-card">
+        <div class="k">Vocabulary</div>
+        <div class="v" id="infoVocab">--</div>
+        <div class="s" id="infoTokMode">--</div>
+      </div>
+      <div class="info-card">
+        <div class="k">Checkpoint / Val CER</div>
+        <div class="v" id="infoBestCer">--</div>
+        <div class="s" id="infoCkptSub">--</div>
+      </div>
+    </div>
+
+    <div class="result-label">トークン語彙 (Vocabulary)</div>
+    <div id="vocabPreview"></div>
+
+    <div class="viz-block">
+      <div class="viz-header">
+        <strong>学習・検証 Loss &amp; Val CER 推移 (Training History)</strong>
+        <span>青 = Train Loss / 紫破線 = Val Loss / 橙 = Val CER (%)</span>
+      </div>
+      <canvas id="canvasHistory" class="viz-canvas" height="170"></canvas>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const PRESET_LABELS = {
+    default: "default (標準)",
+    ossan: "ossan (おっさん)",
+    robot: "robot (ロボ)",
+    horror: "horror (ホラー)",
+    whisper: "whisper (ささやき)",
+    chibi: "chibi (ちびっ子)",
+    utahime: "utahime (歌姫)",
+    choir: "choir (合唱)",
+  };
+
+  const state = {
+    info: null,
+    modelLoaded: false,
+    utteranceId: null,
+    durationSec: 0,
+    mode: "idle",
+    groundTruthText: null,
+    groundTruthMoras: [],
+    lastAudioBlob: null,
+    lastAudioName: null,
+    lastObjectUrl: null,
+    visuals: {
+      waveform: [],
+      log_mel: [],
+      ctc_posteriors: null,
+      vad_segments: [],
+      alignment: [],
+    },
+    hypotheses: [],
+    redecodeTimer: null,
+    redecodeSeq: 0,
+    mic: {
+      recording: false,
+      stream: null,
+      audioCtx: null,
+      source: null,
+      processor: null,
+      chunks: [],
+      sampleRate: 16000,
+      startTime: 0,
+      timerId: null,
+    },
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  const el = {
+    statusPill: $("statusPill"),
+    redecodeLatencyBadge: $("redecodeLatencyBadge"),
+    noModelBanner: $("noModelBanner"),
+    errorBanner: $("errorBanner"),
+    errorBannerText: $("errorBannerText"),
+    btnDismissError: $("btnDismissError"),
+    ttsTextInput: $("ttsTextInput"),
+    ttsPresetSelect: $("ttsPresetSelect"),
+    ttsEngineSelect: $("ttsEngineSelect"),
+    btnRoundtrip: $("btnRoundtrip"),
+    audioPlayer: $("audioPlayer"),
+    resultText: $("resultText"),
+    groundTruthRow: $("groundTruthRow"),
+    nonRtMetrics: $("nonRtMetrics"),
+    gtText: $("gtText"),
+    cerBadge: $("cerBadge"),
+    cerBreakdown: $("cerBreakdown"),
+    rtfBadge: $("rtfBadge"),
+    durationBadge: $("durationBadge"),
+    rtfBadge2: $("rtfBadge2"),
+    durationBadge2: $("durationBadge2"),
+    btnMicRecord: $("btnMicRecord"),
+    btnMicStop: $("btnMicStop"),
+    micTimer: $("micTimer"),
+    micLevelBar: $("micLevelBar"),
+    dropZone: $("dropZone"),
+    wavFileInput: $("wavFileInput"),
+    btnPickWav: $("btnPickWav"),
+    uploadedFileName: $("uploadedFileName"),
+    btnRetranscribeAudio: $("btnRetranscribeAudio"),
+    corrNoiseEnabled: $("corrNoiseEnabled"),
+    corrNoiseControls: $("corrNoiseControls"),
+    corrSnrSlider: $("corrSnrSlider"),
+    corrSnrVal: $("corrSnrVal"),
+    corrNoiseType: $("corrNoiseType"),
+    corrBandpass: $("corrBandpass"),
+    corrSpeedSlider: $("corrSpeedSlider"),
+    corrSpeedVal: $("corrSpeedVal"),
+    btnResetCorruption: $("btnResetCorruption"),
+    decMethod: $("decMethod"),
+    decBeamWidth: $("decBeamWidth"),
+    decBeamWidthVal: $("decBeamWidthVal"),
+    decTemperature: $("decTemperature"),
+    decTemperatureVal: $("decTemperatureVal"),
+    decBlankBias: $("decBlankBias"),
+    decBlankBiasVal: $("decBlankBiasVal"),
+    decLmWeight: $("decLmWeight"),
+    decLmWeightVal: $("decLmWeightVal"),
+    decInsertionBonus: $("decInsertionBonus"),
+    decInsertionBonusVal: $("decInsertionBonusVal"),
+    btnResetDecode: $("btnResetDecode"),
+    hypothesesBody: $("hypothesesBody"),
+    canvasWaveform: $("canvasWaveform"),
+    canvasMel: $("canvasMel"),
+    canvasPosterior: $("canvasPosterior"),
+    canvasAlignment: $("canvasAlignment"),
+    canvasHistory: $("canvasHistory"),
+    infoArch: $("infoArch"),
+    infoArchSub: $("infoArchSub"),
+    infoParams: $("infoParams"),
+    infoStride: $("infoStride"),
+    infoVocab: $("infoVocab"),
+    infoTokMode: $("infoTokMode"),
+    infoBestCer: $("infoBestCer"),
+    infoCkptSub: $("infoCkptSub"),
+    lmHintBadge: $("lmHintBadge"),
+    vocabPreview: $("vocabPreview"),
+  };
+
+  function escapeHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function showError(msg) {
+    el.errorBannerText.textContent = msg;
+    el.errorBanner.classList.add("show");
+  }
+
+  function clearError() {
+    el.errorBanner.classList.remove("show");
+    el.errorBannerText.textContent = "";
+  }
+
+  function setStatus(text, tone) {
+    el.statusPill.textContent = text;
+    el.statusPill.className = "pill " + (tone || "cyan");
+  }
+
+  function formatParams(n) {
+    if (!n || typeof n !== "number") return "--";
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+    return String(n);
+  }
+
+  function normalizeKanaClient(s) {
+    const raw = String(s || "");
+    let out = "";
+    for (let i = 0; i < raw.length; i++) {
+      const code = raw.charCodeAt(i);
+      if (code >= 0x3041 && code <= 0x3096) {
+        out += String.fromCharCode(code + 0x60);
+      } else {
+        out += raw[i];
+      }
+    }
+    return out;
+  }
+
+  function computeClientCer(refStr, hypStr) {
+    const r = Array.from(normalizeKanaClient(refStr));
+    const h = Array.from(normalizeKanaClient(hypStr));
+    const m = r.length;
+    const n = h.length;
+    const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+    const op = Array.from({ length: m + 1 }, () => new Uint8Array(n + 1));
+    for (let i = 1; i <= m; i++) { dp[i][0] = i; op[i][0] = 2; }
+    for (let j = 1; j <= n; j++) { dp[0][j] = j; op[0][j] = 3; }
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (r[i - 1] === h[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1];
+          op[i][j] = 0;
+        } else {
+          const sub = dp[i - 1][j - 1] + 1;
+          const del = dp[i - 1][j] + 1;
+          const ins = dp[i][j - 1] + 1;
+          if (sub <= del && sub <= ins) {
+            dp[i][j] = sub; op[i][j] = 1;
+          } else if (del <= ins) {
+            dp[i][j] = del; op[i][j] = 2;
+          } else {
+            dp[i][j] = ins; op[i][j] = 3;
+          }
+        }
+      }
+    }
+    let i = m, j = n, s = 0, d = 0, ins = 0;
+    while (i > 0 || j > 0) {
+      const code = op[i][j];
+      if (code === 0) { i--; j--; }
+      else if (code === 1) { s++; i--; j--; }
+      else if (code === 2) { d++; i--; }
+      else { ins++; j--; }
+    }
+    const cer = m > 0 ? (s + d + ins) / m : (n > 0 ? 1.0 : 0.0);
+    return { cer, substitutions: s, deletions: d, insertions: ins, ref_len: m };
+  }
+
+  function getDecodeCfg() {
+    return {
+      method: el.decMethod.value,
+      beam_width: parseInt(el.decBeamWidth.value, 10),
+      temperature: parseFloat(el.decTemperature.value),
+      blank_bias: parseFloat(el.decBlankBias.value),
+      lm_weight: parseFloat(el.decLmWeight.value),
+      insertion_bonus: parseFloat(el.decInsertionBonus.value),
+    };
+  }
+
+  function getCorruptionCfg() {
+    const noiseOn = el.corrNoiseEnabled.checked;
+    const bpOn = el.corrBandpass.checked;
+    const speed = parseFloat(el.corrSpeedSlider.value);
+    if (!noiseOn && !bpOn && Math.abs(speed - 1.0) < 1e-6) {
+      return null;
+    }
+    return {
+      snr_db: noiseOn ? parseFloat(el.corrSnrSlider.value) : null,
+      noise_type: el.corrNoiseType.value,
+      band_limit: bpOn ? [300.0, 3400.0] : null,
+      speed: speed,
+    };
+  }
+
+  function updateCorruptionUi() {
+    const noiseOn = el.corrNoiseEnabled.checked;
+    el.corrSnrVal.textContent = el.corrSnrSlider.value + " dB";
+    el.corrSpeedVal.textContent = parseFloat(el.corrSpeedSlider.value).toFixed(2) + "x";
+    el.corrSnrSlider.disabled = !noiseOn;
+    el.corrNoiseType.disabled = !noiseOn;
+    el.corrNoiseControls.classList.toggle("dimmed", !noiseOn);
+  }
+
+  function updateDecodeUi() {
+    const isGreedy = el.decMethod.value === "greedy";
+    el.decBeamWidthVal.textContent = el.decBeamWidth.value;
+    el.decTemperatureVal.textContent = parseFloat(el.decTemperature.value).toFixed(2);
+    el.decBlankBiasVal.textContent = parseFloat(el.decBlankBias.value).toFixed(1);
+    el.decLmWeightVal.textContent = parseFloat(el.decLmWeight.value).toFixed(2);
+    el.decInsertionBonusVal.textContent = parseFloat(el.decInsertionBonus.value).toFixed(1);
+    el.decBeamWidth.disabled = isGreedy;
+    el.decLmWeight.disabled = isGreedy;
+    el.decInsertionBonus.disabled = isGreedy;
+  }
+
+  function renderCerBadge(cerDetails) {
+    if (!cerDetails) return;
+    const pct = (cerDetails.cer * 100).toFixed(1);
+    el.cerBadge.textContent = "CER: " + pct + "%";
+    el.cerBadge.className = "pill " + (
+      cerDetails.cer <= 0.10 ? "emerald" : cerDetails.cer <= 0.35 ? "amber" : "rose"
+    );
+    el.cerBreakdown.textContent =
+      "S:" + cerDetails.substitutions +
+      " D:" + cerDetails.deletions +
+      " I:" + cerDetails.insertions;
+  }
+
+  function renderHypotheses(hyps) {
+    if (!hyps || hyps.length === 0) {
+      el.hypothesesBody.innerHTML =
+        '<tr><td colspan="5" style="color:var(--muted);text-align:center;">候補なし</td></tr>';
+      return;
+    }
+    const rows = hyps.slice(0, 10).map((h, idx) => {
+      const txt = h.text ? escapeHtml(h.text) : '<span style="color:var(--muted);">(空)</span>';
+      const sc = typeof h.score === "number" ? h.score.toFixed(3) : "--";
+      const ac = typeof h.acoustic_score === "number" ? h.acoustic_score.toFixed(3) : "--";
+      const lm = typeof h.lm_score === "number" ? h.lm_score.toFixed(3) : "--";
+      return '<tr class="' + (idx === 0 ? "top-hyp" : "") + '">' +
+        '<td class="mono">' + (idx + 1) + "</td>" +
+        "<td>" + txt + "</td>" +
+        '<td class="mono">' + sc + "</td>" +
+        '<td class="mono">' + ac + "</td>" +
+        '<td class="mono">' + lm + "</td>" +
+        "</tr>";
+    });
+    el.hypothesesBody.innerHTML = rows.join("");
+  }
+
+  function renderResultSummary(data, isRoundtrip) {
+    const txt = data.text || "";
+    el.resultText.innerHTML = txt
+      ? escapeHtml(txt)
+      : '<span style="color:var(--muted);font-size:15px;">(無音 / 空)</span>';
+
+    const rtfText = typeof data.rtf === "number" ? "RTF: " + data.rtf.toFixed(3) : "RTF: --";
+    const durText = typeof data.duration_sec === "number" ? data.duration_sec.toFixed(2) + "s" : "0.00s";
+
+    if (isRoundtrip) {
+      el.groundTruthRow.classList.add("show");
+      el.nonRtMetrics.style.display = "none";
+      el.gtText.textContent = state.groundTruthText || "";
+      el.rtfBadge.textContent = rtfText;
+      el.durationBadge.textContent = durText;
+      if (data.cer_details) {
+        renderCerBadge(data.cer_details);
+      } else if (state.groundTruthText != null) {
+        renderCerBadge(computeClientCer(state.groundTruthText, txt));
+      }
+    } else {
+      el.groundTruthRow.classList.remove("show");
+      el.nonRtMetrics.style.display = "flex";
+      el.rtfBadge2.textContent = rtfText;
+      el.durationBadge2.textContent = durText;
+    }
+    renderHypotheses(data.hypotheses || []);
+  }
+
+  function setAudioSourceBlob(blob) {
+    if (state.lastObjectUrl) {
+      URL.revokeObjectURL(state.lastObjectUrl);
+      state.lastObjectUrl = null;
+    }
+    const url = URL.createObjectURL(blob);
+    state.lastObjectUrl = url;
+    el.audioPlayer.src = url;
+  }
+
+  /* ------------------------------------------------------------------
+   * Canvas 2D Visualizers (HiDPI, aligned horizontally on [0, duration])
+   * ------------------------------------------------------------------ */
+
+  const PAD_LEFT = 62;
+  const PAD_RIGHT = 14;
+
+  function setupCanvas(canvas, cssHeight) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(260, Math.floor(rect.width || 640));
+    const h = cssHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w, h };
+  }
+
+  function drawEmptyPlaceholder(ctx, w, h, message) {
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#64748b";
+    ctx.font = "12px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(message || "音声を認識するとここに可視化されます", w / 2, h / 2);
+  }
+
+  /* Inferno-inspired 256-entry RGB colormap LUT */
+  const INFERNO_STOPS = [
+    [0.00,   4,   6,  18],
+    [0.20,  46,  15,  92],
+    [0.42, 126,  33, 122],
+    [0.64, 203,  71,  79],
+    [0.84, 245, 148,  34],
+    [1.00, 252, 248, 172],
+  ];
+  const COLORMAP_LUT = new Uint8ClampedArray(256 * 3);
+  (function buildLut() {
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let seg = 0;
+      while (seg < INFERNO_STOPS.length - 2 && t > INFERNO_STOPS[seg + 1][0]) {
+        seg++;
+      }
+      const a = INFERNO_STOPS[seg];
+      const b = INFERNO_STOPS[seg + 1];
+      const u = Math.max(0, Math.min(1, (t - a[0]) / Math.max(1e-6, b[0] - a[0])));
+      COLORMAP_LUT[i * 3 + 0] = Math.round(a[1] + (b[1] - a[1]) * u);
+      COLORMAP_LUT[i * 3 + 1] = Math.round(a[2] + (b[2] - a[2]) * u);
+      COLORMAP_LUT[i * 3 + 2] = Math.round(a[3] + (b[3] - a[3]) * u);
+    }
+  })();
+
+  function drawTimeTicks(ctx, plotX, plotW, yAxis, durationSec) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10.5px ui-monospace, monospace";
+    ctx.textBaseline = "top";
+    const nTicks = Math.min(6, Math.max(2, Math.floor(plotW / 100)));
+    for (let i = 0; i <= nTicks; i++) {
+      const frac = i / nTicks;
+      const x = plotX + frac * plotW;
+      const t = frac * durationSec;
+      ctx.textAlign = i === 0 ? "left" : (i === nTicks ? "right" : "center");
+      ctx.fillText(t.toFixed(2) + "s", x, yAxis + 2);
+    }
+  }
+
+  function drawWaveform() {
+    const { ctx, w, h } = setupCanvas(el.canvasWaveform, 110);
+    const wav = state.visuals.waveform || [];
+    const vad = state.visuals.vad_segments || [];
+    const dur = Math.max(state.durationSec || 0, 1e-3);
+    if (wav.length === 0) {
+      drawEmptyPlaceholder(ctx, w, h);
+      return;
+    }
+
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, w, h);
+    const plotX = PAD_LEFT;
+    const plotY = 8;
+    const plotW = w - PAD_LEFT - PAD_RIGHT;
+    const plotH = h - 26;
+    const midY = plotY + plotH / 2;
+
+    /* VAD segments overlay */
+    for (let i = 0; i < vad.length; i++) {
+      const seg = vad[i];
+      if (!Array.isArray(seg) || seg.length < 2) continue;
+      const x1 = plotX + Math.max(0, Math.min(1, seg[0] / dur)) * plotW;
+      const x2 = plotX + Math.max(0, Math.min(1, seg[1] / dur)) * plotW;
+      ctx.fillStyle = "rgba(16, 185, 129, 0.18)";
+      ctx.fillRect(x1, plotY, Math.max(1, x2 - x1), plotH);
+      ctx.fillStyle = "#10b981";
+      ctx.fillRect(x1, plotY, Math.max(1, x2 - x1), 2);
+    }
+
+    /* Center zero line */
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(plotX, midY);
+    ctx.lineTo(plotX + plotW, midY);
+    ctx.stroke();
+
+    /* Left axis labels */
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("+1.0", plotX - 6, plotY + 6);
+    ctx.fillText("0.0", plotX - 6, midY);
+    ctx.fillText("-1.0", plotX - 6, plotY + plotH - 6);
+
+    /* Waveform polyline */
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    const denom = Math.max(1, wav.length - 1);
+    for (let i = 0; i < wav.length; i++) {
+      const x = plotX + (i / denom) * plotW;
+      const v = Math.max(-1, Math.min(1, Number(wav[i]) || 0));
+      const y = midY - v * (plotH * 0.46);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    drawTimeTicks(ctx, plotX, plotW, plotY + plotH, dur);
+  }
+
+  function drawMelSpectrogram() {
+    const { ctx, w, h } = setupCanvas(el.canvasMel, 150);
+    const mel = state.visuals.log_mel || [];
+    const dur = Math.max(state.durationSec || 0, 1e-3);
+    if (mel.length === 0 || !Array.isArray(mel[0]) || mel[0].length === 0) {
+      drawEmptyPlaceholder(ctx, w, h);
+      return;
+    }
+
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, w, h);
+    const T = mel.length;
+    const M = mel[0].length;
+    const plotX = PAD_LEFT;
+    const plotY = 6;
+    const plotW = w - PAD_LEFT - PAD_RIGHT;
+    const plotH = h - 24;
+
+    /* Compute 2nd-98th percentile contrast bounds */
+    const sampleVals = [];
+    const stride = Math.max(1, Math.floor((T * M) / 4000));
+    let k = 0;
+    for (let t = 0; t < T; t++) {
+      const row = mel[t];
+      for (let m = 0; m < M; m++) {
+        if (k % stride === 0) {
+          const v = Number(row[m]);
+          if (Number.isFinite(v)) sampleVals.push(v);
+        }
+        k++;
+      }
+    }
+    sampleVals.sort((a, b) => a - b);
+    const vMin = sampleVals.length > 0 ? sampleVals[Math.floor(sampleVals.length * 0.02)] : -5;
+    const vMax = sampleVals.length > 0 ? sampleVals[Math.floor(sampleVals.length * 0.98)] : 5;
+    const span = Math.max(1e-5, vMax - vMin);
+
+    const off = document.createElement("canvas");
+    off.width = T;
+    off.height = M;
+    const octx = off.getContext("2d");
+    const img = octx.createImageData(T, M);
+    const data = img.data;
+
+    for (let t = 0; t < T; t++) {
+      const row = mel[t];
+      for (let m = 0; m < M; m++) {
+        const norm = Math.max(0, Math.min(1, ((Number(row[m]) || 0) - vMin) / span));
+        const idx = Math.min(255, Math.max(0, Math.round(norm * 255))) * 3;
+        const y = M - 1 - m;
+        const p = (y * T + t) * 4;
+        data[p + 0] = COLORMAP_LUT[idx + 0];
+        data[p + 1] = COLORMAP_LUT[idx + 1];
+        data[p + 2] = COLORMAP_LUT[idx + 2];
+        data[p + 3] = 255;
+      }
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, plotX, plotY, plotW, plotH);
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(M + " mel", plotX - 6, plotY + 8);
+    ctx.fillText(Math.round(M / 2) + " mel", plotX - 6, plotY + plotH / 2);
+    ctx.fillText("0 mel", plotX - 6, plotY + plotH - 6);
+
+    drawTimeTicks(ctx, plotX, plotW, plotY + plotH, dur);
+  }
+
+  function drawCtcPosteriors() {
+    const { ctx, w, h } = setupCanvas(el.canvasPosterior, 190);
+    const post = state.visuals.ctc_posteriors;
+    const dur = Math.max(state.durationSec || 0, 1e-3);
+
+    let probs = null;
+    let topTokens = null;
+
+    if (Array.isArray(post) && post.length > 0 && Array.isArray(post[0]) && post[0].length > 0) {
+      const T = post.length;
+      const V = post[0].length;
+      const infoBlank = state.info && Number.isInteger(state.info.blank_id) ? state.info.blank_id : 0;
+      const blankId = (infoBlank >= 0 && infoBlank < V) ? infoBlank : 0;
+      const vocab = (state.info && Array.isArray(state.info.vocab)) ? state.info.vocab : null;
+
+      const peaks = new Float64Array(V);
+      for (let t = 0; t < T; t++) {
+        const row = post[t];
+        if (!Array.isArray(row)) continue;
+        for (let v = 0; v < V; v++) {
+          const val = Number(row[v]) || 0;
+          if (val > peaks[v]) peaks[v] = val;
+        }
+      }
+
+      const nonBlankIds = [];
+      for (let v = 0; v < V; v++) {
+        if (v !== blankId) nonBlankIds.push(v);
+      }
+      nonBlankIds.sort((a, b) => (peaks[b] - peaks[a]) || (a - b));
+      const selectedIds = [blankId].concat(nonBlankIds.slice(0, 11));
+
+      topTokens = selectedIds.map((tid) => {
+        if (vocab && vocab[tid] !== undefined && vocab[tid] !== null) {
+          return String(vocab[tid]);
+        }
+        return tid === blankId ? "<blank>" : ("#" + tid);
+      });
+      probs = post.map((row) => selectedIds.map((tid) => (Array.isArray(row) ? (Number(row[tid]) || 0) : 0)));
+    } else if (post && !Array.isArray(post) && Array.isArray(post.probs) && post.probs.length > 0 && Array.isArray(post.top_tokens) && post.top_tokens.length > 0) {
+      probs = post.probs;
+      topTokens = post.top_tokens;
+    } else {
+      drawEmptyPlaceholder(ctx, w, h);
+      return;
+    }
+
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, w, h);
+    const T = probs.length;
+    const K = topTokens.length;
+    const plotX = PAD_LEFT;
+    const plotY = 6;
+    const plotW = w - PAD_LEFT - PAD_RIGHT;
+    const plotH = h - 24;
+    const rowH = plotH / K;
+    const cellW = plotW / T;
+
+    for (let r = 0; r < K; r++) {
+      const y = plotY + r * rowH;
+      const isBlank = r === 0;
+      for (let t = 0; t < T; t++) {
+        const p = Math.max(0, Math.min(1, Number(probs[t][r]) || 0));
+        if (p < 0.015) continue;
+        if (isBlank) {
+          ctx.fillStyle = "rgba(245, 158, 11, " + (0.12 + 0.85 * p).toFixed(3) + ")";
+        } else {
+          ctx.fillStyle = "rgba(56, 189, 248, " + (0.14 + 0.86 * p).toFixed(3) + ")";
+        }
+        ctx.fillRect(plotX + t * cellW, y + 0.5, Math.ceil(cellW + 0.5), Math.max(1, rowH - 1));
+      }
+
+      /* Row divider */
+      ctx.strokeStyle = "rgba(42, 57, 102, 0.35)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plotX, y + rowH);
+      ctx.lineTo(plotX + plotW, y + rowH);
+      ctx.stroke();
+
+      /* Token label */
+      ctx.fillStyle = isBlank ? "#f59e0b" : "#eef2ff";
+      ctx.font = "11px ui-monospace, monospace";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      const tok = String(topTokens[r]);
+      ctx.fillText(tok.length > 7 ? tok.slice(0, 7) : tok, plotX - 6, y + rowH / 2);
+    }
+
+    drawTimeTicks(ctx, plotX, plotW, plotY + plotH, dur);
+  }
+
+  function drawAlignment() {
+    const { ctx, w, h } = setupCanvas(el.canvasAlignment, 118);
+    const align = state.visuals.alignment || [];
+    const gtMoras = state.groundTruthMoras || [];
+    const dur = Math.max(state.durationSec || 0, 1e-3);
+    if (align.length === 0 && gtMoras.length === 0) {
+      drawEmptyPlaceholder(ctx, w, h);
+      return;
+    }
+
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, w, h);
+    const plotX = PAD_LEFT;
+    const plotW = w - PAD_LEFT - PAD_RIGHT;
+    const hasGt = gtMoras.length > 0;
+    const lane1Y = 10;
+    const lane1H = hasGt ? 36 : 74;
+    const lane2Y = 56;
+    const lane2H = 34;
+
+    const palette = ["#38bdf8", "#a78bfa", "#10b981", "#f59e0b"];
+
+    /* Lane 1 label: ASR */
+    ctx.fillStyle = "#38bdf8";
+    ctx.font = "10.5px ui-monospace, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("ASR", plotX - 8, lane1Y + lane1H / 2);
+
+    ctx.fillStyle = "rgba(25, 35, 64, 0.55)";
+    ctx.fillRect(plotX, lane1Y, plotW, lane1H);
+
+    for (let i = 0; i < align.length; i++) {
+      const item = align[i];
+      const s = Math.max(0, Math.min(dur, Number(item.start_sec) || 0));
+      const e = Math.max(s, Math.min(dur, Number(item.end_sec) || s));
+      const x1 = plotX + (s / dur) * plotW;
+      const bw = Math.max(3, ((e - s) / dur) * plotW - 1.5);
+      const conf = Math.max(0.15, Math.min(1.0, Number(item.confidence) || 0.5));
+      const color = palette[i % palette.length];
+
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.65 * conf;
+      ctx.fillStyle = color;
+      ctx.fillRect(x1, lane1Y + 2, bw, lane1H - 4);
+      ctx.restore();
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x1 + 0.5, lane1Y + 2.5, Math.max(1, bw - 1), lane1H - 5);
+
+      if (bw >= 13) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 12px -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(item.token || ""), x1 + bw / 2, lane1Y + lane1H / 2);
+      }
+    }
+
+    if (hasGt) {
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "10.5px ui-monospace, monospace";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText("GT Mora", plotX - 8, lane2Y + lane2H / 2);
+
+      ctx.fillStyle = "rgba(25, 35, 64, 0.45)";
+      ctx.fillRect(plotX, lane2Y, plotW, lane2H);
+
+      for (let i = 0; i < gtMoras.length; i++) {
+        const m = gtMoras[i];
+        const s = Math.max(0, Math.min(dur, Number(m.a) || 0));
+        const e = Math.max(s, Math.min(dur, Number(m.e) || s));
+        const x1 = plotX + (s / dur) * plotW;
+        const bw = Math.max(3, ((e - s) / dur) * plotW - 1.5);
+
+        ctx.fillStyle = "rgba(245, 158, 11, 0.22)";
+        ctx.fillRect(x1, lane2Y + 2, bw, lane2H - 4);
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x1 + 0.5, lane2Y + 2.5, Math.max(1, bw - 1), lane2H - 5);
+
+        if (bw >= 13) {
+          ctx.fillStyle = "#fde68a";
+          ctx.font = "11.5px -apple-system, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(m.t || ""), x1 + bw / 2, lane2Y + lane2H / 2);
+        }
+      }
+    }
+
+    drawTimeTicks(ctx, plotX, plotW, h - 18, dur);
+  }
+
+  function drawHistory() {
+    const { ctx, w, h } = setupCanvas(el.canvasHistory, 170);
+    const hist = (state.info && Array.isArray(state.info.history)) ? state.info.history : [];
+    if (hist.length === 0) {
+      drawEmptyPlaceholder(ctx, w, h, "学習履歴データなし / No training history");
+      return;
+    }
+
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, w, h);
+
+    const padL = 48;
+    const padR = 48;
+    const padT = 14;
+    const padB = 26;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+
+    const losses = [];
+    for (let i = 0; i < hist.length; i++) {
+      if (typeof hist[i].train_loss === "number") losses.push(hist[i].train_loss);
+      if (typeof hist[i].val_loss === "number") losses.push(hist[i].val_loss);
+    }
+    const maxLoss = Math.max(0.5, ...losses) * 1.1;
+    const minLoss = 0;
+
+    /* Grid lines */
+    ctx.strokeStyle = "rgba(42, 57, 102, 0.5)";
+    ctx.lineWidth = 1;
+    for (let g = 0; g <= 4; g++) {
+      const y = padT + (g / 4) * plotH;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+
+      const lossLabel = (maxLoss * (1 - g / 4)).toFixed(2);
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(lossLabel, padL - 6, y);
+
+      const cerLabel = Math.round((1 - g / 4) * 100) + "%";
+      ctx.fillStyle = "#f59e0b";
+      ctx.textAlign = "left";
+      ctx.fillText(cerLabel, padL + plotW + 6, y);
+    }
+
+    const xAt = (idx) => {
+      if (hist.length === 1) return padL + plotW / 2;
+      return padL + (idx / (hist.length - 1)) * plotW;
+    };
+    const yLoss = (v) => padT + (1 - (v - minLoss) / Math.max(1e-5, maxLoss - minLoss)) * plotH;
+    const yCer = (v) => padT + (1 - Math.max(0, Math.min(1, v))) * plotH;
+
+    function drawSeries(key, mapY, color, dashed) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < hist.length; i++) {
+        const val = hist[i][key];
+        if (typeof val !== "number" || !Number.isFinite(val)) continue;
+        const x = xAt(i);
+        const y = mapY(val);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let i = 0; i < hist.length; i++) {
+        const val = hist[i][key];
+        if (typeof val !== "number" || !Number.isFinite(val)) continue;
+        ctx.beginPath();
+        ctx.arc(xAt(i), mapY(val), 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    drawSeries("train_loss", yLoss, "#38bdf8", false);
+    drawSeries("val_loss", yLoss, "#a78bfa", true);
+    drawSeries("val_cer", yCer, "#f59e0b", false);
+
+    /* X-axis epoch labels */
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const step = Math.max(1, Math.ceil(hist.length / 8));
+    for (let i = 0; i < hist.length; i += step) {
+      const ep = hist[i].epoch != null ? hist[i].epoch : (i + 1);
+      ctx.fillText("Ep " + ep, xAt(i), padT + plotH + 6);
+    }
+  }
+
+  function redrawAllCanvases() {
+    drawWaveform();
+    drawMelSpectrogram();
+    drawCtcPosteriors();
+    drawAlignment();
+    drawHistory();
+  }
+
+  /* ------------------------------------------------------------------
+   * Web Audio WAV Encoder + Linear Resampler (16 kHz 16-bit PCM mono)
+   * ------------------------------------------------------------------ */
+
+  function linearResample(samples, srcRate, dstRate) {
+    if (!samples || samples.length === 0 || srcRate === dstRate) {
+      return samples;
+    }
+    const ratio = srcRate / dstRate;
+    const outLen = Math.max(1, Math.round(samples.length / ratio));
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio;
+      const idx = Math.floor(pos);
+      const frac = pos - idx;
+      const s0 = samples[Math.min(idx, samples.length - 1)];
+      const s1 = samples[Math.min(idx + 1, samples.length - 1)];
+      out[i] = s0 + (s1 - s0) * frac;
+    }
+    return out;
+  }
+
+  function encodeWav16BitPCM(samples, sampleRate) {
+    const numSamples = samples.length;
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buffer);
+    function writeStr(offset, s) {
+      for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+    }
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, "data");
+    view.setUint32(40, numSamples * 2, true);
+    let offset = 44;
+    for (let i = 0; i < numSamples; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  /* ------------------------------------------------------------------
+   * API Calls
+   * ------------------------------------------------------------------ */
+
+  function formatApiError(data, status, rawText) {
+    if (data && typeof data === "object" && "detail" in data) {
+      const detail = data.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+      if (Array.isArray(detail)) {
+        const parts = detail.map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+            const msg = typeof item.msg === "string" ? item.msg : JSON.stringify(item);
+            return loc ? (loc + ": " + msg) : msg;
+          }
+          return String(item);
+        }).filter(Boolean);
+        if (parts.length > 0) return parts.join("; ");
+      }
+      if (detail != null && typeof detail === "object") {
+        try {
+          return JSON.stringify(detail);
+        } catch (_e) {
+          /* fall through */
+        }
+      }
+    }
+    const snippet = typeof rawText === "string" ? rawText.trim().slice(0, 160) : "";
+    return snippet ? ("HTTP " + status + ": " + snippet) : ("HTTP " + status);
+  }
+
+  async function parseApiResponse(res) {
+    const rawText = await res.text();
+    let data = null;
+    if (rawText) {
+      try {
+        data = JSON.parse(rawText);
+      } catch (_e) {
+        data = null;
+      }
+    }
+    if (!res.ok) {
+      throw new Error(formatApiError(data, res.status, rawText));
+    }
+    if (data === null) {
+      throw new Error("HTTP " + res.status + ": Invalid JSON response");
+    }
+    return data;
+  }
+
+  async function fetchApiInfo() {
+    try {
+      const res = await fetch("/api/info");
+      const info = await parseApiResponse(res);
+      state.info = info;
+      state.modelLoaded = Boolean(info.model_loaded);
+
+      /* Populate presets */
+      const presets = Array.isArray(info.tsukinami_presets) && info.tsukinami_presets.length > 0
+        ? info.tsukinami_presets
+        : ["default", "ossan", "robot", "horror", "whisper", "chibi"];
+      const prev = el.ttsPresetSelect.value;
+      el.ttsPresetSelect.innerHTML = presets.map((p) => {
+        const label = PRESET_LABELS[p] || p;
+        return '<option value="' + escapeHtml(p) + '">' + escapeHtml(label) + "</option>";
+      }).join("");
+      if (presets.includes(prev)) el.ttsPresetSelect.value = prev;
+
+      if (!state.modelLoaded) {
+        el.noModelBanner.classList.add("show");
+        setStatus("モデル未ロード / No Model", "amber");
+      } else {
+        el.noModelBanner.classList.remove("show");
+        setStatus("準備完了 / Ready (" + (info.arch || "ASR") + ")", "emerald");
+      }
+
+      /* Populate model inspector */
+      el.infoArch.textContent = info.arch || "--";
+      const mc = info.model_config || {};
+      el.infoArchSub.textContent = mc.hidden_size
+        ? "H=" + mc.hidden_size + ", L=" + mc.num_layers + ", sub=" + (info.subsampling_factor || 4) + "x"
+        : "モデル未読込";
+      el.infoParams.textContent = formatParams(info.num_parameters);
+      el.infoStride.textContent = info.frame_stride_ms
+        ? "Frame stride: " + info.frame_stride_ms + " ms"
+        : "--";
+      el.infoVocab.textContent = info.vocab_size ? info.vocab_size + " tokens" : "--";
+      el.infoTokMode.textContent = info.tokenizer_mode ? "Mode: " + info.tokenizer_mode : "--";
+      el.infoBestCer.textContent = typeof info.best_val_cer === "number"
+        ? (info.best_val_cer * 100).toFixed(1) + "%"
+        : "--";
+      const ckptBase = info.checkpoint_path
+        ? String(info.checkpoint_path).split(/[\\/]/).pop()
+        : "in-memory";
+      el.infoCkptSub.textContent = (info.epoch != null ? "Ep " + info.epoch + " · " : "") + ckptBase;
+
+      el.lmHintBadge.textContent = info.has_lm ? "LM: Active (N-gram)" : "LM: None";
+      el.lmHintBadge.className = "pill " + (info.has_lm ? "emerald" : "");
+
+      const vocab = Array.isArray(info.vocab) ? info.vocab : [];
+      el.vocabPreview.innerHTML = vocab.length > 0
+        ? vocab.map((tok, idx) =>
+            '<span class="tok-pill' + (idx === 0 ? " blank" : "") + '">' + escapeHtml(tok) + "</span>"
+          ).join("")
+        : '<span style="color:var(--muted);font-size:12px;">語彙なし</span>';
+
+      drawHistory();
+    } catch (err) {
+      setStatus("接続エラー / Error", "rose");
+      showError("サーバー情報の取得に失敗しました: " + err.message);
+    }
+  }
+
+  async function runTtsRoundtrip() {
+    clearError();
+    const text = el.ttsTextInput.value.trim();
+    if (!text) {
+      showError("テキストを入力してください (Please enter Japanese kana text).");
+      return;
+    }
+    el.btnRoundtrip.disabled = true;
+    setStatus("合成＆認識中... / Synthesizing...", "amber");
+
+    try {
+      const payload = {
+        text: text,
+        preset: el.ttsPresetSelect.value,
+        synth_engine: el.ttsEngineSelect.value,
+        corruption: getCorruptionCfg(),
+        decode_cfg: getDecodeCfg(),
+        include_visuals: true,
+      };
+      const res = await fetch("/api/tts-roundtrip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await parseApiResponse(res);
+
+      state.mode = "roundtrip";
+      state.utteranceId = data.utterance_id || null;
+      state.durationSec = Number(data.duration_sec) || 0;
+      state.groundTruthText = text;
+      state.groundTruthMoras = Array.isArray(data.ground_truth_moras) ? data.ground_truth_moras : [];
+      state.visuals = {
+        waveform: data.waveform || [],
+        log_mel: data.log_mel || [],
+        ctc_posteriors: data.ctc_posteriors || null,
+        vad_segments: data.vad_segments || [],
+        alignment: data.alignment || [],
+      };
+      state.hypotheses = data.hypotheses || [];
+
+      if (data.audio_b64) {
+        if (state.lastObjectUrl) {
+          URL.revokeObjectURL(state.lastObjectUrl);
+          state.lastObjectUrl = null;
+        }
+        el.audioPlayer.src = "data:audio/wav;base64," + data.audio_b64;
+      }
+
+      renderResultSummary(data, true);
+      redrawAllCanvases();
+      setStatus("認識完了 / Done", "emerald");
+    } catch (err) {
+      showError("TTS ラウンドトリップエラー: " + err.message);
+      setStatus("エラー / Error", "rose");
+    } finally {
+      el.btnRoundtrip.disabled = false;
+    }
+  }
+
+  async function transcribeBlob(blob, filename, modeName) {
+    clearError();
+    state.lastAudioBlob = blob;
+    state.lastAudioName = filename;
+    el.uploadedFileName.textContent = filename;
+    el.btnRetranscribeAudio.disabled = false;
+    setAudioSourceBlob(blob);
+    setStatus("音声認識中... / Transcribing...", "amber");
+
+    try {
+      const fd = new FormData();
+      fd.append("file", blob, filename);
+      const dec = getDecodeCfg();
+      fd.append("method", dec.method);
+      fd.append("beam_width", String(dec.beam_width));
+      fd.append("temperature", String(dec.temperature));
+      fd.append("blank_bias", String(dec.blank_bias));
+      fd.append("lm_weight", String(dec.lm_weight));
+      fd.append("insertion_bonus", String(dec.insertion_bonus));
+      fd.append("include_visuals", "true");
+
+      const corr = getCorruptionCfg();
+      if (corr) {
+        if (corr.snr_db != null) fd.append("snr_db", String(corr.snr_db));
+        fd.append("noise_type", corr.noise_type);
+        if (corr.band_limit) {
+          fd.append("band_limit_low", String(corr.band_limit[0]));
+          fd.append("band_limit_high", String(corr.band_limit[1]));
+        }
+        fd.append("speed", String(corr.speed));
+      }
+
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await parseApiResponse(res);
+
+      state.mode = modeName || "upload";
+      state.utteranceId = data.utterance_id || null;
+      state.durationSec = Number(data.duration_sec) || 0;
+      state.groundTruthText = null;
+      state.groundTruthMoras = [];
+      state.visuals = {
+        waveform: data.waveform || [],
+        log_mel: data.log_mel || [],
+        ctc_posteriors: data.ctc_posteriors || null,
+        vad_segments: data.vad_segments || [],
+        alignment: data.alignment || [],
+      };
+      state.hypotheses = data.hypotheses || [];
+
+      renderResultSummary(data, false);
+      redrawAllCanvases();
+      setStatus("認識完了 / Done", "emerald");
+    } catch (err) {
+      showError("音声認識エラー: " + err.message);
+      setStatus("エラー / Error", "rose");
+    }
+  }
+
+  function triggerRedecodeDebounced() {
+    if (!state.utteranceId) return;
+    if (state.redecodeTimer) clearTimeout(state.redecodeTimer);
+    state.redecodeTimer = setTimeout(runRedecode, 55);
+  }
+
+  async function runRedecode() {
+    if (!state.utteranceId) return;
+    const seq = ++state.redecodeSeq;
+    const uttId = state.utteranceId;
+    try {
+      const res = await fetch("/api/redecode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          utterance_id: uttId,
+          decode_cfg: getDecodeCfg(),
+        }),
+      });
+      if (seq !== state.redecodeSeq) return;
+      if (res.status === 404) {
+        setStatus("キャッシュ期限切れ (再認識してください)", "amber");
+        return;
+      }
+      const data = await parseApiResponse(res);
+      if (seq !== state.redecodeSeq) return;
+
+      state.visuals.alignment = data.alignment || [];
+      state.hypotheses = data.hypotheses || [];
+
+      const txt = data.text || "";
+      el.resultText.innerHTML = txt
+        ? escapeHtml(txt)
+        : '<span style="color:var(--muted);font-size:15px;">(無音 / 空)</span>';
+      renderHypotheses(state.hypotheses);
+
+      if (state.mode === "roundtrip" && state.groundTruthText != null) {
+        renderCerBadge(computeClientCer(state.groundTruthText, txt));
+      }
+
+      if (typeof data.decode_ms === "number") {
+        el.redecodeLatencyBadge.style.display = "inline-flex";
+        el.redecodeLatencyBadge.textContent = "⚡ Redecode: " + data.decode_ms.toFixed(1) + " ms";
+        el.redecodeLatencyBadge.className = "pill " + (data.decode_ms < 10 ? "emerald" : "amber");
+      }
+
+      drawAlignment();
+    } catch (err) {
+      if (seq === state.redecodeSeq) {
+        showError("再デコードエラー: " + err.message);
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------
+   * Microphone Recorder (Web Audio API)
+   * ------------------------------------------------------------------ */
+
+  async function startMicRecording() {
+    clearError();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError("このブラウザ環境ではマイク録音が利用できません (HTTPSまたは対応ブラウザが必要です)。");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+      state.mic.recording = true;
+      state.mic.stream = stream;
+      state.mic.audioCtx = audioCtx;
+      state.mic.source = source;
+      state.mic.processor = processor;
+      state.mic.chunks = [];
+      state.mic.sampleRate = audioCtx.sampleRate || 16000;
+      state.mic.startTime = performance.now();
+
+      processor.onaudioprocess = (ev) => {
+        if (!state.mic.recording) return;
+        const input = ev.inputBuffer.getChannelData(0);
+        const copy = new Float32Array(input.length);
+        copy.set(input);
+        state.mic.chunks.push(copy);
+
+        let sumSq = 0;
+        for (let i = 0; i < copy.length; i++) sumSq += copy[i] * copy[i];
+        const rms = Math.sqrt(sumSq / Math.max(1, copy.length));
+        const pct = Math.min(100, Math.round(rms * 260));
+        el.micLevelBar.style.width = pct + "%";
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      el.btnMicRecord.disabled = true;
+      el.btnMicStop.disabled = false;
+      setStatus("録音中... / Recording...", "rose");
+
+      state.mic.timerId = setInterval(() => {
+        const sec = (performance.now() - state.mic.startTime) / 1000;
+        el.micTimer.textContent = sec.toFixed(1).padStart(4, "0") + "s";
+      }, 100);
+    } catch (err) {
+      showError("マイクの起動に失敗しました: " + err.message);
+    }
+  }
+
+  async function stopMicRecording() {
+    if (!state.mic.recording) return;
+    state.mic.recording = false;
+    if (state.mic.timerId) {
+      clearInterval(state.mic.timerId);
+      state.mic.timerId = null;
+    }
+    try {
+      if (state.mic.processor) state.mic.processor.disconnect();
+      if (state.mic.source) state.mic.source.disconnect();
+      if (state.mic.stream) state.mic.stream.getTracks().forEach((t) => t.stop());
+      if (state.mic.audioCtx) await state.mic.audioCtx.close();
+    } catch (_e) {
+      /* ignore teardown errors */
+    }
+    el.btnMicRecord.disabled = false;
+    el.btnMicStop.disabled = true;
+    el.micLevelBar.style.width = "0%";
+
+    const chunks = state.mic.chunks;
+    let totalLen = 0;
+    for (let i = 0; i < chunks.length; i++) totalLen += chunks[i].length;
+    if (totalLen === 0) {
+      showError("録音データが空でした。");
+      setStatus("待機中 / Ready", "cyan");
+      return;
+    }
+    const merged = new Float32Array(totalLen);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      merged.set(chunks[i], offset);
+      offset += chunks[i].length;
+    }
+    const resampled = linearResample(merged, state.mic.sampleRate, 16000);
+    const wavBlob = encodeWav16BitPCM(resampled, 16000);
+    await transcribeBlob(wavBlob, "mic_recording.wav", "mic");
+  }
+
+  /* ------------------------------------------------------------------
+   * Event Wiring
+   * ------------------------------------------------------------------ */
+
+  el.btnDismissError.addEventListener("click", clearError);
+
+  document.querySelectorAll(".sample-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      el.ttsTextInput.value = btn.getAttribute("data-text") || "";
+      runTtsRoundtrip();
+    });
+  });
+
+  el.btnRoundtrip.addEventListener("click", runTtsRoundtrip);
+  el.ttsTextInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runTtsRoundtrip();
+  });
+
+  el.btnMicRecord.addEventListener("click", startMicRecording);
+  el.btnMicStop.addEventListener("click", stopMicRecording);
+
+  el.wavFileInput.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+  el.btnPickWav.addEventListener("click", (e) => {
+    e.stopPropagation();
+    el.wavFileInput.click();
+  });
+  el.dropZone.addEventListener("click", (e) => {
+    if (
+      e.target !== el.btnPickWav &&
+      e.target !== el.wavFileInput &&
+      !el.btnPickWav.contains(e.target)
+    ) {
+      el.wavFileInput.click();
+    }
+  });
+  el.wavFileInput.addEventListener("change", () => {
+    const file = el.wavFileInput.files && el.wavFileInput.files[0];
+    if (file) transcribeBlob(file, file.name, "upload");
+  });
+  el.dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    el.dropZone.classList.add("dragover");
+  });
+  el.dropZone.addEventListener("dragleave", () => {
+    el.dropZone.classList.remove("dragover");
+  });
+  el.dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    el.dropZone.classList.remove("dragover");
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) transcribeBlob(file, file.name, "upload");
+  });
+  el.btnRetranscribeAudio.addEventListener("click", () => {
+    if (state.lastAudioBlob) {
+      transcribeBlob(state.lastAudioBlob, state.lastAudioName || "audio.wav", state.mode);
+    }
+  });
+
+  /* Corruption Lab events */
+  el.corrNoiseEnabled.addEventListener("change", updateCorruptionUi);
+  el.corrSnrSlider.addEventListener("input", updateCorruptionUi);
+  el.corrSpeedSlider.addEventListener("input", updateCorruptionUi);
+  el.btnResetCorruption.addEventListener("click", () => {
+    el.corrNoiseEnabled.checked = false;
+    el.corrSnrSlider.value = "15";
+    el.corrNoiseType.value = "white";
+    el.corrBandpass.checked = false;
+    el.corrSpeedSlider.value = "1.00";
+    updateCorruptionUi();
+  });
+
+  /* Decoding Knobs events -> debounced /api/redecode */
+  [
+    el.decMethod,
+    el.decBeamWidth,
+    el.decTemperature,
+    el.decBlankBias,
+    el.decLmWeight,
+    el.decInsertionBonus,
+  ].forEach((ctrl) => {
+    const evt = ctrl.tagName === "SELECT" ? "change" : "input";
+    ctrl.addEventListener(evt, () => {
+      updateDecodeUi();
+      triggerRedecodeDebounced();
+    });
+  });
+
+  el.btnResetDecode.addEventListener("click", () => {
+    el.decMethod.value = "beam";
+    el.decBeamWidth.value = "8";
+    el.decTemperature.value = "1.00";
+    el.decBlankBias.value = "0.0";
+    el.decLmWeight.value = "0.00";
+    el.decInsertionBonus.value = "0.0";
+    updateDecodeUi();
+    triggerRedecodeDebounced();
+  });
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(redrawAllCanvases, 80);
+  });
+
+  /* Initialize UI */
+  updateCorruptionUi();
+  updateDecodeUi();
+  redrawAllCanvases();
+  fetchApiInfo();
+})();
+</script>
+</body>
+</html>
