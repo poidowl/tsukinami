@@ -18,6 +18,3 @@ dist/
 checkpoints/
 data/
 out/
-
-# Internal agent workspace logs
-.agents/
