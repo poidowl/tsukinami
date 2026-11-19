@@ -1169,7 +1169,7 @@ export function makeHitofude(text, opts = {}) {
       }
     }
   } else {
-    const acc = sigh >= 0.25
+    const acc = (sigh >= 0.25 || hz < 210.0)
       ? Object.assign({}, ACCENT_NORMAL, { rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, decl: 1.4, fin: 2.6 })
       : ACCENT_CUTE;
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
@@ -1258,23 +1258,40 @@ export function makeHitofude(text, opts = {}) {
   if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
   x = combPeriod(x, PER, GS, damp);
   if (shin > 0.0) {
+    // Unidirectional lung airflow through an asymmetric glottal valve (closed -> slow open -> crisp close)
+    // Runs after 1-stage comb (no 2-stage metallic ring, no bipolar AM vocoder buzz)
     let ph = 0.0;
+    let cycJit = 0.0;
     for (let i = 0; i < N; i++) {
       ph += 1.0 / PER[i];
-      if (ph >= 1.0) ph -= 1.0;
-      // Asymmetric smooth glottal arch (slow open 0..0.68, smooth return 0.68..1.0) — warm low energy, zero metallic spike!
-      const u = ph < 0.68 ? (ph / 0.68) : (1.0 - (ph - 0.68) / 0.32);
-      const w = u * u * (3.0 - 2.0 * u);
+      if (ph >= 1.0) {
+        ph -= 1.0;
+        cycJit = jitter > 0.0 ? Math.max(-1.0, Math.min(1.0, x[i])) : 0.0;
+      }
+      const cEnd = 0.34 + 0.03 * cycJit;
+      const oEnd = 0.91 + 0.02 * cycJit;
+      let w = 0.0;
+      if (ph >= cEnd && ph < oEnd) {
+        const u = (ph - cEnd) / (oEnd - cEnd);
+        w = u * u * (3.0 - 2.0 * u);
+      } else if (ph >= oEnd) {
+        const v = 1.0 - (ph - oEnd) / (1.0 - oEnd);
+        w = v * v;
+      }
       const breathMod = wNorm > 0.0 ? Math.max(0.4, Math.min(1.4, 1.0 + 0.35 * wander[i] * wNorm)) : 1.0;
       const s = Math.min(1.0, shin * breathMod) * GS[i];
-      x[i] *= (1.0 - s) + s * (0.42 + 1.15 * w);
+      const shim = 1.0 + 0.09 * cycJit;
+      const puff = w * shim * (0.80 + 0.25 * x[i]);
+      x[i] = (1.0 - s) * x[i] + s * (puff + 0.22 * x[i]);
     }
+  } else {
+    x = combPeriod(x, PER, GS, damp);
   }
-  x = combPeriod(x, PER, GS, damp);
   const x1 = captureSteps ? x.slice() : null;
 
   // === Step 2: 【引き算②】低域濁りと高域の角を引く ===
-  x = karuku(x, hz >= 200.0 ? 220 : 440);
+  const karukuW = Math.round(Math.min(600, Math.max(200, SR / (0.62 * Math.max(70.0, hz)))));
+  x = karuku(x, karukuW);
   const tw = Math.max(1, Math.round(tilt_w));
   x = arakezuriT(x, tw, 2, perSample(cons_sharp, N));
   if (sigh > 0.0) {
@@ -1285,12 +1302,13 @@ export function makeHitofude(text, opts = {}) {
   const x2 = captureSteps ? x.slice() : null;
 
   // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
-  let yc = resonator2Pole(x, perSample(F1, N), 70.0, 9.0);
-  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 9.5);
-  yc = resonator2Pole(yc, perSample(F3, N), 190.0, 7.0);
-  yc = resonator2Pole(yc, perSample(F4, N), 280.0, 6.0);
+  let yc = resonator2Pole(x, perSample(F1, N), 75.0, 8.5);
+  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0);
+  yc = resonator2Pole(yc, perSample(F3, N), 160.0, 10.5);
+  yc = resonator2Pole(yc, perSample(F4, N), 240.0, 9.5);
+  const radAlpha = 0.42 + 0.26 * Math.min(1.0, Math.max(0.0, (hz - 150.0) / 110.0));
   const ycRad = new Float64Array(N);
-  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.48 * yc[i - 1];
+  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - radAlpha * yc[i - 1];
   const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
   const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
   const G1S = perSample(r.G1, N);
