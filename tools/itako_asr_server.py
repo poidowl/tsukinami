@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""tools/itako_asr_server.py — イタコ (Mac mini 32GB) 常駐用・軽量ローカル ASR HTTP サーバー
+"""tools/itako_asr_server.py — 予備のローカル ASR HTTP サーバー
 
-Qwen3-14B (:8090) とポートを分けて常駐させ、モデル読み込みを初回1回だけで済ませる。
-（ポート 8090 の指定は衝突防止のため起動時に拒否する）
+関亡婆 (M6) の本番 ASR は、すでに次のポートで動いている:
+  8091 Qwen3-ASR-1.7B、8092 parakeet-tdt_ctc-0.6b-ja
+  （起動・停止は ~/asr/start.sh / ~/asr/stop.sh。API は POST /v1/audio/transcriptions）
 
-起動例 (Mac mini 32GB / Apple Silicon):
-  # 第1審判 (MLX Whisper, ポート8091 — 実メモリ使用量は起動後と初回推論後に実測表示)
-  pip install mlx-whisper pykakasi
-  python3 tools/itako_asr_server.py --port 8091 --backend mlx-whisper \
+このスクリプトを 8091 や 8092 で立てないこと。既存のサーバーと衝突する。
+イタコのループ (tools/itako_asr_loop.py) は、既定でその2本を直接呼ぶ。
+8090 は Qwen3-30B-A3B の LLM 用なので、ここでも拒否する。
+
+やむを得ず別マシンでこのサーバーを使う場合の例（ポートは 8093 以降）:
+  python tools/itako_asr_server.py --port 8093 --backend mlx-whisper \
       --model mlx-community/whisper-large-v3-turbo --name mlx-large-v3-turbo
-
-  # 第2審判 (異種モデル追加時: sherpa-onnx SenseVoiceSmall, 非自己回帰CTC, ポート8092)
-  pip install sherpa-onnx
-  python3 tools/itako_asr_server.py --port 8092 --backend sherpa-sensevoice \
-      --model /path/to/sherpa-onnx-sense-voice-zh-en-ja-ko-yue --name sensevoice-small
 """
 import argparse
 import json
@@ -98,7 +96,7 @@ def make_transcriber(backend, model_spec):
 def main():
     ap = argparse.ArgumentParser(description="Itako local ASR HTTP server (must not use port 8090)")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8091, help="HTTP port (default: 8091; 8090 is reserved for Qwen3-14B)")
+    ap.add_argument("--port", type=int, default=8093, help="HTTP port (default: 8093; 8090/8091/8092 are reserved on 関亡婆)")
     ap.add_argument(
         "--backend",
         choices=("mlx-whisper", "faster-whisper", "sherpa-sensevoice"),
@@ -109,8 +107,14 @@ def main():
     args = ap.parse_args()
 
     if args.port == 8090:
-        print("ERROR: Port 8090 is reserved for Qwen3-14B on Itako. Choose 8091, 8092, etc.", file=sys.stderr)
+        print("ERROR: Port 8090 is reserved for the LLM (Qwen3-30B-A3B) on 関亡婆. Choose 8093 or later.", file=sys.stderr)
         sys.exit(2)
+    if args.port in (8091, 8092):
+        print(
+            f"WARNING: Port {args.port} is already used on 関亡婆 "
+            "(8091=Qwen3-ASR-1.7B, 8092=parakeet). Do not start a second server there.",
+            file=sys.stderr,
+        )
 
     asr_name = args.name or f"{args.backend}:{os.path.basename(args.model)}"
     print(f"[itako-asr] Initializing {asr_name} on http://{args.host}:{args.port} ...", flush=True)

@@ -2,15 +2,19 @@
 """tools/itako_asr_loop.py — イタコASRループ実行・採点ドライバ (tsukinami / hitofude)
 
 hitofude.py の式には一切触れず、プリセット数値パラメータだけを動かして ASR のかな誤り率 (CER) を下げる。
-- 元の文 (ref) は漢字かな混じりで保持し、ASR出力 (hyp) と同じかな変換・同じ揃え方に通してから CER を採点する。
+- 元の文 (ref) は漢字かな混じりで保持し、ASR出力 (hyp) と同じかな変換に通してから CER を採点する。
+  既定の変換は 关亡婆の ~/kana にある pyopenjtalk（正解も認識結果も同じ道具）。
 - hakaru の値が、現行6プリセットの実測値から決めた枠の外に出た組は失格 (disqualified) にする。
-- つまみ係 LLM (:8090 Qwen3-14B) に渡す履歴は「最良5件・直近5件・パラメータの範囲」だけとし、
-  確認用 (eval) の文・文字起こし・CER は一切見せない。
+- つまみ係 LLM (:8090 Qwen3-30B-A3B、model は必ず default_model) に渡す履歴は
+  「最良5件・直近5件・パラメータの範囲」だけとし、確認用 (eval) の文・文字起こし・CER は一切見せない。
+- 既定の ASR は、关亡婆で既に動いている 8091 (Qwen3-ASR-1.7B) と 8092 (parakeet-tdt_ctc-0.6b-ja)。
+  点は2つの ASR のうち、文ごとに悪いほう（CER が高いほう）を使う。
+  tools/itako_asr_server.py を 8091 で立てないこと（既存の Qwen3-ASR と衝突する）。
 
-最初の一歩（ASR 1つ・パラメータ3つ・10回）実行例:
-  python3 tools/itako_asr_loop.py \
-      --asr http://127.0.0.1:8091/transcribe \
+最初の一歩（関亡婆でループを回す。システムの python3 / git は使わない）:
+  python tools/itako_asr_loop.py \
       --llm-url http://127.0.0.1:8090/v1 \
+      --llm-model default_model \
       --knobs hz,fscale,rate \
       --max-iters 10
 
@@ -36,6 +40,9 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, ".."))
 sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, HERE)
+
+import itako_asr_lib as asrlib  # noqa: E402
 
 import hitofude as H  # noqa: E402
 import kotoba as K    # noqa: E402
@@ -44,7 +51,7 @@ import yomu as Y      # noqa: E402
 JST = datetime.timezone(datetime.timedelta(hours=9), name="JST")
 FIXED_SEED = 2024
 
-# 動かせるプリセット数値パラメータと許容範囲（範囲外の提案はクランプせず弾く）
+# 動かせるプリセット数値パラメータと許容範囲（範囲外の提案は端に丸める）
 PARAM_BOUNDS = {
     "hz":        (120.0, 420.0, 1, "基本ピッチ F0 中央値 (Hz)"),
     "fscale":    (0.82,  1.36,  3, "声道長スケール（F1〜F3 倍率）"),
@@ -102,7 +109,7 @@ EVAL_ITEMS = [
     {"ref": "新しい、靴を履いて出かける",         "synth": "あたらしい、くつをはいてでかける"},
 ]
 
-# --allow-no-kakasi / mock テスト時のみ使う最小フォールバック辞書（本番は pykakasi で ref/hyp 両方を同一変換）
+# --kana-backend pykakasi|fallback / mock テスト時の辞書（既定の本番は pyopenjtalk で ref/hyp 両方を同一変換）
 FALLBACK_KANJI_LEXICON = [
     ("日本語", "ニホンゴ"), ("私", "ワタシ"), ("喋れ", "シャベレ"), ("喋", "シャベ"),
     ("比べ", "クラベ"), ("鍵", "カギ"), ("学校", "ガッコウ"), ("切符", "キップ"), ("探す", "サガス"),
@@ -135,108 +142,56 @@ def _get_kakasi():
     return _KAKASI
 
 
-A_HEADS = set("アカサタナハマヤラワガザダバパァャヮ")
-I_HEADS = set("イキシチニヒミリヰギジヂビピィ")
-U_HEADS = set("ウクスツヌフムユルグズヅブプゥュ")
-E_HEADS = set("エケセテネヘメレヱゲゼデベペェ")
-O_HEADS = set("オコソトノホモヨロヲゴゾドボポォョ")
-SMALL_KANA = set("ァィゥェォャュョヮ")
+def make_kana_normalizer(backend, openjtalk_python=None, allow_fallback=False):
+    """Build the symmetric kana converter used for both ref and hyp."""
+    if backend == "openjtalk":
+        python_bin = openjtalk_python or asrlib.DEFAULT_OPENJTALK_PYTHON
+        if not allow_fallback and not os.path.isfile(python_bin):
+            raise SystemExit(
+                f"ERROR: pyopenjtalk runner not found: {python_bin}\n"
+                "かなCERは関亡婆の ~/kana/bin/python の pyopenjtalk で、正解も認識結果も同じ変換に通す。"
+                "パスを --openjtalk-python で渡すか、テストなら --kana-backend fallback を使う。"
+            )
+        if not os.path.isfile(python_bin):
+            backend = "fallback"
+    if backend == "pykakasi":
+        kk = _get_kakasi()
+        if kk is None and not allow_fallback:
+            raise SystemExit(
+                "ERROR: --kana-backend pykakasi なのに pykakasi が入っていない。"
+                " 既定は pyopenjtalk。テストなら --kana-backend fallback を使う。"
+            )
+        if kk is None:
+            backend = "fallback"
+            kk = None
+        return asrlib.KanaNormalizer(
+            backend=backend,
+            openjtalk_python=openjtalk_python,
+            kakasi=kk,
+            fallback_lexicon=FALLBACK_KANJI_LEXICON,
+        )
+    return asrlib.KanaNormalizer(
+        backend=backend,
+        openjtalk_python=openjtalk_python,
+        kakasi=None,
+        fallback_lexicon=FALLBACK_KANJI_LEXICON,
+    )
 
 
-def _trailing_vowel(ch):
-    if ch in A_HEADS:
-        return "a"
-    if ch in I_HEADS:
-        return "i"
-    if ch in U_HEADS:
-        return "u"
-    if ch in E_HEADS:
-        return "e"
-    if ch in O_HEADS:
-        return "o"
-    return None
-
-
-def normalize_kana_for_cer(text):
-    """元の文(ref)とASR出力(hyp)を同じかな変換・同じ揃え方（句読点・空白除去、長音統一）にかける。"""
-    s = unicodedata.normalize("NFKC", text or "")
-    kk = _get_kakasi()
-    if kk is not None:
-        s = "".join(item.get("kana", item.get("orig", "")) for item in kk.convert(s))
-    else:
-        for kj, kn in FALLBACK_KANJI_LEXICON:
-            s = s.replace(kj, kn)
-    s = K.to_kata(s)
-    # カタカナと長音符のみ残す（句読点・空白・記号をすべて除去）
-    s = "".join(ch for ch in s if ("ァ" <= ch <= "ヶ") or ch == "ー")
-    # 同音かな統一 (ヲ->オ, ヂ->ジ, ヅ->ズ, ヴ->ブ)
-    s = s.replace("ヲ", "オ").replace("ヂ", "ジ").replace("ヅ", "ズ").replace("ヴ", "ブ")
-    # 長音統一: 単独の母音連続 (オ段+ウ/オ, ウ段+ウ, ア段+ア, エ段+エ) を「ー」に揃え、連続「ーー」を1つに畳む
-    # ※ 次文字が小書き母音/拗音 (ウェ, ウィ 等) の場合は子音グライドなので長音化しない
-    out = []
-    prev_v = None
-    n = len(s)
-    for idx, ch in enumerate(s):
-        nxt = s[idx + 1] if idx + 1 < n else ""
-        is_standalone_vowel = nxt not in SMALL_KANA
-        if ch == "ー":
-            if out and out[-1] != "ー":
-                out.append("ー")
-            continue
-        if is_standalone_vowel and (
-            (ch == "ウ" and prev_v in ("o", "u"))
-            or (ch == "オ" and prev_v == "o")
-            or (ch == "ア" and prev_v == "a")
-            or (ch == "エ" and prev_v == "e")
-        ):
-            if out and out[-1] != "ー":
-                out.append("ー")
-            continue
-        out.append(ch)
-        prev_v = _trailing_vowel(ch)
-    return "".join(out)
+def normalize_kana_for_cer(text, normalizer=None):
+    """Single-text wrapper (tests / debug). Production scoring uses batch conversion."""
+    if normalizer is None:
+        normalizer = asrlib.KanaNormalizer(backend="fallback", fallback_lexicon=FALLBACK_KANJI_LEXICON)
+    return normalizer.batch([text])[0]
 
 
 def levenshtein_distance(a, b):
-    """純Python動的計画法による編集距離 (置換 + 削除 + 挿入)。"""
-    if a == b:
-        return 0
-    la, lb = len(a), len(b)
-    if la == 0:
-        return lb
-    if lb == 0:
-        return la
-    prev = list(range(lb + 1))
-    for i, ca in enumerate(a, 1):
-        cur = [i] + [0] * lb
-        for j, cb in enumerate(b, 1):
-            cost = 0 if ca == cb else 1
-            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
-        prev = cur
-    return prev[lb]
+    return asrlib.levenshtein_distance(a, b)
 
 
-def compute_cer(ref_texts, hyp_texts):
-    """元の文(ref)とASR出力(hyp)の両方を normalize_kana_for_cer に通してから CER = sum(edits)/sum(len) を計算する。"""
-    total_edits = 0
-    total_chars = 0
-    per_item = []
-    for ref, hyp in zip(ref_texts, hyp_texts):
-        rn = normalize_kana_for_cer(ref)
-        hn = normalize_kana_for_cer(hyp)
-        ed = levenshtein_distance(rn, hn)
-        total_edits += ed
-        total_chars += len(rn)
-        per_item.append({
-            "ref_raw": ref,
-            "ref_kana": rn,
-            "hyp_raw": hyp,
-            "hyp_kana": hn,
-            "edits": ed,
-            "cer": round(ed / max(1, len(rn)), 4),
-        })
-    overall = total_edits / max(1, total_chars)
-    return round(overall, 4), per_item
+def compute_cer(ref_texts, hyp_texts, normalizer):
+    """元の文(ref)とASR出力(hyp)の両方を同じかな変換に通してから CER を計算する。"""
+    return asrlib.compute_cer(ref_texts, hyp_texts, normalizer)
 
 
 def measure_hakaru_gate_from_presets(ref_synth_text):
@@ -376,7 +331,7 @@ def synthesize_remaining(synth_texts, full_prm, wav_paths, backend="python"):
 # ==============================================================================
 # ASR クライアント（複数同時接続対応：HTTP サーバー / 直接 MLX / 直接 faster-whisper / ドライラン用 mock）
 # ==============================================================================
-def build_asr_runner(spec):
+def build_asr_runner(spec, timeout=asrlib.DEFAULT_HTTP_TIMEOUT_SEC, retry_budget=asrlib.DEFAULT_RETRY_BUDGET_SEC):
     if spec == "mock":
         # 通信なし環境でのハーネス単体テスト用：漢字かな混じり＋句読点付きの疑似認識文字列を返す
         def _mock_run(wav_paths, prm_hint, orig_ref_texts):
@@ -402,15 +357,7 @@ def build_asr_runner(spec):
 
     if spec.startswith("http://") or spec.startswith("https://"):
         def _http_run(wav_paths, _prm_hint, _orig_ref_texts):
-            req = urllib.request.Request(
-                spec,
-                data=json.dumps({"wav_paths": [os.path.abspath(p) for p in wav_paths]}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            return data.get("name") or spec, data["texts"]
+            return asrlib.run_http_asr(spec, wav_paths, timeout=timeout, retry_budget=retry_budget)
 
         return _http_run
 
@@ -447,53 +394,18 @@ def build_asr_runner(spec):
     raise ValueError(f"Unsupported --asr spec: {spec}")
 
 
-# ==============================================================================
-# つまみ係クライアント（イタコ :8090 Qwen3-14B / OpenAI互換 API）
+# つまみ係クライアント（イタコ :8090 Qwen3-30B-A3B / OpenAI互換 API）
+# model は必ず "default_model"（他の名前を出すと 8090 が 30B を降ろして入れ替える）。
 # ※ 渡す情報は「いちばん良かった5件・直近5件・パラメータの範囲」だけ。
 #   確認用 (eval) の情報は引数にすら受け取らない。
 # ==============================================================================
 def validate_and_round_knob_dict(cand, active_knobs):
-    """範囲外の提案は厳格に弾く（クランプでごまかさず (None, 理由) を返す）。"""
-    if not isinstance(cand, dict):
-        return None, "proposal is not a JSON object"
-    cleaned = {}
-    for k in active_knobs:
-        if k not in cand:
-            return None, f"missing required knob '{k}'"
-        try:
-            v = float(cand[k])
-        except (TypeError, ValueError):
-            return None, f"non-numeric value for '{k}': {cand[k]!r}"
-        if not math.isfinite(v):
-            return None, f"non-finite value for '{k}'"
-        lo, hi, ndig, _ = PARAM_BOUNDS[k]
-        if v < lo or v > hi:
-            return None, f"knob '{k}'={v} out of allowed range [{lo}, {hi}]"
-        cleaned[k] = int(round(v)) if ndig == 0 else round(v, ndig)
-    return cleaned, None
+    """範囲外の値は許容範囲の端に丸め、桁も揃える。欠ける・非数値は (None, 理由)。"""
+    return asrlib.clamp_and_round_knob_dict(cand, active_knobs, PARAM_BOUNDS)
 
 
 def extract_json_object(raw_text):
-    # Qwen3 の <think>...</think> 思考ブロックを除去してから JSON オブジェクトを抽出
-    s = re.sub(r"<think>[\s\S]*?</think>", "", raw_text or "").strip()
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s, flags=re.I).strip()
-    m = re.search(r"\{[\s\S]*\}", s)
-    if not m:
-        raise ValueError(f"No JSON object found in LLM response: {s[:160]!r}")
-    return json.loads(m.group(0))
-
-
-def detect_llm_model(llm_base_url):
-    try:
-        req = urllib.request.Request(f"{llm_base_url.rstrip('/')}/models", method="GET")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        items = data.get("data") or []
-        if items and items[0].get("id"):
-            return items[0]["id"]
-    except Exception:
-        pass
-    return "qwen3-14b"
+    return asrlib.extract_json_object(raw_text)
 
 
 def build_prompt_history_views(tune_only_history):
@@ -520,8 +432,20 @@ def build_prompt_history_views(tune_only_history):
     return best_5, recent_5
 
 
-def propose_from_qwen(llm_base_url, llm_model, active_knobs, tune_only_history, seen_keys):
-    """最良5件・直近5件・パラメータ範囲だけを見せて次の組を1つ提案させる。範囲外・重複は弾いて再要求。"""
+def propose_from_qwen(
+    llm_base_url,
+    llm_model,
+    active_knobs,
+    tune_only_history,
+    seen_keys,
+    timeout=asrlib.DEFAULT_HTTP_TIMEOUT_SEC,
+    retry_budget=asrlib.DEFAULT_RETRY_BUDGET_SEC,
+):
+    """最良5件・直近5件・パラメータ範囲だけを見せて次の組を1つ提案させる。
+
+    範囲外の値は端に丸める。JSON が読めなければ同じ内容でもう1回だけ取り直す。
+    接続拒否・切断は 1,2,4,8... 秒で、合計約 retry_budget 秒までやり直す。
+    """
     valid_entries = [h for h in tune_only_history if h.get("tune_cer") is not None and not h.get("disqualified")]
     anchor = min(valid_entries, key=lambda h: h["tune_cer"]) if valid_entries else tune_only_history[0]
 
@@ -552,7 +476,7 @@ def propose_from_qwen(llm_base_url, llm_model, active_knobs, tune_only_history, 
         "あなたは音声合成器 hitofude の音響パラメータ調整係です。/no_think\n"
         "目的は、日本語ASRの文字誤り率 tune_cer（0.0〜1.0、低いほど良い）を最小化することです。\n"
         "disqualified になった組の周辺は避け、指定された [min, max] 範囲内で未試行の組み合わせを JSON オブジェクト1個だけで出力してください。\n"
-        "説明文は不要です。出力形式例: "
+        "範囲を外れた値はこちらで端に丸めます。説明文は不要です。出力形式例: "
         + json.dumps({k: anchor["knobs"][k] for k in active_knobs})
     )
 
@@ -568,26 +492,36 @@ def propose_from_qwen(llm_base_url, llm_model, active_knobs, tune_only_history, 
             user_prompt += f"\n前回の出力は以下の理由で却下されました。必ず修正してください: {feedback_msg}\n"
         user_prompt += "\n次に試すパラメータの JSON オブジェクトのみを出力してください:"
 
-        payload = {
-            "model": llm_model,
-            "messages": [
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.35 + 0.15 * attempt,
-            "max_tokens": 512,
-        }
-        req = urllib.request.Request(
-            f"{llm_base_url.rstrip('/')}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        parse_retry_hint = {"on": False}
+
+        def _fetch_content(user_prompt=user_prompt, parse_retry_hint=parse_retry_hint, attempt=attempt):
+            up = user_prompt
+            if parse_retry_hint["on"]:
+                up += "\n前回の出力はJSONとして読めませんでした。JSONオブジェクト1個だけを出力してください。\n"
+            parse_retry_hint["on"] = True
+            payload = {
+                "model": llm_model,
+                "messages": [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": up},
+                ],
+                "temperature": 0.35 + 0.15 * attempt,
+                "max_tokens": 512,
+            }
+            req = urllib.request.Request(
+                f"{llm_base_url.rstrip('/')}/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            raw, _code = asrlib.request_with_retry(req, timeout=timeout, retry_budget=retry_budget)
+            body = json.loads(raw.decode("utf-8"))
+            return body["choices"][0]["message"]["content"]
+
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            raw_content = body["choices"][0]["message"]["content"]
-            parsed = extract_json_object(raw_content)
+            parsed, n_fetch = asrlib.load_json_from_llm_response(_fetch_content)
+            if n_fetch > 1:
+                rejections.append("retried once after unparseable JSON")
             cleaned, err = validate_and_round_knob_dict(parsed, active_knobs)
             if err:
                 rejections.append(err)
@@ -600,12 +534,17 @@ def propose_from_qwen(llm_base_url, llm_model, active_knobs, tune_only_history, 
                 feedback_msg = msg
                 continue
             return cleaned, rejections
+        except (ValueError, json.JSONDecodeError) as e:
+            rejections.append(f"unparseable JSON after 1 retry: {e}")
+            break
         except Exception as e:
             err_s = f"parse/API error: {e}"
             rejections.append(err_s)
+            if asrlib.is_connection_error(e):
+                break
             feedback_msg = err_s
 
-    # 4回連続で範囲外・重複だった場合のみ、最良点近傍の決定論的微小摂動（範囲内保証）にフォールバック
+    # 欠損・重複が続いた、または JSON が2回読めなかった場合: 最良点近傍の決定論的微小摂動
     fallback = {}
     n_hist = len(tune_only_history)
     for ki, k in enumerate(active_knobs):
@@ -613,7 +552,7 @@ def propose_from_qwen(llm_base_url, llm_model, active_knobs, tune_only_history, 
         span = (hi - lo) * 0.06 * ((-1) ** (n_hist + ki))
         nv = min(hi, max(lo, anchor["knobs"][k] + span))
         fallback[k] = int(round(nv)) if ndig == 0 else round(nv, ndig)
-    rejections.append("used bounded perturbation fallback after 4 invalid proposals")
+    rejections.append("used bounded perturbation fallback after invalid proposals")
     return fallback, rejections
 
 
@@ -640,17 +579,45 @@ def main():
         "--asr",
         action="append",
         default=[],
-        help="ASR endpoint/spec (repeatable for 2+ ASRs: e.g. http://127.0.0.1:8091/transcribe, mlx:..., mock)",
+        help="ASR endpoint (repeatable). Default: 127.0.0.1:8091 and :8092 /v1/audio/transcriptions. "
+             "Do not start tools/itako_asr_server.py on 8091 on 関亡婆.",
     )
-    ap.add_argument("--llm-url", default="http://127.0.0.1:8090/v1", help="Qwen3-14B OpenAI-compatible base URL (or 'mock')")
-    ap.add_argument("--llm-model", default="auto", help="Model name for /v1/chat/completions (default: auto-detect)")
+    ap.add_argument("--llm-url", default=asrlib.DEFAULT_LLM_URL, help="OpenAI-compatible base URL (or 'mock')")
+    ap.add_argument(
+        "--llm-model",
+        default=asrlib.DEFAULT_LLM_MODEL,
+        help="Must be 'default_model' on 関亡婆 (any other name can unload the 30B)",
+    )
     ap.add_argument("--preset", choices=tuple(Y.PRESETS.keys()), default="hitofude", help="Starting preset baseline")
     ap.add_argument("--knobs", default="hz,fscale,rate", help="Comma-separated tunable knob names (default: hz,fscale,rate)")
     ap.add_argument("--max-iters", type=int, default=10, help="Total iterations including iter 0 baseline (default: 10)")
     ap.add_argument("--synth", choices=("python", "node"), default="python", help="Synthesis engine (default: canonical python)")
     ap.add_argument("--skip-parity-check", action="store_true", help="Skip check_js_parity.py when --synth node is used")
     ap.add_argument("--remeasure-hakaru-gate", action="store_true", help="Recompute hakaru gate from current Y.PRESETS at startup")
-    ap.add_argument("--allow-no-kakasi", action="store_true", help="Allow fallback lexicon when pykakasi is not installed")
+    ap.add_argument(
+        "--kana-backend",
+        choices=("openjtalk", "pykakasi", "fallback"),
+        default="openjtalk",
+        help="Symmetric kana converter for ref and hyp (default: pyopenjtalk via ~/kana/bin/python)",
+    )
+    ap.add_argument(
+        "--openjtalk-python",
+        default=asrlib.DEFAULT_OPENJTALK_PYTHON,
+        help="Python binary that has pyopenjtalk (default: ~/kana/bin/python)",
+    )
+    ap.add_argument(
+        "--http-timeout",
+        type=int,
+        default=asrlib.DEFAULT_HTTP_TIMEOUT_SEC,
+        help="Per-request HTTP timeout in seconds (default 120; do not go below 120 on 関亡婆)",
+    )
+    ap.add_argument(
+        "--retry-budget",
+        type=int,
+        default=asrlib.DEFAULT_RETRY_BUDGET_SEC,
+        help="Max total sleep seconds for connection retries (1,2,4,8... up to this budget, default 90)",
+    )
+    ap.add_argument("--allow-no-kakasi", action="store_true", help="Allow fallback lexicon when the kana backend is unavailable (tests)")
     ap.add_argument("--log", default=os.path.join(REPO_ROOT, "out", "itako_asr_log.jsonl"), help="Output JSONL path")
     ap.add_argument("--wav-archive", default=os.path.join(REPO_ROOT, "out", "itako_wavs"), help="Directory to keep baseline & best WAVs for P's ear")
     ap.add_argument("--overfit-patience", type=int, default=3, help="Stop if tune improves over baseline while eval worsens N times")
@@ -671,12 +638,17 @@ def main():
         if k not in PARAM_BOUNDS:
             raise SystemExit(f"Unknown knob '{k}'. Allowed: {', '.join(PARAM_BOUNDS.keys())}")
 
-    asr_specs = args.asr or ["http://127.0.0.1:8091/transcribe"]
-    if _get_kakasi() is None and asr_specs != ["mock"] and not args.allow_no_kakasi:
-        raise SystemExit(
-            "ERROR: 'pykakasi' is required so ASR output and Kanji-kana reference sentences share the exact same "
-            "Kanji->Kana converter.\nInstall on Itako with: pip install pykakasi  (or pass --allow-no-kakasi for offline tests)"
-        )
+    asr_specs = args.asr or list(asrlib.DEFAULT_ASR_URLS)
+    allow_fallback = bool(args.allow_no_kakasi or asr_specs == ["mock"])
+    if args.llm_url != "mock" and args.http_timeout < 120:
+        print(f"[warn] --http-timeout {args.http_timeout} < 120; raising to 120 so a cold model load can finish.", flush=True)
+        args.http_timeout = 120
+
+    kana_norm = make_kana_normalizer(
+        args.kana_backend,
+        openjtalk_python=args.openjtalk_python,
+        allow_fallback=allow_fallback,
+    )
 
     if args.synth == "node" and not args.skip_parity_check:
         engine_mjs = os.path.join(HERE, "hitofude_engine.mjs")
@@ -688,10 +660,18 @@ def main():
     else:
         hakaru_gate = dict(DEFAULT_HAKARU_GATE_UTT0)
 
-    asr_runners = [build_asr_runner(sp) for sp in asr_specs]
-    llm_model = args.llm_model
-    if args.llm_url != "mock" and llm_model == "auto":
-        llm_model = detect_llm_model(args.llm_url)
+    asr_runners = [
+        build_asr_runner(sp, timeout=args.http_timeout, retry_budget=args.retry_budget) for sp in asr_specs
+    ]
+    llm_model = args.llm_model or asrlib.DEFAULT_LLM_MODEL
+    if llm_model == "auto":
+        llm_model = asrlib.DEFAULT_LLM_MODEL
+    if args.llm_url != "mock" and llm_model != asrlib.DEFAULT_LLM_MODEL:
+        print(
+            f"[warn] --llm-model={llm_model!r} is not 'default_model'. "
+            "On 関亡婆 this can unload the 30B on port 8090.",
+            flush=True,
+        )
 
     os.makedirs(os.path.dirname(os.path.abspath(args.log)), exist_ok=True)
     os.makedirs(args.wav_archive, exist_ok=True)
@@ -715,7 +695,8 @@ def main():
 
     print(
         f"=== Itako ASR Loop | git={git_commit} | synth={args.synth} | "
-        f"knobs={active_knobs} | iters={args.max_iters} | asrs={len(asr_runners)} ===",
+        f"knobs={active_knobs} | iters={args.max_iters} | asrs={asr_specs} | "
+        f"llm_model={llm_model} | kana={kana_norm.backend} | score=worst_of_two_asrs_per_item ===",
         flush=True,
     )
 
@@ -725,7 +706,13 @@ def main():
     for it in range(args.max_iters):
         if it > 0:
             cur_knobs, rejections = propose_from_qwen(
-                args.llm_url, llm_model, active_knobs, tune_only_history, seen_keys
+                args.llm_url,
+                llm_model,
+                active_knobs,
+                tune_only_history,
+                seen_keys,
+                timeout=args.http_timeout,
+                retry_budget=args.retry_budget,
             )
 
         seen_keys.add(json.dumps(cur_knobs, sort_keys=True))
@@ -757,6 +744,7 @@ def main():
                     "p_eval": None,
                     "stop_reason": stop_reason,
                     "transcriptions": None,
+                    "score_rule": "worst_of_two_asrs_per_item",
                 }
                 with open(args.log, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -775,17 +763,21 @@ def main():
 
             tune_cer_by_asr = {}
             eval_cer_by_asr = {}
+            tune_items_by_asr = {}
+            eval_items_by_asr = {}
             transcriptions = {"tune": {}, "eval": {}}
 
             for runner in asr_runners:
                 asr_name, tune_hyps = runner(tune_wavs, full_prm, tune_refs)
                 _, eval_hyps = runner(eval_wavs, full_prm, eval_refs)
 
-                t_cer, t_items = compute_cer(tune_refs, tune_hyps)
-                e_cer, e_items = compute_cer(eval_refs, eval_hyps)
+                t_cer, t_items = compute_cer(tune_refs, tune_hyps, kana_norm)
+                e_cer, e_items = compute_cer(eval_refs, eval_hyps, kana_norm)
 
                 tune_cer_by_asr[asr_name] = t_cer
                 eval_cer_by_asr[asr_name] = e_cer
+                tune_items_by_asr[asr_name] = t_items
+                eval_items_by_asr[asr_name] = e_items
                 transcriptions["tune"][asr_name] = [
                     {"ref": it_d["ref_raw"], "ref_kana": it_d["ref_kana"], "hyp": it_d["hyp_raw"], "hyp_kana": it_d["hyp_kana"], "cer": it_d["cer"]}
                     for it_d in t_items
@@ -795,8 +787,9 @@ def main():
                     for it_d in e_items
                 ]
 
-            mean_tune_cer = round(sum(tune_cer_by_asr.values()) / len(tune_cer_by_asr), 4)
-            mean_eval_cer = round(sum(eval_cer_by_asr.values()) / len(eval_cer_by_asr), 4)
+            # Official score: worse (higher) CER of the two ASRs, decided per item
+            mean_tune_cer, _ = asrlib.worse_cer_per_item(tune_items_by_asr)
+            mean_eval_cer, _ = asrlib.worse_cer_per_item(eval_items_by_asr)
 
             if it == 0:
                 baseline_tune_cer = mean_tune_cer
@@ -849,6 +842,7 @@ def main():
             "p_eval": None,
             "stop_reason": stop_reason,
             "transcriptions": transcriptions,
+            "score_rule": "worst_of_two_asrs_per_item",
         }
         with open(args.log, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
