@@ -13,7 +13,7 @@ const hashish = (a) => {
   return h >>> 0;
 };
 test("hibiki variations render finite non-silent deterministic audio", () => {
-  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari"]) {
+  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari", "hibiki_yorisoi"]) {
     const a = render(PRESETS[key]), b = render(PRESETS[key]);
     assert.equal(a.length, b.length);
     assert.ok(a.length > 44100);
@@ -49,4 +49,11 @@ test("cadence responds to phonetic context, stays deterministic and is disabled 
 test("cadence zero is fully backward-compatible", () => {
   const p = PRESETS.hibiki;
   assert.equal(hashish(render(p)), hashish(render({ ...p, cadence: 0 })));
+});
+
+test("closeness changes voice but zero retains bit-identical audio", () => {
+  const p = PRESETS.hibiki_yorisoi;
+  assert.notEqual(hashish(render(p)), hashish(render({ ...p, closeness: 0 })));
+  const base = PRESETS.hibiki_katari;
+  assert.equal(hashish(render(base)), hashish(render({ ...base, closeness: 0 })));
 });
