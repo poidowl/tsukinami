@@ -3,6 +3,8 @@
 > **約77KBのピュアJavaScript（`.py` ゼロ）で、たった1本のホワイトノイズから日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
 > 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,867行（78.0 KB）。
 
+**[ブラウザで声を聴く](https://poidowl.github.io/tsukinami/kusanagi.html)** — 「▶ 彫って鳴らす」を押すと、吐息の声で「わたし、にほんご、ちょっとしゃべれます」と読み上げます。
+
 `hitofude`（一筆彫り）から Python 依存と互換用の乱数・丸めギプスをすべて外し、純粋な ES Module 2本（エンジン [`hitofude.mjs`](hitofude.mjs) ＋ CLI [`yomu.mjs`](yomu.mjs)）にまとめた「草薙（kusanagi）」ブランチです。
 
 ## 1. コンテキスト投入コマンド ＆ Raw URL（全コード一括）
