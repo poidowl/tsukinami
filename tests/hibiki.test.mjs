@@ -267,3 +267,25 @@ test("jitter sweep spans 0.018–0.05 without changing baseline",async()=>{
  assert.ok(new Set(c.map(x=>x.hz)).size>=2);
  assert.throws(()=>chooseCandidates(54,350,"invalid"),RangeError);
 });
+
+test("lab sweep removes duplicate waveforms and exposes correlated period timing",async()=>{
+ const {chooseCandidates,renderLabCandidate}=await import("../tools/infant_lab.mjs");
+ const makeKey=x=>JSON.stringify([x.hz,x.combG,x.rawAirMul,x.clean,x.jitter,
+   x.jitterCorr??null,x.cutoffHz,x.tiltMix,x.airLevel]);
+ for(const sweep of ["grid","jitter","correlated"]){
+   const bank=chooseCandidates(54,368.9,sweep);
+   assert.equal(new Set(bank.map(makeKey)).size,bank.length,
+     "duplicate candidate in "+sweep);
+   assert.equal(bank.length,54);
+ }
+ const c=chooseCandidates(54,368.9,"correlated");
+ for(const rho of [0,.5,.85,.95])
+   assert.ok(c.some(x=>x.jitterCorr===rho),"missing corr "+rho);
+ for(const amp of [.018,.03,.05,.08,.12])
+   assert.ok(c.some(x=>x.jitter===amp),"missing amplitude "+amp);
+ assert.equal(c[0].jitterCorr,undefined);
+ const x=renderLabCandidate("アー、ウー、ウアー",42,c.find(x=>x.jitterCorr===.95));
+ const b=renderLabCandidate("アー、ウー、ウアー",42,c[0]);
+ assert.ok(x.every(Number.isFinite));
+ assert.notEqual(hashish(x),hashish(b));
+});
