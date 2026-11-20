@@ -10,15 +10,16 @@ export const B3_BASE = Object.freeze({
   b3_combG: 0.99, b3_rawAirMul: 1,
 });
 // The extra jitter is an experimental hypothesis; exact impact must be measured.
-export const B3_PRESET = Object.freeze({ ...B3_BASE, jitter: 0.027 });
+export const B3_PRESET = Object.freeze({ ...B3_BASE });
+export const B3_JITTER_EXPERIMENT = Object.freeze({ ...B3_BASE, jitter: 0.027 });
 export const B3_SOROE2 = Object.freeze({ ...B3_BASE, b3_combG: 0.985, b3_rawAirMul: 0.6 });
 
 export function renderB3({ seed = B3_PRESET.seed, phrases = 4, text = null,
-  mode = "coo", profile = "candidate", jitter = undefined,
+  mode = "coo", profile = "soroe1", jitter = undefined,
   combG = undefined, rawAirMul = undefined, bend = undefined } = {}) {
   if (!["candidate", "soroe1", "soroe2"].includes(profile)) throw new RangeError("invalid B3 profile");
   if (!["coo", "babble"].includes(mode)) throw new RangeError("invalid B3 mode");
-  const preset = profile === "soroe1" ? B3_BASE : profile === "soroe2" ? B3_SOROE2 : B3_PRESET;
+  const preset = profile === "soroe1" ? B3_PRESET : profile === "soroe2" ? B3_SOROE2 : B3_JITTER_EXPERIMENT;
   const j = jitter ?? preset.jitter;
   const comb = combG ?? preset.b3_combG, air = rawAirMul ?? preset.b3_rawAirMul;
   const bendAmount = bend ?? preset.baby;
