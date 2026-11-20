@@ -207,3 +207,23 @@ node --test tests/hibiki.test.mjs
 ```
 
 匿名パック：7声 × 3文 = 21 WAV。発話可読性を維持する設計だが、魅力の向上は未実証。
+
+## Bシリーズ — B1「アカンボシミュレータ」
+
+**Vシリーズとは別の試み**。成人TTSの聞き取りやすさを競わず、乳児の喃語（アー、ウー、ママ、ババなど）を
+「調音の曖昧さ」「不安定なピッチ探索」「短い音節の反復」で模した実験用合成器。
+生理学的に正確な乳児の音声モデルを主張するものではなく、第一段階は**喃語のみ**（泣き声は未実装）。
+
+- `b1_akambo.mjs`：喃語の決定論的生成器、B1プリセット、合成API（純JS）。
+- `b1_yomu.mjs`：B1専用CLI（Node標準ライブラリのみ）。
+- `makeHitofude` の `baby` ノブは既定0。Vシリーズ・草薙音源の出力は不変。
+- 元の1本のホワイトノイズ信号源、5極声道、ベルヌーイ扉をそのまま活用。
+
+```bash
+node b1_yomu.mjs --out b1_akambo.wav
+node b1_yomu.mjs --seed 42 --phrases 5 --out b1_second.wav
+node b1_yomu.mjs --text "あー、うー、まま、ばぶ" --out b1_manual.wav
+node --test tests/hibiki.test.mjs
+```
+
+実際に聴いて、**赤ちゃんらしさ・かわいさ・聞き続けたさ**を別々に評価。
