@@ -58,6 +58,13 @@ export const PRESETS = {
     g_vo: 0.86, damp: 0.11, shin: 1.0, tilt_w: 4, sigh: 0.34,
     jitter: 0.0028, wander_st: 0.13, character: 0.78,
   },
+  hibiki_katari: {
+    label: "語",
+    description: "語（母音のつながり・句の終わりに反応して話し方が変わる電子声）",
+    seed: 2024, hz: 288.0, fscale: 1.13, rate: 1.26,
+    g_vo: 0.86, damp: 0.12, shin: 1.0, tilt_w: 5, sigh: 0.43,
+    jitter: 0.0028, wander_st: 0.13, character: 0.38, edge: 0.22, cadence: 0.88,
+  },
   hibiki_awa: {
     label: "泡",
     description: "泡（浮遊するささやきに、小さな歌心が混じる電子声）",
@@ -1116,6 +1123,7 @@ export function makeHitofude(text, opts = {}) {
     shin = 1.0,       // 声門2唇粘膜扉×5極声道の再帰結合度 (1.0=既定、0.0=冷凍ロボ用の片道コム)
     character = 0.0,  // 響の固有声色・拍の訛り (0=草薙と同一、0..1=個性を増す)
     edge = 0.0,       // 響の拍頭アタック／粘膜扉の鋭さ (0=草薙と同一、0..1=鋭い声)
+    cadence = 0.0,    // 響の文脈依存の節回し (0=無変更、0..1=母音・句末へ応答)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1205,6 +1213,39 @@ export function makeHitofude(text, opts = {}) {
         const u = (t - ib) / Math.max(1, ie - ib);
         const bump = 4.0 * u * (1.0 - u); // 母音境界で0、中央で1
         f0_fr[t] *= Math.pow(2.0, (charm * step * bump) / 12.0);
+      }
+    }
+  }
+
+  // 響「語」: 5拍周期ではなく、母音列・子音・句の終端に応じて同じ声の話し癖が出る。
+  // 音素と句読点だけを入力に使うため、テキストに反応するが乱数は増えない。
+  // かなに意味・感情を読み込んでいるわけではない（韻律上の文脈のみ）。
+  const cadenceAmt = Math.max(0.0, Math.min(1.0, Number.isFinite(cadence) ? cadence : 0.0));
+  if (cadenceAmt > 0.0 && !uta_hz) {
+    const moras = r.moras;
+    const vowelBias = { a: 0.38, i: 0.15, u: -0.28, e: 0.48, o: -0.34 };
+    let phraseIndex = 0;
+    for (let j = 0; j < moras.length; j++) {
+      const m = moras[j];
+      if (m.kind === "pau") { phraseIndex = 0; continue; }
+      if (m.kind !== "CV") continue;
+      const prev = j > 0 && moras[j - 1].kind === "CV" ? moras[j - 1] : null;
+      const next = j + 1 < moras.length && moras[j + 1].kind === "CV" ? moras[j + 1] : null;
+      const final = next === null;
+      const contrast = prev && prev.v !== m.v ? 0.26 : -0.08;
+      const onset = ["s", "sh", "z", "j", "ch", "ts"].includes(m.c) ? 0.21
+        : ["m", "n", "r", "y", "w"].includes(m.c) ? -0.15 : 0.0;
+      // 語頭は少し慎重、中盤で弾み、句末は落ち着く。5拍ループを排除する。
+      const placement = phraseIndex === 0 ? -0.25 : Math.min(0.17, 0.04 * phraseIndex);
+      const step = Math.max(-1.1, Math.min(1.1, (vowelBias[m.v] || 0) + contrast + onset + placement - (final ? 0.42 : 0)));
+      phraseIndex++;
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      for (let q = ib; q < ie; q++) {
+        if (!r.voiced[q]) continue;
+        const u = (q - ib) / Math.max(1, ie - ib);
+        const rise = 4.0 * u * (1.0 - u); // 境界ではゼロ: 子音の可読性と既存アクセントを保つ
+        f0_fr[q] *= Math.pow(2.0, (cadenceAmt * step * rise) / 12.0);
       }
     }
   }
