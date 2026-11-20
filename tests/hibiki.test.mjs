@@ -117,3 +117,22 @@ test("B2 couples breath and vocal fold; legacy audio stays bit-identical", async
   const v = PRESETS.hibiki_ibuki;
   assert.equal(hashish(render(v)), hashish(render({ ...v, b2_body: 0 })));
 });
+
+test("B2 cooing differs from canonical babbling, stable and bounded", async () => {
+  const { b2Coo, renderB2 } = await import("../b2_akambo.mjs");
+  assert.equal(b2Coo(47, 5), b2Coo(47, 5));
+  assert.notEqual(b2Coo(47, 5), b2Coo(48, 5));
+  assert.ok(!/[バマパ]/.test(b2Coo(47, 8)));
+  const coo = renderB2({ seed: 47, phrases: 3 });
+  const babble = renderB2({ seed: 47, phrases: 3, mode: "babble" });
+  assert.notEqual(coo.text, babble.text);
+  assert.ok(coo.samples.every(Number.isFinite));
+  const withBreaks = renderB2({ seed: 47, text: "アー、ウー、アウー" });
+  const noBreaks = renderB2({ seed: 47, text: "アー、ウー、アウー", breaks: 0 });
+  assert.notEqual(hashish(withBreaks.samples), hashish(noBreaks.samples));
+  assert.equal(hashish(withBreaks.samples), hashish(renderB2({ seed: 47, text: "アー、ウー、アウー" }).samples));
+  assert.throws(() => renderB2({ mode: "bad" }), RangeError);
+  assert.throws(() => renderB2({ breaks: 1.1 }), RangeError);
+  const v = PRESETS.hibiki_ibuki;
+  assert.equal(hashish(render(v)), hashish(render({ ...v, b2_body: 0, b2_breaks: 0 })));
+});
