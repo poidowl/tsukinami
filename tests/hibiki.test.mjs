@@ -13,7 +13,7 @@ const hashish = (a) => {
   return h >>> 0;
 };
 test("hibiki variations render finite non-silent deterministic audio", () => {
-  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari", "hibiki_yorisoi", "hibiki_natsuku"]) {
+  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari", "hibiki_yorisoi", "hibiki_natsuku", "hibiki_ibuki"]) {
     const a = render(PRESETS[key]), b = render(PRESETS[key]);
     assert.equal(a.length, b.length);
     assert.ok(a.length > 44100);
@@ -70,4 +70,17 @@ test("single vowel and repeated-vowel utterances remain finite", () => {
     assert.ok(samples.length > 0);
     assert.ok(samples.every(Number.isFinite), txt);
   }
+});
+
+test("gesture changes non-singing sound but never overrides sung notes", () => {
+  const p = PRESETS.hibiki_ibuki;
+  assert.notEqual(hashish(render(p)), hashish(render({ ...p, gesture: 0 })));
+  const sung = { ...p, uta_hz: [290, 300, 310, 320, 330] };
+  const a = makeHitofude("あいうえお", sung).samples;
+  const b = makeHitofude("あいうえお", { ...sung, gesture: 0 }).samples;
+  assert.equal(hashish(a), hashish(b));
+});
+test("old voice with gesture 0 is unchanged", () => {
+  const p = PRESETS.hibiki_natsuku;
+  assert.equal(hashish(render(p)), hashish(render({ ...p, gesture: 0 })));
 });
