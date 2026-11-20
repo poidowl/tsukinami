@@ -449,3 +449,21 @@ node tools/infant_lab.mjs --reference stephan_2m --sweep jitter --budget 54 --ou
 
 生後5か月の仮区間（10–14.36秒）は声・笑い・息を分けた区間検証前なので、
 そのスコアの絶対値から月齢固有の声門特性を断定しない。
+
+### B3 周期連続性の実験（`--sweep correlated`）
+
+高い独立ジッターを足すほど波の揃いが崩れるという観察を受け、
+`hitofude.mjs` の周期生成に opt-in `b3_jitter_corr` を追加。
+周期ごとの乱数を AR(1) 型で関連づけ、次周期へ滑らかに補間する。
+`null` では旧音声とビット単位で一致する。**これは実験仮説であり、実録に近づく保証はない。**
+Hodokiの局所ジッターは隣接周期の差を測るため、滑らかにするほど逆に減る可能性もある。
+既定のjitter 0.018を基準として 0.030 / 0.050 / 0.080 / 0.120 と
+相関 0 / 0.50 / 0.85 / 0.95 を比較する。
+`--sweep jitter` の既存探索は継続可能だが、重複候補は全探索モードで除外する。
+
+```bash
+node tools/infant_lab.mjs --reference stephan_2m --sweep correlated --budget 54 --out out/baby2_corr
+```
+
+独立ジッターと連続ジッターの比較では、F0・jitterだけでなく
+**HNR、周期相関、shimmerを同時に**確認する。草薙の既定設定は変えていない。
