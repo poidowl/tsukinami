@@ -390,3 +390,28 @@ node b3_yomu.mjs --seed 42 --profile kai --attackMs 70 --releaseMs 130 --cutoffH
 テストでは`b3KaiProcess(soroe1.samples)`との**全サンプル一致**を確認する。
 旧B3改の測定表にある「kai」の数値は**誤った入力に対する結果**であり、
 後処理の評価としては無効。訂正後のHodoki再測定結果で評価を更新する。
+
+## B-series 実録フィードバック工房（実験のみ、草薙は不変）
+
+`tools/infant_lab.mjs` は**参照の観察→B3合成→Hodoki soroi採点→WAVパック→移植候補レポート**を同じ条件で自動実行する。
+`samples/reference/manifest.json` で参照WAV/OGGを複数管理できる。
+現時点でリポジトリに入っている実録は生後2か月の `stephan_2m` の**1件のみ**。
+その声の多い 6.30–10.66秒（4.36秒）を初期評価窓とする。
+新しい録音はライセンスを確認してから `references` に追加する。
+
+```bash
+# ffmpeg がインストール済みであること（OGGのモノラル化に使用）
+node tools/infant_lab.mjs --reference stephan_2m --budget 24 --out out/infant_lab
+# 声を合わせるための同一文章・同一seedを指定
+node tools/infant_lab.mjs --reference stephan_2m --budget 54 --seed 42 --text "アー、ウー、ウアー" --out out/infant_lab_42
+```
+
+`results.json`：実測5指標と目的関数・WAVパス・乱数seed・参照のSHA256を保存。
+`PROMOTION.md`：上位候補のノブと `kusanagi` への**提案**のみを書き出す。変更コミットはしない。
+`v000.wav` など：全候補の耳比較用音源。
+測定はあくまで数値の近さであり、聴感の魅力・可読性・乳児らしさの証明ではない。
+発声内容や録音条件が異なれば比較が歪むので、候補採用前に複数の発話・seedで再測定し、
+録音特有の部屋音のコピーを目的にしないこと。
+
+草薙へ持ち帰る優先候補は `combG` と `rawAirMul` の**明示的オプトイン化**。
+B3の `baby bend`、ambient noise、時間包絡等を既定動作へ混入させない。
