@@ -1100,8 +1100,8 @@ export function makeHitofude(text, opts = {}) {
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
-    combG = null,     // サラサラ化 (opt-in): 有声のあいだ粘膜コム帰還を combG×有声度 に固定 (null=既定のまま。目安 0.985〜0.99、上限 0.9995)
-    rawAirMul = 1.0,  // サラサラ化 (opt-in): 扉を通る生ノイズ rawAir の倍率 (1.0=既定。目安 0.6)
+    combG = 0.985,    // サラサラ化 (11-20 既定 soroe2): 有声のあいだ粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 7f09d18 までの旧い音
+    rawAirMul = 0.6,  // サラサラ化 (11-20 既定 soroe2): 扉を通る生ノイズ rawAir の倍率。1.0 で旧い音（旧い音 = {combG: null, rawAirMul: 1.0}）
   } = opts;
 
   let accentKw = null, targetText = text, phraseCuts = null;

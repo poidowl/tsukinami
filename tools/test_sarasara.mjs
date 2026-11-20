@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * tools/test_sarasara.mjs — サラサラ化 (combG / rawAirMul, opt-in) の回帰テスト
+ * tools/test_sarasara.mjs — サラサラ化（11-20 から既定 soroe2 = {combG: 0.985, rawAirMul: 0.6}）の回帰テスト
  *
  *   node tools/test_sarasara.mjs
  *
- * 1. 既定（オプションなし）と、明示の既定値 {combG: null, rawAirMul: 1.0} の出力 WAV が
- *    草薙 7f09d18（この変更の前）とバイト一致すること。全プリセット × 2文 × seed 2 つ ＋ 歌モード持続母音。
- *    GOLDEN は 7f09d18 の hitofude.mjs で encodeWav した sha256 の先頭 24 桁。
- * 2. soroe1 = {combG: 0.99}、soroe2 = {combG: 0.985, rawAirMul: 0.6} を渡すと波形が変わり、
- *    有限で、長さは同じ、ピークは 1 を超えないこと。
+ * (a) 旧い既定 {combG: null, rawAirMul: 1.0} を明示すると、出力 WAV が草薙 7f09d18（この変更の前）とバイト一致すること。
+ *     全プリセット × 2文 × seed 2 つ ＋ 歌モード持続母音。GOLDEN は 7f09d18 の hitofude.mjs で encodeWav した sha256 の先頭 24 桁。
+ * (b) 新しい既定（オプションなし）が、soroe2 を明示した音とバイト一致すること（同じ範囲）。
+ * (c) 新しい既定は旧い音から変わっとる（robot は shin=0 でコムを使わんので変わらんのが正しい）。有限・長さ同じ・ピーク 1 以下。
  * 外部ライブラリなし（node:crypto のみ）。
  */
 import crypto from "node:crypto";
@@ -51,35 +50,29 @@ const GOLDEN_7f09d18 = {
   "robot|t1|7": "9e6b9158ec48b48927f7e426",
   "robot|uta": "d37e9f58af7bcf4483551aae"
 };
+const OLD = { combG: null, rawAirMul: 1.0 }, SOROE2 = { combG: 0.985, rawAirMul: 0.6 };
 const TEXTS = ["わたし、にほんご、ちょっとしゃべれます", "ヤマノウエニ、アオイソラガミエル?"];
 const h = (s) => crypto.createHash("sha256").update(encodeWav(s)).digest("hex").slice(0, 24);
-let ok = 0, ng = 0;
-const check = (c, m) => { if (c) ok++; else { ng++; console.log("NG  " + m); } };
+const n = { a: [0, 0], b: [0, 0], c: [0, 0] };
+const check = (k, c, m) => { n[k][1]++; if (c) n[k][0]++; else console.log("NG  " + m); };
 
 for (const [pn, p] of Object.entries(PRESETS)) {
-  for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7]) {
-    const key = `${pn}|t${k}|${seed}`;
-    check(h(makeHitofude(t, { ...p, seed }).samples) === GOLDEN_7f09d18[key], `${key}: 既定がバイト一致せん`);
-    check(h(makeHitofude(t, { ...p, seed, combG: null, rawAirMul: 1.0 }).samples) === GOLDEN_7f09d18[key], `${key}: 明示の既定値がバイト一致せん`);
-  }
-  const u = { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 };
-  check(h(makeHitofude("ア", u).samples) === GOLDEN_7f09d18[`${pn}|uta`], `${pn}|uta: 既定がバイト一致せん`);
-}
-console.log(`既定のバイト一致: ${ok}/${ok + ng}`);
-
-const FIXES = { soroe1: { combG: 0.99 }, soroe2: { combG: 0.985, rawAirMul: 0.6 } };
-let ok2 = 0;
-for (const pn of ["hitofude", "toiki", "alto", "sasayaki", "ossan"]) {
-  const base = makeHitofude(TEXTS[0], PRESETS[pn]).samples;
-  for (const [fn, fx] of Object.entries(FIXES)) {
-    const s = makeHitofude(TEXTS[0], { ...PRESETS[pn], ...fx }).samples;
+  const cases = [];
+  for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7]) cases.push([`${pn}|t${k}|${seed}`, t, { ...p, seed }]);
+  cases.push([`${pn}|uta`, "ア", { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 }]);
+  for (const [key, t, o] of cases) {
+    const old = makeHitofude(t, { ...o, ...OLD }).samples, def = makeHitofude(t, o).samples;
+    check("a", h(old) === GOLDEN_7f09d18[key], `${key}: 旧い既定の明示が 7f09d18 とバイト一致せん`);
+    check("b", h(def) === h(makeHitofude(t, { ...o, ...SOROE2 }).samples), `${key}: 新しい既定が soroe2 明示とバイト一致せん`);
     let fin = true, pk = 0, diff = 0;
-    for (let i = 0; i < s.length; i++) { if (!Number.isFinite(s[i])) fin = false; pk = Math.max(pk, Math.abs(s[i])); if (i < base.length) diff = Math.max(diff, Math.abs(s[i] - base[i])); }
-    const c = fin && s.length === base.length && pk <= 1.0 && diff > 1e-4;
-    check(c, `${pn}/${fn}: 有限 ${fin} 長さ ${s.length}/${base.length} ピーク ${pk.toFixed(3)} 差 ${diff.toExponential(2)}`);
-    if (c) ok2++;
+    for (let i = 0; i < def.length; i++) { if (!Number.isFinite(def[i])) fin = false; pk = Math.max(pk, Math.abs(def[i])); if (i < old.length) diff = Math.max(diff, Math.abs(def[i] - old[i])); }
+    const changed = p.shin > 0.0 ? diff > 1e-4 : diff === 0;
+    check("c", fin && def.length === old.length && pk <= 1.0 && changed, `${key}: 有限 ${fin} 長さ ${def.length}/${old.length} ピーク ${pk.toFixed(3)} 旧い音との差 ${diff.toExponential(2)}`);
   }
 }
-console.log(`opt-in が効いて壊れん: ${ok2}/10`);
+console.log(`(a) 旧い既定 {combG:null, rawAirMul:1.0} = 7f09d18 バイト一致: ${n.a[0]}/${n.a[1]}`);
+console.log(`(b) 新しい既定 = soroe2 明示 バイト一致: ${n.b[0]}/${n.b[1]}`);
+console.log(`(c) 新しい既定は旧い音から変わる（robot は不変）・壊れん: ${n.c[0]}/${n.c[1]}`);
+const ng = n.a[1] - n.a[0] + n.b[1] - n.b[0] + n.c[1] - n.c[0];
 console.log(ng ? `NG ${ng}` : "ALL OK");
 process.exit(ng ? 1 : 0);
