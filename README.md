@@ -107,3 +107,26 @@ node yomu.mjs --preset hibiki --character 1 --measure "わたしのこえは、�
 ```
 
 **評価**：盲聴で「どれが響か」「もう一度聞きたくなるか」「一語でも聞き取りを損ねたか」を記録。音響指標は音の違いの確認用で、魅力の証明にはしない。
+
+## 響 v2 — 三つの声で魅力を探す
+
+v1 のモーラ固有モチーフ＋母音 F2/F3 色彩に、**声門扉の拍頭アタック `edge`** を追加。
+同じノイズ線、同じ再帰モデルの内側で扉の閉まり方だけを微調整。別の乱数・波形・録音は足さない。
+
+| プリセット | 狙い | 個性 |
+|---|---|---|
+| `hibiki`（響） | 中域の生意気な電子声 | 色彩豊かな5拍モチーフ |
+| `hibiki_awa`（泡） | 少し浮いた柔らかい語り | 吐息が多い、明るく揺れる |
+| `hibiki_kiba`（牙） | 小気味よく歯切れのよい低めの声 | 拍頭の粘膜扉が鋭く閉まる |
+
+`--character 0 --edge 0` にすれば同一レシピの草薙式の音に戻る。既存プリセットへの変更なし。
+
+```bash
+node yomu.mjs --preset hibiki --measure "あさのひかり、ゆめのかけら"
+node yomu.mjs --preset hibiki_awa --measure "あさのひかり、ゆめのかけら"
+node yomu.mjs --preset hibiki_kiba --measure "あさのひかり、ゆめのかけら"
+node yomu.mjs --preset hibiki_kiba --edge 0 --measure "あさのひかり、ゆめのかけら"
+node --test tests/hibiki.test.mjs
+```
+
+魅力は音響指標で測れない。**聞き取りやすさ・記名性（もう一度聞いて識別できるか）・飽きなさ**を、同じ台詞のブラインド比較で評価する。
