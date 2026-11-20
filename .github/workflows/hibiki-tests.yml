@@ -25,6 +25,7 @@ jobs:
           node --check b2_yomu.mjs
           node --check b3_akambo.mjs
           node --check b3_yomu.mjs
+          node --check b3_kai.mjs
           node --check tools/b3_measure.mjs
           node --check tools/b3_sweep.mjs
       - name: Synthesis regression tests
@@ -51,12 +52,13 @@ jobs:
       - name: B3 synthesis and soroi comparison
         run: |
           node b3_yomu.mjs --seed 42 --profile soroe1 --out "$RUNNER_TEMP/b3_soroe1.wav"
+          node b3_yomu.mjs --seed 42 --profile kai --out "$RUNNER_TEMP/b3_kai.wav"
           node b3_yomu.mjs --seed 42 --profile candidate --out "$RUNNER_TEMP/b3_candidate.wav"
           node b3_yomu.mjs --seed 42 --profile soroe2 --out "$RUNNER_TEMP/b3_soroe2.wav"
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           ffmpeg -loglevel error -y -i samples/reference/infant_2months_stephan.ogg -ar 44100 -ac 1 "$RUNNER_TEMP/infant.wav"
-          node tools/b3_measure.mjs "$RUNNER_TEMP/infant.wav" "$RUNNER_TEMP/b3_soroe1.wav" "$RUNNER_TEMP/b3_candidate.wav" "$RUNNER_TEMP/b3_soroe2.wav"
+          node tools/b3_measure.mjs "$RUNNER_TEMP/infant.wav" "$RUNNER_TEMP/b3_soroe1.wav" "$RUNNER_TEMP/b3_kai.wav" "$RUNNER_TEMP/b3_candidate.wav" "$RUNNER_TEMP/b3_soroe2.wav"
           node tools/b3_sweep.mjs "$RUNNER_TEMP/infant.wav"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -64,6 +66,7 @@ jobs:
           name: b3-listening-samples
           path: |
             ${{ runner.temp }}/b3_soroe1.wav
+            ${{ runner.temp }}/b3_kai.wav
             ${{ runner.temp }}/b3_candidate.wav
             ${{ runner.temp }}/b3_soroe2.wav
           if-no-files-found: ignore
