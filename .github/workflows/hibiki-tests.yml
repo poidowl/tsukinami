@@ -67,6 +67,8 @@ jobs:
           test "$(find "$RUNNER_TEMP/infant_lab" -name '*.wav' | wc -l)" -eq 4
           test -s "$RUNNER_TEMP/infant_lab/results.json"
           test -s "$RUNNER_TEMP/infant_lab/PROMOTION.md"
+          node tools/infant_lab.mjs --reference stephan_2m --sweep correlated --budget 8 --out "$RUNNER_TEMP/infant_corr" --seed 20261120
+          test -s "$RUNNER_TEMP/infant_corr/results.json"
           node tools/infant_lab.mjs --reference stephan_5m --budget 4 --out "$RUNNER_TEMP/infant_lab_5m" --seed 20261120
           test -s "$RUNNER_TEMP/infant_lab_5m/results.json"
       - uses: actions/upload-artifact@v4
