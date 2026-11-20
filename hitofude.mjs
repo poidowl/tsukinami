@@ -73,6 +73,14 @@ export const PRESETS = {
     jitter: 0.0027, wander_st: 0.14, character: 0.22, edge: 0.06,
     cadence: 0.52, closeness: 0.82,
   },
+  hibiki_natsuku: {
+    label: "懐",
+    description: "懐（聞き慣れるほど輪郭が見える、音素の関係に応答する電子声）",
+    seed: 2024, hz: 292.0, fscale: 1.14, rate: 1.28,
+    g_vo: 0.865, damp: 0.12, shin: 1.0, tilt_w: 5, sigh: 0.48,
+    jitter: 0.0025, wander_st: 0.11, character: 0.20, edge: 0.16,
+    cadence: 0.50, closeness: 0.35, signature: 0.88,
+  },
   hibiki_awa: {
     label: "泡",
     description: "泡（浮遊するささやきに、小さな歌心が混じる電子声）",
@@ -1133,6 +1141,7 @@ export function makeHitofude(text, opts = {}) {
     edge = 0.0,       // 響の拍頭アタック／粘膜扉の鋭さ (0=草薙と同一、0..1=鋭い声)
     cadence = 0.0,    // 響の文脈依存の節回し (0=無変更、0..1=母音・句末へ応答)
     closeness = 0.0,  // 響の句内存在感 (0=無変更、0..1=前半の柔らかさ→後半の芯)
+    signature = 0.0,  // 響の音素連鎖に固有の声色 (0=無変更、0..1=強い個体差)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1307,11 +1316,39 @@ export function makeHitofude(text, opts = {}) {
       }
     }
   }
+  // 懐：瞬間的な母音の色だけでなく「直前の母音→現在→次」の連なりで
+  // その声だけの音色の通り道を刻む。固定プリセットの同じ音素列には常に同じ応答。
+  // 語境界で色が飛ばないよう母音中央だけで作用し、子音のフォルマントは保つ。
+  const signatureAmt = Math.max(0.0, Math.min(1.0, Number.isFinite(signature) ? signature : 0.0));
+  const voicePrint = new Float64Array(n);
+  if (signatureAmt > 0.0) {
+    const vowels = { a: 0.31, i: -0.58, u: 0.66, e: -0.37, o: 0.47 };
+    let prev = null;
+    const ms = r.moras;
+    for (let j = 0; j < ms.length; j++) {
+      const m = ms[j];
+      if (m.kind === "pau") { prev = null; continue; }
+      if (m.kind !== "CV") continue;
+      const next = j + 1 < ms.length && ms[j + 1].kind === "CV" ? ms[j + 1] : null;
+      const cur = vowels[m.v] ?? 0.0;
+      const from = prev ? (vowels[prev.v] ?? 0.0) : 0.0;
+      const to = next ? (vowels[next.v] ?? 0.0) : 0.0;
+      const raw = 0.62 * cur + 0.25 * from - 0.16 * to;
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      for (let q = ib; q < ie; q++) {
+        if (!r.voiced[q]) continue;
+        const u = (q - ib) / Math.max(1, ie - ib);
+        voicePrint[q] = signatureAmt * raw * (4.0 * u * (1.0 - u));
+      }
+      prev = m;
+    }
+  }
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
     F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
-    F2[t] = Math.min(Math.max(r.F2[t] * fs * (1.0 + 0.13 * vowelTint[t]), F1[t] + 280.0), 8500.0);
-    F3[t] = Math.min(Math.max(r.F3[t] * fs * (1.0 - 0.055 * vowelTint[t]), F2[t] + 350.0), 9000.0);
+    F2[t] = Math.min(Math.max(r.F2[t] * fs * (1.0 + 0.13 * vowelTint[t] + 0.10 * voicePrint[t]), F1[t] + 280.0), 8500.0);
+    F3[t] = Math.min(Math.max(r.F3[t] * fs * (1.0 - 0.055 * vowelTint[t] - 0.08 * voicePrint[t]), F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
   }
 
