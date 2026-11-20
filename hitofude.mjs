@@ -1154,6 +1154,7 @@ export function makeHitofude(text, opts = {}) {
     baby = 0.0,       // Bシリーズ専用: 未熟な調音・喃語の発声 (0=既存音声、0..1=強さ)
     b2_body = 0.0,    // B2専用: 呼気圧・声門扉・周期が結合する不安定さ
     b2_breaks = 0.0,  // B2専用: 呼気不足時のパルス化・息漏れ（0=従来どおり）
+    b2_clean = 0.0,   // B2専用: 周期波形の一貫性を優先して息漏れ・流量の乱れを抑える
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1501,6 +1502,7 @@ export function makeHitofude(text, opts = {}) {
   // 声門の締まり、基本周期、空気流を同じ圧力に依存させる。
   const bodyAmt = Math.max(0, Math.min(1, Number.isFinite(b2_body) ? b2_body : 0));
   const breaksAmt = bodyAmt > 0 ? Math.max(0, Math.min(1, Number.isFinite(b2_breaks) ? b2_breaks : 0)) : 0;
+  const cleanAmt = bodyAmt > 0 ? Math.max(0, Math.min(1, Number.isFinite(b2_clean) ? b2_clean : 0)) : 0;
   const bodyPressure = bodyAmt > 0 ? furafura(x, 0.0, 1.0, 0.065) : null;
   if (bodyPressure) {
     for (let i = 0; i < N; i++) {
@@ -1536,7 +1538,8 @@ export function makeHitofude(text, opts = {}) {
     const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
     const ret = 0.45 * shin;
     const qSoft = 1.45 - 0.30 * hiMix;
-    const rawAir = 0.02 + 0.12 * hiMix;
+    // B2: 元のノイズ線からの非周期な空気流成分を減らす。
+    const rawAir = (0.02 + 0.12 * hiMix) * (1.0 - 0.84 * cleanAmt);
     const radK = 0.42 + 0.54 * hiMix;
     const bern = 0.55 * hiMix;
     const loGain = 1.805 - 0.155 * hiMix;
@@ -1544,7 +1547,8 @@ export function makeHitofude(text, opts = {}) {
     const knee = 0.22 - 0.04 * hiMix;
     const closeMul = 8.20 + 13.80 * hiMix;
     const closedDecay = 0.50 - 0.38 * hiMix;
-    const seedFloor = (jitter > 0.0 ? 0.58 : 0.0) * hiMix;
+    // 声帯はジッターを保ちつつ、周期間に注ぎ足すノイズだけ抑制する。
+    const seedFloor = (jitter > 0.0 ? 0.58 : 0.0) * hiMix * (1.0 - 0.58 * cleanAmt);
     let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
     let y1_1 = 0.0, y1_2 = 0.0, y2_1 = 0.0, y2_2 = 0.0, y3_1 = 0.0, y3_2 = 0.0, y4_1 = 0.0, y4_2 = 0.0, y5_1 = 0.0, y5_2 = 0.0;
     for (let i = 0; i < N; i++) {
@@ -1553,7 +1557,7 @@ export function makeHitofude(text, opts = {}) {
       const g = bodyPressure ? Math.min(0.975, Math.max(0, GS[i] * (1.0 + 0.11 * bodyAmt * pressure) * (1.0 - 0.36 * slack))) : GS[i];
       const vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
       const gT = Math.max(g, seedFloor * (1.0 - SIGH_S[i]));
-      const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
+      const cIn = (gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0) * (1.0 - 0.33 * cleanAmt);
       const aOpen = Math.exp(-(8.20 + 2.5 * bodyAmt * pressure) / p);
       const aClose = Math.exp(-(closeMul + 4.0 * bodyAmt * pressure) / p);
       const pRet = Math.tanh((0.70 * (y1_1 - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
@@ -1578,8 +1582,8 @@ export function makeHitofude(text, opts = {}) {
         uFlow *= closedDecay;
       }
       // 圧力低下時は声帯接触の周期成分が薄まり、同じ原石ノイズ由来の息漏れが残る。
-      uOut[i] = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
-      if (slack > 0) uOut[i] += (0.11 * slack * bodyAmt) * xClean[i] * Math.max(0.0, pLungWalk[i]);
+      uOut[i] = (1.0 - vo) * (0.28 * (1.0 - 0.74 * cleanAmt)) * xClean[i] + vo * (uFlow * 3.6);
+      if (slack > 0) uOut[i] += (0.11 * slack * bodyAmt * (1.0 - 0.84 * cleanAmt)) * xClean[i] * Math.max(0.0, pLungWalk[i]);
       const bw1 = Math.max(80.0, F1S[i] / 8.0) + (150.0 - 60.0 * hiMix) * door;
       const r1 = Math.exp(-piSR * bw1), c1 = -r1 * r1, b1 = 2.0 * r1 * Math.cos(twoPiSR * F1S[i]);
       const o1 = (1.0 - b1 - c1) * uOut[i] + b1 * y1_1 + c1 * y1_2; y1_2 = y1_1; y1_1 = o1;
