@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "notes": "Only stephan_2m is bundled. Add locally obtained licensed WAV/OGG recordings as separate entries, then evaluate each by --reference.",
+  "notes": "Two public-domain infant recordings are bundled. Choose a voiced comparison window per recording; add additional licensed WAV/OGG files through explicit manifest entries.",
   "references": [
     {
       "id": "stephan_2m",
@@ -9,6 +9,14 @@
       "license": "public domain",
       "start_s": 6.3,
       "end_s": 10.66
+    },
+    {
+      "id": "stephan_5m",
+      "file": "samples/reference/infant_5months_stephan.ogg",
+      "source": "https://commons.wikimedia.org/wiki/File:Baby_5_months_old_gabbling_laughing_practising_voice.ogg",
+      "license": "public domain",
+      "start_s": 10,
+      "end_s": 14.36
     }
   ]
 }
