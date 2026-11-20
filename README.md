@@ -395,7 +395,7 @@ node b3_yomu.mjs --seed 42 --profile kai --attackMs 70 --releaseMs 130 --cutoffH
 
 `tools/infant_lab.mjs` は**参照の観察→B3合成→Hodoki soroi採点→WAVパック→移植候補レポート**を同じ条件で自動実行する。
 `samples/reference/manifest.json` で参照WAV/OGGを複数管理できる。
-現時点でリポジトリに入っている実録は生後2か月の `stephan_2m` の**1件のみ**。
+現時点の実録は生後2か月の `stephan_2m` と生後5か月の `stephan_5m` の**2件**。
 その声の多い 6.30–10.66秒（4.36秒）を初期評価窓とする。
 新しい録音はライセンスを確認してから `references` に追加する。
 
@@ -415,3 +415,10 @@ node tools/infant_lab.mjs --reference stephan_2m --budget 54 --seed 42 --text "�
 
 草薙へ持ち帰る優先候補は `combG` と `rawAirMul` の**明示的オプトイン化**。
 B3の `baby bend`、ambient noise、時間包絡等を既定動作へ混入させない。
+
+```bash
+# 生後5か月のサンプルを目標にする（録音区間 10–14.36秒は初期仮設定）
+node tools/infant_lab.mjs --reference stephan_5m --budget 24 --out out/infant_lab_5m
+```
+
+生後5か月の指定区間は**声の多い部分と確認したわけではない**。録音を聴いて適切な区間へ修正すること。
