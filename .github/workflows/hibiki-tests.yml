@@ -29,6 +29,7 @@ jobs:
           node --check tools/b3_measure.mjs
           node --check tools/b3_sweep.mjs
           node --check tools/infant_lab.mjs
+          node --check tools/b3_noise_probe.mjs
       - name: Synthesis regression tests
         run: node --test tests/hibiki.test.mjs
       - name: Blind listening pack smoke test
@@ -69,6 +70,14 @@ jobs:
           test -s "$RUNNER_TEMP/infant_lab/PROMOTION.md"
           node tools/infant_lab.mjs --reference stephan_2m --sweep correlated --budget 8 --out "$RUNNER_TEMP/infant_corr" --seed 20261120
           test -s "$RUNNER_TEMP/infant_corr/results.json"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import {probe} from "./tools/b3_noise_probe.mjs";
+            const m=JSON.parse(fs.readFileSync("samples/reference/manifest.json","utf8"));
+            probe({reference:m.references[0],out:process.env.RUNNER_TEMP+"/noise_probe",
+              snrs:[Infinity,30,15],kinds:["white","low"]});
+          '
+          test -s "$RUNNER_TEMP/noise_probe/results.json"
           node tools/infant_lab.mjs --reference stephan_5m --budget 4 --out "$RUNNER_TEMP/infant_lab_5m" --seed 20261120
           test -s "$RUNNER_TEMP/infant_lab_5m/results.json"
       - uses: actions/upload-artifact@v4
