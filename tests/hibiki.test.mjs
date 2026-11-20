@@ -169,3 +169,23 @@ test("B2 cycle levelling isolates shimmer without altering period timing", async
   const v = PRESETS.hibiki_ibuki;
   assert.equal(hashish(render(v)), hashish(render({ ...v, b2_cycle: 0 })));
 });
+
+test("B3 soroe parameters modify only B3 and retain baby bend", async () => {
+  const {renderB3,B3_BASE,B3_PRESET}=await import("../b3_akambo.mjs");
+  const p={seed:42,text:"アー、ウー、ウアー"};
+  const s1=renderB3({...p,profile:"soroe1"});
+  const s2=renderB3({...p,profile:"soroe2"});
+  const cur=renderB3(p);
+  assert.ok(s1.samples.every(Number.isFinite));
+  assert.ok(cur.samples.some(x=>Math.abs(x)>0.01));
+  assert.notEqual(hashish(s1.samples),hashish(s2.samples));
+  assert.notEqual(hashish(cur.samples),hashish(s1.samples));
+  assert.equal(hashish(s1.samples),hashish(makeHitofude(p.text,{...B3_BASE,seed:p.seed}).samples));
+  assert.equal(hashish(cur.samples),hashish(renderB3(p).samples));
+  assert.notEqual(hashish(renderB3({...p,bend:0}).samples),hashish(cur.samples));
+  assert.equal(B3_PRESET.b2_cycle,0);
+  assert.throws(()=>renderB3({...p,combG:1.1}),RangeError);
+  assert.throws(()=>renderB3({...p,jitter:-1}),RangeError);
+  assert.equal(hashish(render(PRESETS.hibiki_ibuki)),
+    hashish(render({...PRESETS.hibiki_ibuki,b3_combG:null,b3_rawAirMul:1})));
+});
