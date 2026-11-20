@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "notes": "Only stephan_2m is bundled. Add locally obtained licensed WAV/OGG recordings as separate entries, then evaluate each by --reference.",
+  "references": [
+    {
+      "id": "stephan_2m",
+      "file": "samples/reference/infant_2months_stephan.ogg",
+      "source": "https://commons.wikimedia.org/wiki/File:Gabbling_baby_2_months_old.ogg",
+      "license": "public domain",
+      "start_s": 6.3,
+      "end_s": 10.66
+    }
+  ]
+}
