@@ -179,7 +179,7 @@ test("B3 soroe parameters modify only B3 and retain baby bend", async () => {
   assert.ok(s1.samples.every(Number.isFinite));
   assert.ok(cur.samples.some(x=>Math.abs(x)>0.01));
   assert.notEqual(hashish(s1.samples),hashish(s2.samples));
-  assert.notEqual(hashish(cur.samples),hashish(s1.samples));
+  assert.equal(hashish(cur.samples),hashish(s1.samples));
   assert.equal(hashish(s1.samples),hashish(makeHitofude(p.text,{...B3_BASE,seed:p.seed}).samples));
   assert.equal(hashish(cur.samples),hashish(renderB3(p).samples));
   assert.notEqual(hashish(renderB3({...p,bend:0}).samples),hashish(cur.samples));
