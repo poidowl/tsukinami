@@ -1151,6 +1151,7 @@ export function makeHitofude(text, opts = {}) {
     closeness = 0.0,  // 響の句内存在感 (0=無変更、0..1=前半の柔らかさ→後半の芯)
     signature = 0.0,  // 響の音素連鎖に固有の声色 (0=無変更、0..1=強い個体差)
     gesture = 0.0,    // 響の音程・声道同時ジェスチャー (0=従来通り、0..1=最大)
+    baby = 0.0,       // Bシリーズ専用: 未熟な調音・喃語の発声 (0=既存音声、0..1=強さ)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1308,6 +1309,25 @@ export function makeHitofude(text, opts = {}) {
     }
   }
 
+  // B1: 乳児の喃語的なピッチの探り。ノイズ源 x に含まれる偏りを拍単位で使用する。
+  // 高くするだけではなく、短い探索の上昇/下降を重ねる。既存V系列では完全無効。
+  const babyAmt = Math.max(0, Math.min(1, Number.isFinite(baby) ? baby : 0));
+  if (babyAmt > 0 && !uta_hz) {
+    for (const m of r.moras) {
+      if (m.kind !== "CV") continue;
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      const sampleIdx = Math.min(N - 1, Math.max(0, Math.trunc(m.b * SR)));
+      const direction = x[sampleIdx] * 2.4; // noise-sourced, fixed per mora
+      for (let q = ib; q < ie; q++) {
+        if (!r.voiced[q]) continue;
+        const u = (q - ib) / Math.max(1, ie - ib);
+        const bend = direction * (u * u * (3 - 2 * u)) + 0.70 * Math.sin(Math.PI * u);
+        f0_fr[q] *= Math.pow(2, babyAmt * bend / 12);
+      }
+    }
+  }
+
   // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
   const sigh_fr = new Array(n).fill(0.0);
   if (sigh > 0.0) {
@@ -1386,8 +1406,10 @@ export function makeHitofude(text, opts = {}) {
   }
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
-    F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
-    F2[t] = Math.min(Math.max(r.F2[t] * fs * (1.0 + 0.13 * vowelTint[t] + 0.10 * voicePrint[t] + 0.042 * gestureFr[t]), F1[t] + 280.0), 8500.0);
+    // B1: 母音の輪郭を少し曖昧にする（口の形がまだ定まらない）。
+    const central = babyAmt > 0 && r.voiced[t] ? 0.36 * babyAmt : 0.0;
+    F1[t] = Math.max((r.F1[t] * (1 - central) + 520 * central) * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
+    F2[t] = Math.min(Math.max((r.F2[t] * (1 - central) + 1650 * central) * fs * (1.0 + 0.13 * vowelTint[t] + 0.10 * voicePrint[t] + 0.042 * gestureFr[t]), F1[t] + 280.0), 8500.0);
     F3[t] = Math.min(Math.max(r.F3[t] * fs * (1.0 - 0.055 * vowelTint[t] - 0.08 * voicePrint[t] - 0.025 * gestureFr[t]), F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
   }
