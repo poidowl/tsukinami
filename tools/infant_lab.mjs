@@ -42,8 +42,9 @@ function loadReference(entry,root){
   wav=readWav(res.stdout);
   return {x:wav.x.subarray(Math.round(start*SR),end==null?wav.x.length:Math.round(end*SR)),sourceHash};
 }
-export function chooseCandidates(budget=24, referenceF0=350){
+export function chooseCandidates(budget=24, referenceF0=350, sweep="grid"){
   if(!Number.isInteger(budget)||budget<1||budget>512)throw RangeError("budget must be 1..512");
+  if(!["grid","jitter"].includes(sweep))throw RangeError("sweep must be grid or jitter");
   // Deterministic anchors, then round-robin stratified sweeps across pitch bands.
   const targetHz = Math.max(200,Math.min(700,referenceF0*0.95));
   const presets=[
@@ -52,6 +53,25 @@ export function chooseCandidates(budget=24, referenceF0=350){
    {hz:targetHz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:0,airLevel:0},
    {hz:targetHz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:.72,airLevel:.0028},
   ];
+  if(sweep==="jitter"){
+    // Cross jitter with a fixed, small set of source/timbre knobs. Alternate jitter
+    // levels early, rather than exhausting one jitter value before trying the next.
+    const levels=[.018,.022,.03,.04,.05];
+    const banks=levels.map(jitter=>{
+      const variants=[];
+      for(const hz of [351,targetHz])
+        for(const combG of [.99,.985])
+          for(const rawAirMul of [1,.4])
+            for(const tiltMix of [0,.72])
+              variants.push({hz,combG,rawAirMul,clean:B3_BASE.b2_clean,jitter,
+                cutoffHz:2300,tiltMix,airLevel:tiltMix?.0028:0});
+      return variants;
+    });
+    for(let i=0;i<banks[0].length;i++)
+      for(let j=0;j<banks.length;j++)
+        presets.push(banks[j][(i+j*3)%banks[j].length]);
+    return presets.slice(0,budget).map((p,i)=>({...p,id:"v"+String(i).padStart(3,"0")}));
+  }
   const bands=[targetHz*0.88,targetHz,targetHz*1.10];
   const buckets=bands.map(hz=>{
     const bucket=[];
@@ -77,7 +97,7 @@ export function renderLabCandidate(text,seed,opts){
   return b3KaiProcess(base.samples,{...B3_KAI_SETTINGS,seed,tiltMix:opts.tiltMix,
     cutoffHz:opts.cutoffHz,airLevel:opts.airLevel});
 }
-export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,seed=20261120,text="アー、ウー、ウアー",root=process.cwd()}={}){
+export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,seed=20261120,text="アー、ウー、ウアー",root=process.cwd(),sweep="grid"}={}){
   const reference=manifest.references?.find(r=>r.id===referenceId);
   if(!reference)throw Error("reference id not found: "+referenceId);
   if(!Number.isFinite(seed)||!Number.isInteger(seed))throw Error("seed must be an integer");
@@ -88,7 +108,7 @@ export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,se
   if(!finite(target))throw Error("no reliable voiced cycles in reference window; choose a vocal segment");
   fs.mkdirSync(out,{recursive:true});
   const rows=[];
-  for(const opts of chooseCandidates(budget,target.f0_median_hz)){
+  for(const opts of chooseCandidates(budget,target.f0_median_hz,sweep)){
     const samples=renderLabCandidate(text,seed,opts), m=metrics(samples,SR);
     const item={id:opts.id,params:opts,metrics:cut(m),
       score:finite(m)?+score(m,target).toFixed(4):null,
@@ -100,7 +120,7 @@ export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,se
   rows.sort((a,b)=>(a.score??Infinity)-(b.score??Infinity));
   const report={schema:1,reference:{id:reference.id,file:reference.file,
       sha256:src.sourceHash,start_s:reference.start_s??0,end_s:reference.end_s??null,metrics:cut(target)},
-    settings:{seed,text,budget,scoring:"weighted squared distance; screen only, not perceptual proof",weights:WEIGHTS},
+    settings:{seed,text,budget,sweep,scoring:"weighted squared distance; screen only, not perceptual proof",weights:WEIGHTS},
     ranked:rows};
   fs.writeFileSync(path.join(out,"results.json"),JSON.stringify(report,null,2)+"\n");
   let txt="# B-series reference-fit report\n\n";
@@ -125,11 +145,11 @@ export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,se
 if(import.meta.url===`file://${process.argv[1]}`){
  const {values:v}=parseArgs({options:{manifest:{type:"string",default:"samples/reference/manifest.json"},
   reference:{type:"string",default:"stephan_2m"},out:{type:"string",default:"out/infant_lab"},
-  budget:{type:"string",default:"24"},seed:{type:"string",default:"20261120"},
+  budget:{type:"string",default:"24"},sweep:{type:"string",default:"grid"},seed:{type:"string",default:"20261120"},
   text:{type:"string",default:"アー、ウー、ウアー"}}});
  const file=path.resolve(v.manifest),manifest=JSON.parse(fs.readFileSync(file,"utf8"));
  const result=evaluate(manifest,v.reference,{out:path.resolve(v.out),root:process.cwd(),
-    budget:Number(v.budget),seed:Number(v.seed),text:v.text});
+    budget:Number(v.budget),sweep:v.sweep,seed:Number(v.seed),text:v.text});
  console.log(JSON.stringify({reference:result.reference.id,metrics:result.reference.metrics,
    best:result.ranked.slice(0,3).map(x=>({id:x.id,score:x.score,metrics:x.metrics,params:x.params})),
    output:path.resolve(v.out)}));
