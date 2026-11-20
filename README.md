@@ -332,3 +332,20 @@ node b3_yomu.mjs --seed 42 --profile soroe2 --text "アー、ウー、ウアー"
 
 実録 `samples/reference/infant_2months_stephan.ogg` と生成したWAVを
 同じ `soroi` 解析器で比較する `tools/b3_measure.mjs` を整備。
+
+### B3 実測フィードバック（GitHub Actions / Hodoki soroi）
+
+今回の自動計測は参照OGGを ffmpeg でモノラル 44.1kHz PCM WAVへ変換。
+**測定条件が過去の報告と異なる**ため以前の数値を上書きしない。
+
+| 実測条件 (auto coo, seed 42) | f0 Hz | jitter % | shimmer % | HNR dB | corr |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 実録 (PCM変換) | 352.21 | 2.68 | 6.21 | 13.47 | .9903 |
+| B3 soroe1 | 405.12 | 1.03 | 8.63 | 13.12 | .9801 |
+| B3 jitter=0.027 | 420.16 | 1.37 | 8.74 | 11.35 | .9664 |
+| B3 soroe2 | 405.13 | .97 | 7.54 | 13.40 | .9823 |
+
+`candidate` の単純な jitter 増量は周期相関・HNRを悪化させた。
+**デフォルトは試聴評価で好評だった `soroe1` に戻した**（`--profile candidate` は引き続き試験可能）。
+この表の音程は自動生成した特定の喃語に強く依存し、固定発声の測定値とは異なる。
+回帰テスト合格は聴感の一致を意味しない。
