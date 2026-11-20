@@ -467,3 +467,26 @@ node tools/infant_lab.mjs --reference stephan_2m --sweep correlated --budget 54 
 
 独立ジッターと連続ジッターの比較では、F0・jitterだけでなく
 **HNR、周期相関、shimmerを同時に**確認する。草薙の既定設定は変えていない。
+
+### B3 録音雑音がHodokiジッターを水増ししているか（新規対照実験）
+
+`tools/b3_noise_probe.mjs` は **完全に同一の `soroe1` 合成波形**を固定して、
+白色雑音・低域ノイズを加算し、Hodokiによる `f0/jitter/shimmer/HNR/周期相関` の変化を記録。
+既定の全体SNRは無雑音・40・30・25・20・15・10dB。生成WAVと `results.json` を保存。
+
+```bash
+node tools/b3_noise_probe.mjs --reference stephan_2m --out out/noise_probe
+```
+
+録音中の無声部分を**試聴して確かめた場合のみ**、その範囲の録音ノイズを使う：
+```bash
+node tools/b3_noise_probe.mjs --reference stephan_2m --bed-start 0 --bed-end 1 --out out/noise_bed
+```
+ここでの `--bed-start` / `--bed-end` は実録ファイル全体の絶対秒数。
+この例は使用法の説明であり、0〜1秒に乳児音声がないことは未確認。
+
+**推定上の注意**：追加後にジッターが増えても、実際の声門周期を変えたのではなく、
+Hodokiの周期検出が雑音に引きずられた可能性を示すにとどまる。
+ノイズ量は合成ファイル全体のRMSに対するSNRで指定し、有声部SNRとは異なる。
+参照の実際の環境音レベル、フィルター特性や圧縮ノイズは別途測定が必要。
+合成器本体・`kusanagi` の既定は無変更。
