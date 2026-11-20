@@ -159,3 +159,17 @@ node tools/hibiki_listen.mjs
 
 `out/hibiki_blind` に4声×3文の12 WAV、採点ガイド `LISTEN_FIRST.txt`、回答表 `answer_key.json` を生成。
 **試聴前には回答表を開かないこと**。出力フォルダが既にある場合は上書きせず失敗する。
+
+## 響 v4 — 「寄添」(yorisoi) / 声の親しみ
+
+`hibiki_yorisoi` は近接感を想定した実験声。
+`--closeness 0..1` は、句頭で声門の周期性をわずかに緩めて息を残し、句中の母音で芯を作り、句末で解放する。
+声を録音・ミックスしていない。**単一のノイズ線で同じ発声器官の一貫した振る舞いを作る**のが目的。
+
+```bash
+node yomu.mjs --preset hibiki_yorisoi --measure --compare "おかえり、きょうもはなそう"
+node yomu.mjs --preset hibiki_yorisoi --closeness 0 --measure "おかえり、きょうもはなそう"
+```
+
+判定基準は「近くで鳴っているように感じるか」「繰り返し聞いて疲れないか」。
+聴取実験前なので、これらを達成したとは主張しない。
