@@ -179,7 +179,7 @@ test("B3 soroe parameters modify only B3 and retain baby bend", async () => {
   assert.ok(s1.samples.every(Number.isFinite));
   assert.ok(cur.samples.some(x=>Math.abs(x)>0.01));
   assert.notEqual(hashish(s1.samples),hashish(s2.samples));
-  assert.equal(hashish(cur.samples),hashish(s1.samples));
+  assert.notEqual(hashish(cur.samples),hashish(s1.samples));
   assert.equal(hashish(s1.samples),hashish(makeHitofude(p.text,{...B3_BASE,seed:p.seed}).samples));
   assert.equal(hashish(cur.samples),hashish(renderB3(p).samples));
   assert.notEqual(hashish(renderB3({...p,bend:0}).samples),hashish(cur.samples));
@@ -190,10 +190,11 @@ test("B3 soroe parameters modify only B3 and retain baby bend", async () => {
     hashish(render({...PRESETS.hibiki_ibuki,b3_combG:null,b3_rawAirMul:1})));
 });
 
-test("B3 default is preferred soroe1, experimental jitter remains opt-in",async()=>{
+test("B3 default is kai, preferred soroe1 preserved, experimental jitter is opt-in",async()=>{
  const {renderB3,B3_PRESET,B3_JITTER_EXPERIMENT}=await import("../b3_akambo.mjs");
  const opts={seed:42,text:"アー、ウー、ウアー"};
- assert.equal(hashish(renderB3(opts).samples),hashish(renderB3({...opts,profile:"soroe1"}).samples));
+ assert.equal(hashish(renderB3(opts).samples),hashish(renderB3({...opts,profile:"kai"}).samples));
+ assert.notEqual(hashish(renderB3(opts).samples),hashish(renderB3({...opts,profile:"soroe1"}).samples));
  assert.notEqual(hashish(renderB3({...opts,profile:"candidate"}).samples),hashish(renderB3(opts).samples));
  assert.equal(B3_PRESET.jitter,0.018);
  assert.equal(B3_JITTER_EXPERIMENT.jitter,0.027);
