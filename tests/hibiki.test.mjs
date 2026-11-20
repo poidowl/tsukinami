@@ -13,7 +13,7 @@ const hashish = (a) => {
   return h >>> 0;
 };
 test("hibiki variations render finite non-silent deterministic audio", () => {
-  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari", "hibiki_yorisoi"]) {
+  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari", "hibiki_yorisoi", "hibiki_natsuku"]) {
     const a = render(PRESETS[key]), b = render(PRESETS[key]);
     assert.equal(a.length, b.length);
     assert.ok(a.length > 44100);
@@ -56,4 +56,18 @@ test("closeness changes voice but zero retains bit-identical audio", () => {
   assert.notEqual(hashish(render(p)), hashish(render({ ...p, closeness: 0 })));
   const base = PRESETS.hibiki_katari;
   assert.equal(hashish(render(base)), hashish(render({ ...base, closeness: 0 })));
+});
+
+test("signature changes contextual timbre and 0 preserves old voices", () => {
+  const p = PRESETS.hibiki_natsuku;
+  assert.notEqual(hashish(render(p)), hashish(render({ ...p, signature: 0 })));
+  const b = PRESETS.hibiki_yorisoi;
+  assert.equal(hashish(render(b)), hashish(render({ ...b, signature: 0 })));
+});
+test("single vowel and repeated-vowel utterances remain finite", () => {
+  for (const txt of ["あ", "あああああ", "あ、い、う、え、お", "きゃきゅきょ、らりるれろ"]) {
+    const samples = makeHitofude(txt, PRESETS.hibiki_natsuku).samples;
+    assert.ok(samples.length > 0);
+    assert.ok(samples.every(Number.isFinite), txt);
+  }
 });
