@@ -402,6 +402,7 @@ const playerHtml = `<!DOCTYPE html>
   <div class="presets-row" id="presetsRow">
     <button class="preset-btn active" type="button" data-preset="toiki">吐息</button>
     <button class="preset-btn" type="button" data-preset="hitofude">澄み</button>
+    <button class="preset-btn" type="button" data-preset="alto">アルト</button>
     <button class="preset-btn" type="button" data-preset="sasayaki">囁き</button>
     <button class="preset-btn" type="button" data-preset="chibi">ちびっ子</button>
     <button class="preset-btn" type="button" data-preset="ossan">おっさん</button>
@@ -417,8 +418,8 @@ const playerHtml = `<!DOCTYPE html>
     </div>
     <div class="knob-row">
       <span class="knob-label">くびれ g_vo</span>
-      <input id="slGvo" type="range" min="0" max="0.96" step="0.01" value="0.90">
-      <span class="knob-val" id="valGvo">0.90</span>
+      <input id="slGvo" type="range" min="0" max="0.96" step="0.01" value="0.86">
+      <span class="knob-val" id="valGvo">0.86</span>
     </div>
     <div class="knob-row">
       <span class="knob-label">句末吐息 sigh</span>
@@ -440,16 +441,16 @@ ${compactEngine}
 
 const STEP_META = [
   ["0 原石：", "uniform(-1, 1) の生ホワイトノイズ1本（揺らぎもジッタもこの1本から）"],
-  ["① 倍音の谷：", "2段コムで倍音の隙間の谷を引く（くびれ g_vo で息の深さが決まる）"],
-  ["② 角落とし：", "低域DC濁りと高域の角を引く（子音は鋭く残し、吐息は丸める）"],
+  ["① 倍音の谷：", "2段コムで倍音の隙間の谷を引く（冷凍ロボ用の片道 shin=0）"],
+  ["② 角落とし：", "低域DC濁りと高域の角を引く（子音は鋭く残す）"],
   ["③ 声道の山：", "F1–F4 因果直列カスケード＋唇放射で母音、yamaBp で子音の山を残す"],
-  ["④ 完成：", "1スカラー整音＋包絡（句末で G を緩め、元のノイズの吐息へ戻す）"],
+  ["④ 完成：", "1スカラー整音＋包絡"],
 ];
 const STEP_META_COUPLED = [
   ["0 原石：", "uniform(-1, 1) の生ホワイトノイズ1本（呼気圧もジッタもこの1本から）"],
   ["① 声帯波：", "声道からの帰還圧を受けながら2段コムで揺れる声帯組織波"],
-  ["② 粘膜扉：", "上下2唇の粘膜ボトルネック扉が開閉し、肺の呼気流を刻んだ気流"],
-  ["③ 5極声道：", "扉と再帰結合した F1–F5 粘膜声道＋唇放射と子音帯の響き"],
+  ["② 非対称扉：", "上唇は丸く開き、下唇はベルヌーイ吸い寄せでスパッと閉じて呼気流を刻む"],
+  ["③ 5極声道：", "扉と再帰結合した F1–F5 粘膜声道＋唇微分放射と子音帯の響き"],
   ["④ 完成：", "1スカラー整音＋包絡（句末で扉を緩め、元のノイズの吐息へ戻す）"],
 ];
 
@@ -512,8 +513,8 @@ function getOpts() {
     sigh: isUta ? 0.0 : sigh,
     jitter: base.jitter,
     wander_st: base.wander_st,
-    damp: isUta ? 0.0 : (base.damp || 0.0),
-    shin: isUta ? 0.0 : (base.shin || 0.0),
+    damp: base.damp ?? 0.08,
+    shin: base.shin ?? 1.0,
     uta_hz: isUta ? UTA_MELODY : null,
     captureSteps: true,
   };
@@ -586,11 +587,11 @@ function ensureCarved() {
 function setStepUI(stepIdx) {
   curStep = stepIdx;
   stepBtns.forEach((b, i) => b.classList.toggle("active", i === stepIdx));
-  const isCoupled = !isUta && ((PRESETS[curPreset] && PRESETS[curPreset].shin) || 0) > 0;
+  const isCoupled = ((PRESETS[curPreset] && PRESETS[curPreset].shin) ?? 1.0) > 0;
   const [title, body] = (isCoupled ? STEP_META_COUPLED : STEP_META)[stepIdx];
   elDesc.innerHTML = "<span><strong>" + title + "</strong>" + body + "</span>";
   const shortNames = isCoupled
-    ? ["0 原石ノイズ", "① 声帯組織波", "② 2唇粘膜扉", "③ 5極声道", "④ 完成波形"]
+    ? ["0 原石ノイズ", "① 声帯組織波", "② 非対称2唇扉", "③ 5極声道", "④ 完成波形"]
     : ["0 原石ノイズ", "① 倍音の谷", "② 角落とし", "③ 声道の山", "④ 完成波形"];
   elWaveLbl.textContent = shortNames[stepIdx];
   drawScope(-1);
@@ -904,7 +905,7 @@ presetBtns.forEach((btn) => {
       isUta = true;
       curPreset = "hitofude";
       slHz.value = "340";
-      slGvo.value = "0.93";
+      slGvo.value = "0.90";
       if (BUILTIN_TEXTS.has(curVal)) elInput.value = UTA_TEXT;
     } else {
       isUta = false;
@@ -914,7 +915,7 @@ presetBtns.forEach((btn) => {
       slGvo.value = p.g_vo.toFixed(2);
       slSigh.value = p.sigh.toFixed(2);
       if (BUILTIN_TEXTS.has(curVal)) {
-        elInput.value = pk === "ossan" ? OSSAN_TEXT : DEFAULT_TEXT;
+        elInput.value = (pk === "ossan" || pk === "alto") ? OSSAN_TEXT : DEFAULT_TEXT;
       }
     }
     updateKnobLabels();
@@ -965,7 +966,7 @@ requestAnimationFrame(() => {
 </html>
 `;
 
-const PLAYER_VER = 7;
+const PLAYER_VER = 8;
 const ENGINE_KB = Math.round(Buffer.byteLength(engineSrc, "utf8") / 1000);
 
 const shareHtml = `<!DOCTYPE html>
@@ -975,7 +976,7 @@ const shareHtml = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="twitter:card" content="player">
 <meta name="twitter:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
-<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから引き算と声道再帰だけで透明女声から低音『おっさん』・歌まで彫る純JSシンセ（0原石→④完成をその場で聴き比べ）">
+<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズと非対称ベルヌーイ2唇扉×5極声道の再帰だけで女声・大人アルト・低音おっさん・歌まで彫る純JSシンセ（0原石→④完成をその場で聴き比べ）">
 <meta name="twitter:image" content="${PAGES_BASE}/assets/kusanagi_square.jpg">
 <meta name="twitter:player" content="${PAGES_BASE}/kusanagi_player.html?v=${PLAYER_VER}">
 <meta name="twitter:player:width" content="480">
@@ -983,7 +984,7 @@ const shareHtml = `<!DOCTYPE html>
 <meta property="og:type" content="website">
 <meta property="og:url" content="${PAGES_BASE}/kusanagi.html">
 <meta property="og:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
-<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから引き算と声道再帰だけで日本語の声と吐息を削り出す純JSシンセ。">
+<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズと非対称ベルヌーイ2唇扉×声道再帰だけで日本語の声と吐息を彫る純JSシンセ。">
 <meta property="og:image" content="${PAGES_BASE}/assets/kusanagi_square.jpg">
 <meta property="og:image:width" content="1024">
 <meta property="og:image:height" content="1024">
@@ -1103,7 +1104,7 @@ const shareHtml = `<!DOCTYPE html>
   <header class="hero">
     <div>
       <h1>草薙 kusanagi</h1>
-      <p>Pythonゼロ・録音 0 Byte・正弦波オシレータ不使用。たった1本のホワイトノイズから引き算と声道再帰だけで日本語を彫る純JSシンセ。</p>
+      <p>Pythonゼロ・録音 0 Byte・正弦波オシレータ不使用。たった1本のホワイトノイズから非対称ベルヌーイ粘膜扉と声道再帰だけで日本語を彫る純JSシンセ。</p>
     </div>
   </header>
 
@@ -1116,10 +1117,10 @@ const shareHtml = `<!DOCTYPE html>
     <h2>1本のノイズ線から声になる仕組み</h2>
     <ol class="steps-list">
       <li><strong>0 原石：</strong>軽量PRNG（<code>Mulberry32</code>）で <code>[-1, 1]</code> のホワイトノイズを1本だけ用意する（漂い・ジッタ・ビブラート・呼気圧もすべてこの1本から作る）。</li>
-      <li><strong>① 倍音の谷 / 声帯波：</strong>2段コム（<code>combPeriod</code>）で倍音の隙間の谷を引く。低音（<code>おっさん</code>）では声道からの帰還圧を受けながら揺れる。</li>
-      <li><strong>② 角落とし / 粘膜扉：</strong>DC濁りと高域の角を引く。低音では上下2唇の粘膜ボトルネック扉が開閉し、肺の呼気流を刻む。</li>
-      <li><strong>③ 声道の山：</strong>母音は F1–F4（低音は F1–F5 粘膜Q）因果直列カスケード＋唇放射で1本の管として響かせ、子音帯だけ <code>yamaBp</code> で添える。</li>
-      <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線のくびれを緩めて元の吐息へ戻す。</li>
+      <li><strong>① 声帯組織波：</strong>声道からの帰還圧を受けながら2段コムで揺れる声帯波を立てる（冷凍ロボのみ片道コム <code>shin=0</code>）。</li>
+      <li><strong>② 非対称2唇扉：</strong>上唇は丸くめくれて開き、下唇はベルヌーイ吸い寄せでスパッと閉じて肺の呼気流を刻む（閉じた瞬間に全倍音が揃う）。</li>
+      <li><strong>③ 5極粘膜声道：</strong>扉と1サンプル再帰結合した F1–F5 粘膜声道＋真の唇微分放射（<code>+6dB/oct</code>）で1本の管として響かせ、子音帯だけ <code>yamaBp</code> で添える。</li>
+      <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線の扉を緩めて元の吐息へ戻す。</li>
     </ol>
     <div class="share-bar">
       <button id="copyUrlBtn" class="btn primary" type="button">X投稿用URLをコピー</button>
@@ -1131,7 +1132,8 @@ const shareHtml = `<!DOCTYPE html>
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
-      <li><strong>v7 (<a href="https://github.com/poidowl/tsukinami/commit/755c7a8" target="_blank" rel="noopener noreferrer"><code>755c7a8</code></a>)：</strong>低音男声（<code>ossan</code> / <code>shin &gt; 0</code>）を片道コムから <strong>声門2唇粘膜扉×5極声道（F1–F5）の1サンプル再帰結合系</strong>へ刷新。声道圧の帰還の中で扉が呼気流を刻み、低音の位相ボコーダー感を排した太い「轟」を実現（プレイヤーの <code>damp</code>/<code>shin</code> 連動修正・<code>hz</code> 下限 85Hz 化）。</li>
+      <li><strong>v8：</strong>2唇粘膜扉×5極声道の再帰結合を <strong>非対称ベルヌーイ閉鎖（上唇は丸く開き・下唇は気流吸い寄せで急閉鎖）＋真の唇微分放射</strong>へ進化させ、女声・歌・新設 <code>アルト</code> まで全人間プリセットへ統合（旧並列時代の <code>fricT</code>/<code>vl_f1</code> 子音F1ワープも撤去）。</li>
+      <li><strong>v7 (<a href="https://github.com/poidowl/tsukinami/commit/755c7a8" target="_blank" rel="noopener noreferrer"><code>755c7a8</code></a>)：</strong>低音男声（<code>ossan</code>）を片道コムから <strong>声門2唇粘膜扉×5極声道（F1–F5）の1サンプル再帰結合系</strong>へ刷新し、低音の位相ボコーダー感を排した太い「轟」を実現。</li>
       <li><strong><a href="https://github.com/poidowl/tsukinami/commit/b114684" target="_blank" rel="noopener noreferrer"><code>b114684</code></a>：</strong>ピッチ漂い・周期ジッタ・歌唱ビブラート用の別シード乱数を全廃し、Step 0 のホワイトノイズ <code>x</code> 1本だけから削り出す真の単一乱数化を達成。</li>
       <li><strong>v6 (<a href="https://github.com/poidowl/tsukinami/commit/1498df1" target="_blank" rel="noopener noreferrer"><code>1498df1</code></a>)：</strong>有声破裂（<code>g/d/b</code>）への高域ノイズ帯域 <code>rawBands</code> 付与を廃止し、ダ行・ガ行・バ行で乗っていた高域クリックノイズを解消。</li>
       <li><strong>v5 (<a href="https://github.com/poidowl/tsukinami/commit/3026d36" target="_blank" rel="noopener noreferrer"><code>3026d36</code></a>)：</strong>歌モード（<code>uta_hz</code>）時に話し声用の母音無声化と <code>ou</code> 長音同化を無効化し、歌唱時の音抜け（ち・つ・し・す・ぴ・ぷ等）を解消。</li>
