@@ -193,3 +193,17 @@ node --test tests/hibiki.test.mjs
 ```
 
 匿名試聴は 6声 × 3文 = 18 WAV。声の新しさと「聞き続けたい」は別なので、嗜好の改善は未検証。
+
+## 響 v6 — 「息吹」(ibuki)：声の一体感
+
+`hibiki_ibuki` を追加。母音の種類と直前母音の関係から、**同じ形のジェスチャーで音程とF2/F3が同時に動く**。
+従来の各々独立した装飾を減らし、一貫した「喋り方」を試す。`--gesture 0..1` は母音内部のみ、歌唱モードでは無効。
+単一ホワイトノイズ源と純JSを維持。`gesture=0` の過去音声は不変。
+
+```bash
+node yomu.mjs --preset hibiki_ibuki --measure "おかえり、きょうはどんなひだった"
+node yomu.mjs --preset hibiki_ibuki --gesture 0 --measure "おかえり、きょうはどんなひだった"
+node --test tests/hibiki.test.mjs
+```
+
+匿名パック：7声 × 3文 = 21 WAV。発話可読性を維持する設計だが、魅力の向上は未実証。
