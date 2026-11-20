@@ -37,6 +37,7 @@ export function synth(text, prm, utaHz = null) {
     edge: prm.edge === undefined ? 0.0 : Number(prm.edge),
     cadence: prm.cadence === undefined ? 0.0 : Number(prm.cadence),
     closeness: prm.closeness === undefined ? 0.0 : Number(prm.closeness),
+    signature: prm.signature === undefined ? 0.0 : Number(prm.signature),
     uta_hz: utaHz,
   });
 }
@@ -147,6 +148,7 @@ Options:
   --edge <float>           響の拍頭アタック (0.0..1.0、既存音声は0)
   --cadence <float>        響の文脈に反応する節回し (0.0..1.0、既存音声は0)
   --closeness <float>      響の句内の存在感 (0.0..1.0、既存音声は0)
+  --signature <float>      音素連鎖による声の指紋 (0.0..1.0、既存音声は0)
   -h, --help               このヘルプを表示`);
 }
 
@@ -181,6 +183,7 @@ function main() {
       edge: { type: "string" },
       cadence: { type: "string" },
       closeness: { type: "string" },
+      signature: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -211,7 +214,7 @@ function main() {
   const flagMap = {
     seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
     "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
-    damp: "damp", shin: "shin", character: "character", edge: "edge", cadence: "cadence", closeness: "closeness",
+    damp: "damp", shin: "shin", character: "character", edge: "edge", cadence: "cadence", closeness: "closeness", signature: "signature",
   };
   for (const [flag, key] of Object.entries(flagMap)) {
     if (values[flag] !== undefined) {
@@ -250,6 +253,10 @@ function main() {
 
   if (prm.closeness !== undefined && (!Number.isFinite(Number(prm.closeness)) || Number(prm.closeness) < 0 || Number(prm.closeness) > 1)) {
     dieParam(`closeness must be in [0, 1], got ${prm.closeness}`);
+  }
+
+  if (prm.signature !== undefined && (!Number.isFinite(Number(prm.signature)) || Number(prm.signature) < 0 || Number(prm.signature) > 1)) {
+    dieParam(`signature must be in [0, 1], got ${prm.signature}`);
   }
 
   if (values["save-recipe"]) {
