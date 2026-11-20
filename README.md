@@ -349,3 +349,23 @@ node b3_yomu.mjs --seed 42 --profile soroe2 --text "アー、ウー、ウアー"
 **デフォルトは試聴評価で好評だった `soroe1` に戻した**（`--profile candidate` は引き続き試験可能）。
 この表の音程は自動生成した特定の喃語に強く依存し、固定発声の測定値とは異なる。
 回帰テスト合格は聴感の一致を意味しない。
+
+### B3改 — スペクトログラム比較からの3点改造（opt-in `--profile kai`）
+
+上下同じ4.36秒・0–8kHz表示の画像で、実録は発声が柔らかく現れ、高域倍音が次第に弱まり、間に息や環境音が残る。
+B3 soroe1 は切り出された音の塊、高域まで等間隔の線、無音の黒い間が目立つ。
+**B3改は後処理を独立実験にし、B3 soroe1 の合成波形には触らない。**
+
+- `b3_kai.mjs`: 音の強さから自動検出した発声区間のエンベロープに attack/release を適用
+- 単極ローパスとの混合によって高次倍音を減らす（`--cutoffHz` と `--tiltMix`）
+- 別シードの静かなハイパス雑音をすき間にも置く（`--airLevel`）。**これは乳児の呼吸を再現した証明ではなく、空白解消の試み**
+- `baby bend` と `soroe1` 声門帰還は固定、変更なし。
+- `--profile soroe1` は従前と同じバイト列を生成する比較用。
+
+```bash
+node b3_yomu.mjs --seed 42 --profile kai --out b3_kai.wav
+node b3_yomu.mjs --seed 42 --profile soroe1 --out b3_before.wav
+node b3_yomu.mjs --seed 42 --profile kai --attackMs 70 --releaseMs 130 --cutoffHz 2000 --tiltMix 0.8 --airLevel 0.0015 --out b3_kai_variant.wav
+```
+
+評価は同一文・同一seed、レベル正規化を固定して **Hodokiの5指標に加え、発声の時間包絡と高域倍音比、無音部のエネルギー**を比較する必要がある。
