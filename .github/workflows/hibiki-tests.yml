@@ -1,0 +1,27 @@
+name: Hibiki voice regression
+on:
+  push:
+    branches: [hibiki]
+  pull_request:
+    branches: [hibiki]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check hitofude.mjs
+          node --check yomu.mjs
+          node --check tools/hibiki_listen.mjs
+      - name: Synthesis regression tests
+        run: node --test tests/hibiki.test.mjs
+      - name: CLI smoke render
+        run: |
+          node yomu.mjs --preset hibiki_katari --measure "あさのひかり、ゆめのかけら"
+          node yomu.mjs --preset hibiki_yorisoi --measure "おかえり、きょうもはなそう"
