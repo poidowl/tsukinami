@@ -3,7 +3,8 @@
 // Usage: node tools/b3_sweep.mjs reference.wav
 import fs from "node:fs";
 import {analyze,readWav} from "./b3_soroi.mjs";
-import {renderB3} from "../b3_akambo.mjs";
+import {makeHitofude} from "../hitofude.mjs";
+import {B3_BASE} from "../b3_akambo.mjs";
 const ref=process.argv[2];if(!ref)throw Error("reference WAV argument required");
 const wav=readWav(fs.readFileSync(ref));
 if(wav.sr!==44100)throw Error("reference must be 44.1 kHz");
@@ -15,10 +16,7 @@ const text="アー、ウー、ウアー",seed=42;
 for(const hz of [300,320,340,351]){
  for(const jitter of [0.018,0.027,0.04,0.055]){
   for(const combo of [{combG:0.99,rawAirMul:1},{combG:0.985,rawAirMul:0.6}]){
-    const rendered=renderB3({seed,text,profile:"soroe1",jitter,...combo});
-    // Override hz by rendering directly with the same B3 base knobs.
-    const {makeHitofude}=await import("../hitofude.mjs");
-    const {B3_BASE}=await import("../b3_akambo.mjs");
+    // Sweep the glottal model without changing baby bend or the text.
     const samples=makeHitofude(text,{...B3_BASE,seed,hz,jitter,...{
       b3_combG:combo.combG,b3_rawAirMul:combo.rawAirMul
     }}).samples;
