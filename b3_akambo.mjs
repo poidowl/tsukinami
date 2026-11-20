@@ -17,7 +17,7 @@ export const B3_SOROE2 = Object.freeze({ ...B3_BASE, b3_combG: 0.985, b3_rawAirM
 export const B3_KAI = Object.freeze({ ...B3_PRESET, ...B3_KAI_SETTINGS });
 
 export function renderB3({ seed = B3_PRESET.seed, phrases = 4, text = null,
-  mode = "coo", profile = "kai", jitter = undefined,
+  mode = "coo", profile = "soroe1", jitter = undefined,
   combG = undefined, rawAirMul = undefined, bend = undefined,
   attackMs = undefined, releaseMs = undefined, cutoffHz = undefined,
   tiltMix = undefined, airLevel = undefined } = {}) {
