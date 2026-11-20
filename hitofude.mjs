@@ -65,6 +65,14 @@ export const PRESETS = {
     g_vo: 0.86, damp: 0.12, shin: 1.0, tilt_w: 5, sigh: 0.43,
     jitter: 0.0028, wander_st: 0.13, character: 0.38, edge: 0.22, cadence: 0.88,
   },
+  hibiki_yorisoi: {
+    label: "寄添",
+    description: "寄添（息の残る静かな近接声。声の存在感を句に合わせて動かす）",
+    seed: 2024, hz: 278.0, fscale: 1.105, rate: 1.33,
+    g_vo: 0.85, damp: 0.15, shin: 1.0, tilt_w: 6, sigh: 0.67,
+    jitter: 0.0027, wander_st: 0.14, character: 0.22, edge: 0.06,
+    cadence: 0.52, closeness: 0.82,
+  },
   hibiki_awa: {
     label: "泡",
     description: "泡（浮遊するささやきに、小さな歌心が混じる電子声）",
@@ -1124,6 +1132,7 @@ export function makeHitofude(text, opts = {}) {
     character = 0.0,  // 響の固有声色・拍の訛り (0=草薙と同一、0..1=個性を増す)
     edge = 0.0,       // 響の拍頭アタック／粘膜扉の鋭さ (0=草薙と同一、0..1=鋭い声)
     cadence = 0.0,    // 響の文脈依存の節回し (0=無変更、0..1=母音・句末へ応答)
+    closeness = 0.0,  // 響の句内存在感 (0=無変更、0..1=前半の柔らかさ→後半の芯)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1341,6 +1350,33 @@ export function makeHitofude(text, opts = {}) {
   const sigh_sm = smooth1(sigh_fr, 14);
   const g_fr = new Array(n);
   for (let t = 0; t < n; t++) g_fr[t] = vo_sm[t] * g_vo * (1.0 - 0.88 * sigh_sm[t]);
+  // 寄添: 句の初めは息を残し、母音の芯に少し近づき、句末はふたたび息へ戻る。
+  // 喉の周期性だけを動かす。独立ノイズも振幅ゲートも加えない。
+  const closeAmt = Math.max(0.0, Math.min(1.0, Number.isFinite(closeness) ? closeness : 0.0));
+  if (closeAmt > 0.0) {
+    let phraseStart = 0;
+    for (let j = 0; j <= r.moras.length; j++) {
+      if (j !== r.moras.length && r.moras[j].kind !== "pau") continue;
+      const phrase = r.moras.slice(phraseStart, j).filter((m) => m.kind === "CV");
+      if (phrase.length) {
+        const begin = phrase[0].b, end = phrase[phrase.length - 1].e;
+        const dur = Math.max(0.05, end - begin);
+        for (const m of phrase) {
+          const ib = Math.max(0, Math.trunc(m.b / fpz)), ie = Math.min(n, Math.trunc(m.e / fpz));
+          for (let q = ib; q < ie; q++) {
+            if (!r.voiced[q]) continue;
+            const tSec = q * fpz;
+            const u = Math.max(0.0, Math.min(1.0, (tSec - begin) / dur));
+            const open = Math.max(0.0, 1.0 - u / 0.32);
+            const release = Math.max(0.0, (u - 0.72) / 0.28);
+            const contour = -0.12 * open + 0.035 * Math.sin(Math.PI * u) - 0.10 * release;
+            g_fr[q] = Math.max(0.0, Math.min(0.965, g_fr[q] + closeAmt * contour));
+          }
+        }
+      }
+      phraseStart = j + 1;
+    }
+  }
 
   // サンプル単位の基本周期 PER[i] (原石ノイズ x からダシをとった自然漂い wander + 周期ごとの微細ジッタ)
   const f0S = perSample(f0_fr, N);
