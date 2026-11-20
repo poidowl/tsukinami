@@ -136,3 +136,19 @@ test("B2 cooing differs from canonical babbling, stable and bounded", async () =
   const v = PRESETS.hibiki_ibuki;
   assert.equal(hashish(render(v)), hashish(render({ ...v, b2_body: 0, b2_breaks: 0 })));
 });
+
+test("B2 reference-led clean preset remains reversible to B2 legacy", async () => {
+  const { renderB2, B2_PRESET, B2_LEGACY } = await import("../b2_akambo.mjs");
+  const opts = { seed: 42, text: "アー、ウー、ウアー" };
+  const tuned = renderB2(opts), old = renderB2({ ...opts, profile: "legacy" });
+  assert.notEqual(hashish(tuned.samples), hashish(old.samples));
+  assert.equal(hashish(old.samples), hashish(makeHitofude(opts.text, { ...B2_LEGACY, seed: opts.seed }).samples));
+  assert.equal(hashish(tuned.samples), hashish(renderB2(opts).samples));
+  assert.ok(tuned.samples.every(Number.isFinite));
+  assert.ok(B2_PRESET.hz < B2_LEGACY.hz);
+  assert.ok(B2_PRESET.b2_breaks < B2_LEGACY.b2_breaks);
+  assert.ok(B2_PRESET.b2_clean > 0);
+  assert.throws(() => renderB2({ ...opts, clean: -0.1 }), RangeError);
+  const v = PRESETS.hibiki_ibuki;
+  assert.equal(hashish(render(v)), hashish(render({ ...v, b2_clean: 0 })));
+});
