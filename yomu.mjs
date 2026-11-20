@@ -33,6 +33,7 @@ export function synth(text, prm, utaHz = null) {
     wander_st: Number(prm.wander_st),
     damp: prm.damp === undefined ? 0.08 : Number(prm.damp),
     shin: prm.shin === undefined ? 1.0 : Number(prm.shin),
+    character: prm.character === undefined ? 0.0 : Number(prm.character),
     uta_hz: utaHz,
   });
 }
@@ -139,6 +140,7 @@ Options:
   --wander <float>         ピッチ緩徐漂い幅 (半音)
   --damp <float>           コム帰還路の高域減衰 (0.0..0.95、高域に元の息を残す)
   --shin <float>           声門扉と声道の再帰結合度 (0.0=片道4段、0.0<..1.0=2唇粘膜扉×5極声道の再帰低音)
+  --character <float>      響の声色・モーラ訛り (0.0..1.0、既存音声は0)
   -h, --help               このヘルプを表示`);
 }
 
@@ -169,6 +171,7 @@ function main() {
       wander: { type: "string" },
       damp: { type: "string" },
       shin: { type: "string" },
+      character: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -199,7 +202,7 @@ function main() {
   const flagMap = {
     seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
     "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
-    damp: "damp", shin: "shin",
+    damp: "damp", shin: "shin", character: "character",
   };
   for (const [flag, key] of Object.entries(flagMap)) {
     if (values[flag] !== undefined) {
@@ -222,6 +225,10 @@ function main() {
   }
   if (prm.shin !== undefined && (!Number.isFinite(Number(prm.shin)) || Number(prm.shin) < 0 || Number(prm.shin) > 1)) {
     dieParam(`shin must be in [0, 1], got ${prm.shin}`);
+  }
+
+  if (prm.character !== undefined && (!Number.isFinite(Number(prm.character)) || Number(prm.character) < 0 || Number(prm.character) > 1)) {
+    dieParam(`character must be in [0, 1], got ${prm.character}`);
   }
 
   if (values["save-recipe"]) {
