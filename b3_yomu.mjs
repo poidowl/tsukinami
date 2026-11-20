@@ -7,7 +7,7 @@ import {renderB3, encodeWav, SR} from "./b3_akambo.mjs";
 const {values:v}=parseArgs({options:{
   seed:{type:"string",default:"20261120"},phrases:{type:"string",default:"4"},
   text:{type:"string"},mode:{type:"string",default:"coo"},
-  profile:{type:"string",default:"kai"},
+  profile:{type:"string",default:"soroe1"},
   jitter:{type:"string"},combG:{type:"string"},rawAirMul:{type:"string"},bend:{type:"string"},
   attackMs:{type:"string"},releaseMs:{type:"string"},cutoffHz:{type:"string"},
   tiltMix:{type:"string"},airLevel:{type:"string"},
