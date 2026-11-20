@@ -26,6 +26,7 @@ jobs:
           node --check b3_akambo.mjs
           node --check b3_yomu.mjs
           node --check tools/b3_measure.mjs
+          node --check tools/b3_sweep.mjs
       - name: Synthesis regression tests
         run: node --test tests/hibiki.test.mjs
       - name: Blind listening pack smoke test
@@ -56,6 +57,7 @@ jobs:
           sudo apt-get install -y -qq ffmpeg
           ffmpeg -loglevel error -y -i samples/reference/infant_2months_stephan.ogg -ar 44100 -ac 1 "$RUNNER_TEMP/infant.wav"
           node tools/b3_measure.mjs "$RUNNER_TEMP/infant.wav" "$RUNNER_TEMP/b3_soroe1.wav" "$RUNNER_TEMP/b3_candidate.wav" "$RUNNER_TEMP/b3_soroe2.wav"
+          node tools/b3_sweep.mjs "$RUNNER_TEMP/infant.wav"
       - name: CLI smoke render
         run: |
           node yomu.mjs --preset hibiki_katari --measure "あさのひかり、ゆめのかけら"
