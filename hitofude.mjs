@@ -1152,6 +1152,7 @@ export function makeHitofude(text, opts = {}) {
     signature = 0.0,  // 響の音素連鎖に固有の声色 (0=無変更、0..1=強い個体差)
     gesture = 0.0,    // 響の音程・声道同時ジェスチャー (0=従来通り、0..1=最大)
     baby = 0.0,       // Bシリーズ専用: 未熟な調音・喃語の発声 (0=既存音声、0..1=強さ)
+    b2_body = 0.0,    // B2専用: 呼気圧・声門扉・周期が結合する不安定さ
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1495,6 +1496,17 @@ export function makeHitofude(text, opts = {}) {
     if (shin > 0.0) heikin(PER, Math.max(10, Math.round(SR / (hRef * 6.0))), PER);
   }
 
+  // B2: 同一ノイズから得る遅い呼気圧のうねり。
+  // 声門の締まり、基本周期、空気流を同じ圧力に依存させる。
+  const bodyAmt = Math.max(0, Math.min(1, Number.isFinite(b2_body) ? b2_body : 0));
+  const bodyPressure = bodyAmt > 0 ? furafura(x, 0.0, 1.0, 0.065) : null;
+  if (bodyPressure) {
+    for (let i = 0; i < N; i++) {
+      // 声帯の緊張が追随しきらず、周期が呼気圧と同時に揺れる。
+      const v = bodyPressure[i];
+      PER[i] *= Math.pow(2, (-bodyAmt * 0.85 * v) / 12);
+    }
+  }
   const GS = perSample(g_fr, N);
   const SIGH_S = perSample(sigh_sm, N);
   const BITE_S = edgeAmt > 0.0 ? perSample(smooth1(biteFr, 10), N) : null;
@@ -1511,6 +1523,9 @@ export function makeHitofude(text, opts = {}) {
     x = karuku(x, hRef >= 200.0 ? 115 : 220);
     const xClean = arakezuriT(x.slice(), tw, 2, perSample(cons_sharp, N));
     const pLungWalk = furafura(x, 0.38, 0.14 - 0.10 * hiMix, 0.045 + 0.175 * hiMix);
+    if (bodyPressure) {
+      for (let i = 0; i < N; i++) pLungWalk[i] = Math.max(0.055, pLungWalk[i] * (1.0 + 0.48 * bodyAmt * bodyPressure[i]));
+    }
     const F5 = F4.map((v) => (fs < 0.92 ? Math.min(4850.0, v * 1.26) : Math.min(8800.0, v + 1100.0 * fs)));
     const F1S = perSample(F1, N), F2S = perSample(F2, N), F3S = perSample(F3, N), F4S = perSample(F4, N), F5S = perSample(F5, N);
     const gBuf = new Float64Array(N), gBuf2 = new Float64Array(N), uOut = new Float64Array(N), yc = new Float64Array(N);
@@ -1529,11 +1544,13 @@ export function makeHitofude(text, opts = {}) {
     let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
     let y1_1 = 0.0, y1_2 = 0.0, y2_1 = 0.0, y2_2 = 0.0, y3_1 = 0.0, y3_2 = 0.0, y4_1 = 0.0, y4_2 = 0.0, y5_1 = 0.0, y5_2 = 0.0;
     for (let i = 0; i < N; i++) {
-      const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
+      const pressure = bodyPressure ? bodyPressure[i] : 0.0;
+      const g = bodyPressure ? Math.min(0.975, Math.max(0, GS[i] * (1.0 + 0.11 * bodyAmt * pressure))) : GS[i];
+      const vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
       const gT = Math.max(g, seedFloor * (1.0 - SIGH_S[i]));
       const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
-      const aOpen = Math.exp(-8.20 / p);
-      const aClose = Math.exp(-closeMul / p);
+      const aOpen = Math.exp(-(8.20 + 2.5 * bodyAmt * pressure) / p);
+      const aClose = Math.exp(-(closeMul + 4.0 * bodyAmt * pressure) / p);
       const pRet = Math.tanh((0.70 * (y1_1 - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
       p1Prev = y1_1;
       const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
