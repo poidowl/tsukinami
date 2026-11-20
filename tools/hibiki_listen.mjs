@@ -9,7 +9,7 @@ import { encodeWav, makeHitofude, makeRng, PRESETS } from "../hitofude.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.resolve(process.argv[2] || path.join(root, "out", "hibiki_blind"));
-const voices = ["hibiki", "hibiki_katari", "hibiki_awa", "hibiki_kiba"];
+const voices = ["hibiki", "hibiki_katari", "hibiki_awa", "hibiki_kiba", "hibiki_yorisoi"];
 const lines = [
   "あさのひかり、ゆめのかけら",
   "あのひとのこえが、まだみみにのこっている",
@@ -35,7 +35,7 @@ for (let j = 0; j < lines.length; j++) {
 }
 const guide = [
   "# 響：匿名試聴",
-  "音声は line1_A → line1_D、続いて line2, line3 の順に聴く。",
+  "音声は line1_A → line1_E、続いて line2, line3 の順に聴く。",
   "採点時には answer_key.json を開かない。",
   "各WAVについて、以下を1〜5で採点（1=低い、5=高い）。",
   "可読性 / 耳の快適さ / 記憶に残る度合い / 続きを聴きたい度合い",
@@ -48,5 +48,9 @@ const guide = [
   "音の好みと個人差があるため、これは評価手段であり改善の証拠ではない。",
 ].join("\n");
 fs.writeFileSync(path.join(out, "LISTEN_FIRST.txt"), guide + "\n");
+// 各WAVの無記名評点シート。回答表の声名を載せない。
+const rows = ["file,readability,comfort,recognition,listen_more,notes"];
+for (const { file } of entries) rows.push(file + ",,,,,");
+fs.writeFileSync(path.join(out, "scores.csv"), rows.join("\n") + "\n");
 fs.writeFileSync(path.join(out, "answer_key.json"), JSON.stringify({ lines, entries }, null, 2) + "\n");
-console.log(`[hibiki] ${entries.length} WAV + listening guide + answer key -> ${out}`);
+console.log(`[hibiki] ${entries.length} WAV + listening guide + blank score sheet + answer key -> ${out}`);
