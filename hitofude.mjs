@@ -1100,6 +1100,8 @@ export function makeHitofude(text, opts = {}) {
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
+    combG = null,     // サラサラ化 (opt-in): 有声のあいだ粘膜コム帰還を combG×有声度 に固定 (null=既定のまま。目安 0.985〜0.99、上限 0.9995)
+    rawAirMul = 1.0,  // サラサラ化 (opt-in): 扉を通る生ノイズ rawAir の倍率 (1.0=既定。目安 0.6)
   } = opts;
 
   let accentKw = null, targetText = text, phraseCuts = null;
@@ -1265,7 +1267,8 @@ export function makeHitofude(text, opts = {}) {
     const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
     const ret = 0.45 * shin;
     const qSoft = 1.45 - 0.30 * hiMix;
-    const rawAir = 0.02 + 0.12 * hiMix;
+    const rawAir = rawAirMul === 1.0 ? 0.02 + 0.12 * hiMix : (0.02 + 0.12 * hiMix) * rawAirMul;
+    const combGx = combG === null || combG === undefined ? null : Math.min(+combG, 0.9995);
     const radK = 0.42 + 0.54 * hiMix;
     const bern = 0.55 * hiMix;
     const loGain = 1.805 - 0.155 * hiMix;
@@ -1278,7 +1281,7 @@ export function makeHitofude(text, opts = {}) {
     let y1_1 = 0.0, y1_2 = 0.0, y2_1 = 0.0, y2_2 = 0.0, y3_1 = 0.0, y3_2 = 0.0, y4_1 = 0.0, y4_2 = 0.0, y5_1 = 0.0, y5_2 = 0.0;
     for (let i = 0; i < N; i++) {
       const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
-      const gT = Math.max(g, seedFloor * (1.0 - SIGH_S[i]));
+      const gT = combGx !== null && g > 1e-4 ? combGx * vo : Math.max(g, seedFloor * (1.0 - SIGH_S[i]));
       const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
       const aOpen = Math.exp(-8.20 / p);
       const aClose = Math.exp(-closeMul / p);

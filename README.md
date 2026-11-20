@@ -1,7 +1,7 @@
 # tsukinami (`kusanagi` branch — Pure JavaScript Edition)
 
 > **約77KBのピュアJavaScript（`.py` ゼロ）で、たった1本のホワイトノイズから日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
-> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,864行（77.4 KB）。
+> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,867行（77.9 KB）。
 
 `hitofude`（一筆彫り）から Python 依存と互換用の乱数・丸めギプスをすべて外し、純粋な ES Module 2本（エンジン [`hitofude.mjs`](hitofude.mjs) ＋ CLI [`yomu.mjs`](yomu.mjs)）にまとめた「草薙（kusanagi）」ブランチです。
 
@@ -20,7 +20,7 @@ Web取得型LLMには、以下の **Raw プレーンテキスト URL 3本**を�
 
 | ファイル | 行数 | 役割 |
 | :--- | ---: | :--- |
-| [`hitofude.mjs`](hitofude.mjs) | 1,590行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、非対称ベルヌーイ粘膜扉×5極声道の単一乱数再帰合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
+| [`hitofude.mjs`](hitofude.mjs) | 1,593行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、非対称ベルヌーイ粘膜扉×5極声道の単一乱数再帰合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
 | [`yomu.mjs`](yomu.mjs) | 274行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱、引数バリデーション（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
 | [`tools/build_x_player.mjs`](tools/build_x_player.mjs) | 補助 | [`hitofude.mjs`](hitofude.mjs) から X Player Card / GitHub Pages 用の単一HTML（`kusanagi.html` + `kusanagi_player.html`）を直接生成（公開URL: https://poidowl.github.io/tsukinami/kusanagi.html ） |
 
