@@ -21,6 +21,11 @@ jobs:
           node --check tools/hibiki_listen.mjs
       - name: Synthesis regression tests
         run: node --test tests/hibiki.test.mjs
+      - name: Blind listening pack smoke test
+        run: |
+          node tools/hibiki_listen.mjs "$RUNNER_TEMP/hibiki_blind"
+          test "$(find "$RUNNER_TEMP/hibiki_blind" -maxdepth 1 -name '*.wav' | wc -l)" -eq 18
+          test "$(tail -n +2 "$RUNNER_TEMP/hibiki_blind/scores.csv" | wc -l)" -eq 18
       - name: CLI smoke render
         run: |
           node yomu.mjs --preset hibiki_katari --measure "あさのひかり、ゆめのかけら"
