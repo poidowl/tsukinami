@@ -244,3 +244,24 @@ node --test tests/hibiki.test.mjs
 `--body 0` は同一B2レシピの結合機構だけを無効化する比較用。
 B1とB2のレシピ自体は異なるため、B1のWAVと同一にはならない。
 目標は「息が声を生む」生々しさ。乳児の実録を再現したものではなく、見た目の可愛さや臨場感は聴取評価が必要。
+
+### B2 改訂：生後2か月のクーイングに寄せる
+
+- デフォルトを「バババ」型の模倣から、`アー、ウアー、オー` など母音主体のクーイングに変更。
+- `--mode babble` で従来型の子音反復も生成できる。
+- 呼気が不足する局面で、同じ声門扉の周期を伸ばし、接触を弱め、元のノイズから息漏れが増える
+  `--breaks 0..1` を導入（パルス化・発声途切れの**近似**）。
+- B1/Vの既存WAVは不変。B2の旧版はGit履歴から再現可能。
+
+```bash
+node b2_yomu.mjs --seed 42 --mode coo --out b2_coo.wav
+node b2_yomu.mjs --seed 42 --mode babble --out b2_babble.wav
+node b2_yomu.mjs --seed 42 --breaks 0 --out b2_no_breaks.wav
+```
+
+参考: Wikimedia Commons 公開録音「Gabbling baby 2 months old」(23秒、PD):
+https://commons.wikimedia.org/wiki/File:Gabbling_baby_2_months_old.ogg
+学術的な非定常発声: https://pmc.ncbi.nlm.nih.gov/articles/PMC6177330/
+
+**比較状況**: 音声ファイルのローカル取得は環境側の通信制約で失敗。
+現段階で実録との音響距離や聴感の一致を確認したと主張しない。音は別途実録とAB比較が必要。
