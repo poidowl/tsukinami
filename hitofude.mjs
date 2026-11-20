@@ -51,6 +51,13 @@ export const PRESETS = {
     g_vo: 0.77, damp: 0.22, shin: 1.0,
     tilt_w: 5, sigh: 0.18, jitter: 0.0060, wander_st: 0.22,
   },
+  hibiki: {
+    label: "響",
+    description: "響（母音ごとの色彩と拍のうねりを刻む、少し生意気な電子声）",
+    seed: 2024, hz: 285.0, fscale: 1.12, rate: 1.21,
+    g_vo: 0.86, damp: 0.11, shin: 1.0, tilt_w: 4, sigh: 0.34,
+    jitter: 0.0028, wander_st: 0.13, character: 0.78,
+  },
   robot: {
     label: "ロボ",
     description: "冷凍ロボット（片道コム shin=0・周期ジッタ0・漂い0・強いくびれG=0.96）",
@@ -1093,6 +1100,7 @@ export function makeHitofude(text, opts = {}) {
     wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
     damp = 0.08,      // 声帯波帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
     shin = 1.0,       // 声門2唇粘膜扉×5極声道の再帰結合度 (1.0=既定、0.0=冷凍ロボ用の片道コム)
+    character = 0.0,  // 響の固有声色・拍の訛り (0=草薙と同一、0..1=個性を増す)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1165,6 +1173,26 @@ export function makeHitofude(text, opts = {}) {
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
   }
 
+  // 響: 母音の中だけで、モーラごとに決まった小さな音程の訛りを刻む。
+  // ランダムな揺らぎではなく反復可能な「口癖」。母音の入りは保ち、核の後半で少し浮く。
+  const charm = Math.max(0.0, Math.min(1.0, Number.isFinite(character) ? character : 0.0));
+  if (charm > 0.0 && !uta_hz) {
+    const motif = [-0.80, 0.55, 1.00, -0.30, 0.35]; // 半音、固定の5拍モチーフ
+    let mi = 0;
+    for (const m of r.moras) {
+      if (m.kind !== "CV") continue;
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      const step = motif[mi++ % motif.length];
+      for (let t = ib; t < ie; t++) {
+        if (!r.voiced[t]) continue;
+        const u = (t - ib) / Math.max(1, ie - ib);
+        const bump = 4.0 * u * (1.0 - u); // 母音境界で0、中央で1
+        f0_fr[t] *= Math.pow(2.0, (charm * step * bump) / 12.0);
+      }
+    }
+  }
+
   // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
   const sigh_fr = new Array(n).fill(0.0);
   if (sigh > 0.0) {
@@ -1197,11 +1225,27 @@ export function makeHitofude(text, opts = {}) {
 
   // 声道共鳴周波数 F1..F4 と子音共鳴中心 f_cons_cen
   const fs = fscale;
+  // 響: 子音を壊さないよう母音の中央だけF2/F3を補色方向へ動かす。
+  // F2が前舌母音で下がり、奥舌母音で上がることで、同じ高さでも声の色が変わる。
+  const vowelTint = new Float64Array(n);
+  if (charm > 0.0) {
+    const tint = { a: 0.45, i: -0.85, u: 1.0, e: -0.55, o: 0.80 };
+    for (const m of r.moras) {
+      if (m.kind !== "CV" || !(m.v in tint)) continue;
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      for (let t = ib; t < ie; t++) {
+        if (!r.voiced[t]) continue;
+        const u = (t - ib) / Math.max(1, ie - ib);
+        vowelTint[t] = charm * tint[m.v] * 4.0 * u * (1.0 - u);
+      }
+    }
+  }
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
     F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
-    F2[t] = Math.min(Math.max(r.F2[t] * fs, F1[t] + 280.0), 8500.0);
-    F3[t] = Math.min(Math.max(r.F3[t] * fs, F2[t] + 350.0), 9000.0);
+    F2[t] = Math.min(Math.max(r.F2[t] * fs * (1.0 + 0.13 * vowelTint[t]), F1[t] + 280.0), 8500.0);
+    F3[t] = Math.min(Math.max(r.F3[t] * fs * (1.0 - 0.055 * vowelTint[t]), F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
   }
 
