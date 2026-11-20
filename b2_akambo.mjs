@@ -5,9 +5,15 @@ import { b1Babble, B1_PRESET } from "./b1_akambo.mjs";
 
 export const B2_PRESET = Object.freeze({
   ...B1_PRESET,
-  hz: 390, fscale: 1.31, rate: 1.62, g_vo: 0.83, damp: 0.23,
-  tilt_w: 6, sigh: 0.64, jitter: 0.018, wander_st: 0.36,
-  baby: 0.68, b2_body: 0.88, b2_breaks: 0.72,
+  hz: 351, fscale: 1.31, rate: 1.62, g_vo: 0.87, damp: 0.16,
+  tilt_w: 5, sigh: 0.38, jitter: 0.018, wander_st: 0.36,
+  baby: 0.68, b2_body: 0.58, b2_breaks: 0.22, b2_clean: 0.74,
+});
+// B2の旧実装を保存: 変更の効果を同一文章・乱数seedで検証できる。
+export const B2_LEGACY = Object.freeze({
+  ...B2_PRESET,
+  hz: 390, g_vo: 0.83, damp: 0.23, tilt_w: 6, sigh: 0.64,
+  b2_body: 0.88, b2_breaks: 0.72, b2_clean: 0,
 });
 // 生後2か月前後の「クーイング」を狙う: 正規のCV音節より、母音の探りを重視。
 // バババ期の喃語は --mode babble で別途生成できる。
@@ -25,12 +31,18 @@ export function b2Coo(seed = B2_PRESET.seed, phrases = 4) {
   return result.join("、");
 }
 export function renderB2({ seed = B2_PRESET.seed, phrases = 4, text = null,
-  mode = "coo", body = B2_PRESET.b2_body, breaks = B2_PRESET.b2_breaks } = {}) {
+  mode = "coo", profile = "tuned", body = undefined, breaks = undefined, clean = undefined } = {}) {
+  if (profile !== "tuned" && profile !== "legacy") throw new RangeError("profile must be tuned or legacy");
+  const preset = profile === "legacy" ? B2_LEGACY : B2_PRESET;
+  body ??= preset.b2_body;
+  breaks ??= preset.b2_breaks;
+  clean ??= preset.b2_clean;
   if (!Number.isFinite(seed) || !Number.isFinite(body) || body < 0 || body > 1 ||
-      !Number.isFinite(breaks) || breaks < 0 || breaks > 1)
+      !Number.isFinite(breaks) || breaks < 0 || breaks > 1 ||
+      !Number.isFinite(clean) || clean < 0 || clean > 1)
     throw new RangeError("invalid B2 seed/body/breaks");
   if (mode !== "coo" && mode !== "babble") throw new RangeError("mode must be coo or babble");
   const kana = text == null ? (mode === "coo" ? b2Coo(seed, phrases) : b1Babble(seed, phrases)) : String(text);
-  return { text: kana, ...makeHitofude(kana, { ...B2_PRESET, seed, b2_body: body, b2_breaks: breaks }) };
+  return { text: kana, ...makeHitofude(kana, { ...preset, seed, b2_body: body, b2_breaks: breaks, b2_clean: clean }) };
 }
 export { encodeWav, SR };
