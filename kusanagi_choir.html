@@ -1,0 +1,2565 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="twitter:card" content="player">
+<meta name="twitter:title" content="草薙 kusanagi — 気流がうねる1→128人ライブ大合唱">
+<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。たった1本のホワイトノイズから1→2→4→…→128人まで倍々で声が増え、気流がうねる純JSライブ大合唱シミュレータ">
+<meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_choir_player.html?v=7">
+<meta name="twitter:player:width" content="480">
+<meta name="twitter:player:height" content="500">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://poidowl.github.io/tsukinami/kusanagi_choir.html">
+<meta property="og:title" content="草薙 kusanagi — 気流がうねる1→128人ライブ大合唱">
+<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。たった1本のホワイトノイズから1→128人まで倍々で声が増える純JSライブ大合唱。">
+<meta property="og:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<title>草薙 kusanagi — 気流がうねる1→128人ライブ大合唱 | poidowl/tsukinami</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #070a13;
+    --panel: rgba(13, 18, 32, 0.90);
+    --border: rgba(148, 163, 184, 0.22);
+    --fg: #f1f5f9;
+    --muted: #94a3b8;
+    --gold: #fbbf24;
+    --cyan: #38bdf8;
+    --pink: #f472b6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+    overflow-x: hidden;
+  }
+  .app {
+    max-width: 520px; margin: 0 auto; min-height: 100%;
+    display: flex; flex-direction: column; gap: 9px;
+    padding: 12px;
+  }
+  .stage-box {
+    position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 215px;
+    border-radius: 16px; overflow: hidden;
+    border: 1px solid var(--border); background: #060911;
+    box-shadow: 0 12px 34px rgba(0,0,0,0.52);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .hud-top {
+    position: absolute; top: 10px; left: 12px; right: 12px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none;
+  }
+  .cnt-wrap { display: flex; align-items: baseline; gap: 4px; }
+  .cnt-num {
+    font-size: 2.3rem; font-weight: 800; line-height: 1;
+    color: var(--gold); text-shadow: 0 2px 18px rgba(251,191,36,0.55);
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.28s cubic-bezier(.22,1,.36,1);
+  }
+  .cnt-num.pop { transform: scale(1.22); }
+  .cnt-unit { font-size: 0.84rem; color: #e2e8f0; font-weight: 600; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+  .badge {
+    font-size: 0.72rem; padding: 3px 10px; border-radius: 999px;
+    background: rgba(15, 23, 42, 0.78); border: 1px solid rgba(56, 189, 248, 0.45);
+    color: var(--cyan); backdrop-filter: blur(4px);
+    transition: all 0.35s;
+  }
+  .badge.mod {
+    border-color: rgba(251, 191, 36, 0.8);
+    color: #fef08a;
+    background: rgba(120, 53, 15, 0.55);
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.35);
+  }
+  .hud-bottom {
+    position: absolute; left: 12px; right: 12px; bottom: 11px;
+    pointer-events: none; text-align: center;
+  }
+  .lyric {
+    font-size: 1.12rem; font-weight: 700; color: #fff;
+    letter-spacing: 0.03em;
+    text-shadow: 0 2px 14px rgba(0,0,0,0.92), 0 0 24px rgba(56,189,248,0.28);
+    min-height: 1.6rem;
+    transition: opacity 0.35s, transform 0.35s;
+  }
+  .lyric.fade { opacity: 0; transform: translateY(6px); }
+  .arch {
+    font-size: 0.73rem; color: #fbcfe8;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.95);
+    min-height: 1.1rem; margin-top: 2px;
+  }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 11px 13px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .row-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.76rem; color: var(--muted); margin-bottom: 4px;
+  }
+  .row-label b { color: var(--fg); font-size: 0.80rem; }
+  .seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .seg4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .seg button, .seg4 button {
+    background: #121829; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 2px; font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .seg button:hover, .seg4 button:hover { color: #fff; border-color: #475569; }
+  .seg button.active, .seg4 button.active {
+    background: linear-gradient(135deg, rgba(56,189,248,0.24), rgba(251,191,36,0.24));
+    color: #fff; border-color: var(--gold);
+  }
+  input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; margin: 0; }
+  .chaos-ticks {
+    display: flex; justify-content: space-between; font-size: 0.67rem; color: var(--muted); margin-top: 2px;
+  }
+  .controls { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  .btn-play {
+    background: linear-gradient(135deg, #0284c7, #6366f1);
+    color: #fff; border: none; border-radius: 10px;
+    padding: 10px 16px; font-size: 0.94rem; font-weight: 800;
+    cursor: pointer; transition: transform 0.1s, opacity 0.15s;
+    box-shadow: 0 4px 18px rgba(56,189,248,0.32);
+  }
+  .btn-play:hover { opacity: 0.94; }
+  .btn-play:active { transform: scale(0.98); }
+  .btn-play.playing { background: linear-gradient(135deg, #e11d48, #be123c); box-shadow: 0 4px 16px rgba(225,29,72,0.3); }
+  .btn-share {
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 10px; padding: 10px 12px; font-size: 0.80rem; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn-share:hover { border-color: var(--cyan); color: #fff; }
+  .prog-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: var(--muted); }
+  .prog-bar { flex: 1; height: 5px; border-radius: 99px; background: #1e293b; overflow: hidden; }
+  .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--cyan), var(--gold)); transition: width 0.2s; }
+  .foot { text-align: center; font-size: 0.69rem; color: #64748b; }
+
+  .nav-links {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 2px;
+  }
+  .nav-btn {
+    background: #0f172a; color: #cbd5e1; border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 0.74rem; font-weight: 700;
+    text-decoration: none; cursor: pointer; font-family: inherit;
+  }
+  .nav-btn:hover { border-color: var(--cyan); color: #fff; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage-box">
+    <canvas id="cv"></canvas>
+    <div class="hud-top">
+      <div class="cnt-wrap">
+        <span class="cnt-num" id="cntNum">1</span>
+        <span class="cnt-unit" id="cntUnit">人待機中</span>
+      </div>
+      <span class="badge" id="keyBadge">白い雨 → 128人のライブ夜明け</span>
+    </div>
+    <div class="hud-bottom">
+      <div class="lyric" id="lyricText">会場と人数を選んでライブ合唱スタート</div>
+      <div class="arch" id="archText">無改造 hitofude.mjs @b114684・無圧縮の気流うねり（ロボはロボ）</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div>
+      <div class="row-label"><span>ライブ会場（リアルタイム残響＆空気感）</span><b id="venueLabel">ライブハウス（熱気＆近距離）</b></div>
+      <div class="seg4" id="venueSeg">
+        <button type="button" data-venue="live" class="active">ライブハウス</button>
+        <button type="button" data-venue="hall">木造ホール</button>
+        <button type="button" data-venue="cathedral">大聖堂</button>
+        <button type="button" data-venue="stadium">夜スタジアム</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="row-label"><span>何人まで倍々で増やす？</span><b id="maxLabel">1 → 128人（8段階）</b></div>
+      <div class="seg" id="maxSeg">
+        <button type="button" data-max="8">8人</button>
+        <button type="button" data-max="16">16人</button>
+        <button type="button" data-max="32">32人</button>
+        <button type="button" data-max="64">64人</button>
+        <button type="button" data-max="128" class="active">128人</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="row-label"><span>集団のバラバラさ加減</span><b id="chaosLabel">50%（自然なライブ合唱）</b></div>
+      <input id="chaosSlider" type="range" min="0" max="100" step="1" value="50">
+      <div class="chaos-ticks">
+        <span>0% きっちり聖歌隊</span>
+        <span>50% 自然な合唱</span>
+        <span>100% 球場カオス</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button type="button" class="btn-play" id="btnPlay">▶ ライブ合唱スタート</button>
+      <button type="button" class="btn-share" id="btnShare">𝕏 シェア</button>
+    </div>
+
+    <div class="prog-wrap">
+      <span id="statusText">待機中（白い雨から1人目が即誕生）</span>
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+    </div>
+  </div>
+
+
+  <div class="nav-links">
+    <button type="button" class="nav-btn" id="copyChoirUrlBtn">🔗 X投稿用URLをコピー</button>
+    <a class="nav-btn" href="./kusanagi.html">🗡️ 草薙ソロシンセへ</a>
+    <a class="nav-btn" href="./index.html">🎛️ オモチャ箱へ</a>
+    <a class="nav-btn" href="https://github.com/poidowl/tsukinami/tree/kusanagi" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+  </div>
+  <div class="foot">草薙 kusanagi @b114684 (v7: 気流うねり無圧縮・単一ノイズ一筆彫り・4会場ライブ) — 録音 0 Byte</div>
+</div>
+
+<script>
+(() => {
+// hitofude.mjs — 一筆彫り / 草薙版 (Single-Wire Subtractive Speech & Singing Synthesis in Pure JS)
+// 外部パッケージ・外部データ・Node固有API 一切不使用（ブラウザ ES Module / Node.js / Deno / Bun 共通）。
+//
+// 【LLM向け設計原則】
+//   音になる信号線は最初から最後まで「たった1本のホワイトノイズ x」のみを4段階で削って声と吐息にする。
+//   - 正弦波オシレータ (sin/cos 音源)・固定波形の粒スタンプ (grain)・40段オールパス位相散らし 不要
+//   - 有声/無声・子音帯・吐息はもちろん、呼気圧の漂い・ジッタ・ビブラートもすべて同じ1本のノイズ線 x からダシをとって彫る
+//   - 帯域ごとの自動利得制御 (AGC) なし → 各ノブは他の段で打ち消されずほぼ直交に効く
+//   - STFT 往復なし → 時間領域の1パス直列処理のみ
+
+const SR = 44100;
+const FP = 5.0; // 調音・韻律軌道のフレーム周期 (ms)
+
+const KNOB_KEYS = ["seed", "hz", "fscale", "rate", "g_vo", "tilt_w", "sigh", "jitter", "wander_st"];
+
+const PRESETS = {
+  hitofude: {
+    label: "澄み",
+    description: "澄み（標準：1本のホワイトノイズから4手で彫る透明女声）",
+    seed: 2024, hz: 350.0, fscale: 1.17, rate: 1.26,
+    g_vo: 0.92, tilt_w: 5, sigh: 0.0, jitter: 0.0013, wander_st: 0.18,
+  },
+  toiki: {
+    label: "吐息",
+    description: "吐息（句末でくびれGを緩め、声が同じ1本のノイズ線の吐息へほどけて戻る女声）",
+    seed: 2024, hz: 312.0, fscale: 1.15, rate: 1.30,
+    g_vo: 0.895, tilt_w: 6, sigh: 0.78, jitter: 0.0013, wander_st: 0.18,
+  },
+  sasayaki: {
+    label: "囁き",
+    description: "半有声囁き（浅いくびれG=0.58で倍音の谷に元のノイズの風を残す耳元ささやき）",
+    seed: 2024, hz: 305.0, fscale: 1.15, rate: 1.30,
+    g_vo: 0.58, tilt_w: 6, sigh: 0.85, jitter: 0.0018, wander_st: 0.15,
+  },
+  chibi: {
+    label: "ちびっ子",
+    description: "ちびっ子（短い声道 fscale=1.32・高ピッチ 400Hz・明るい粗削り tilt_w=4）",
+    seed: 2024, hz: 400.0, fscale: 1.32, rate: 1.20,
+    g_vo: 0.92, tilt_w: 4, sigh: 0.0, jitter: 0.0015, wander_st: 0.22,
+  },
+  ossan: {
+    label: "おっさん",
+    description: "おっさん（長い声道 fscale=0.88・低音 148Hz）",
+    seed: 2024, hz: 148.0, fscale: 0.88, rate: 1.22,
+    g_vo: 0.93, tilt_w: 5, sigh: 0.0, jitter: 0.0016, wander_st: 0.14,
+  },
+  robot: {
+    label: "ロボ",
+    description: "冷凍ロボット（周期ジッタ0・漂い0・強いくびれG=0.96）",
+    seed: 2024, hz: 220.0, fscale: 1.06, rate: 1.15,
+    g_vo: 0.96, tilt_w: 4, sigh: 0.0, jitter: 0.0, wander_st: 0.0,
+  },
+};
+
+// 軽量・決定論的 32-bit PRNG (Mulberry32)：ブラウザでも Node でも同じ種から完全に同じ波形を返す
+function makeRng(seed) {
+  let a = (Math.trunc(seed) ^ 0x6d2b79f5) >>> 0;
+  const random = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296.0;
+  };
+  return { random, uniform: (lo, hi) => lo + (hi - lo) * random() };
+}
+
+// ============================================================================
+// 1. kotoba — かな文字列 -> 5msフレーム調音軌道 (F1..F3, 帯域ゲイン G1..G3, 子音帯 bands, 音量 loud)
+// ============================================================================
+const K2V = {};
+for (const [row, cons] of [
+  ["アイウエオ", ""], ["カキクケコ", "k"], ["サシスセソ", "s"], ["タチツテト", "t"], ["ナニヌネノ", "n"], ["ハヒフヘホ", "h"],
+  ["マミムメモ", "m"], ["ヤ・ユ・ヨ", "y"], ["ラリルレロ", "r"], ["ワ・・・ヲ", "w"], ["ガギグゲゴ", "g"], ["ザジズゼゾ", "z"],
+  ["ダヂヅデド", "d"], ["バビブベボ", "b"], ["パピプペポ", "p"],
+]) {
+  const chars = Array.from(row);
+  const vs = ["a", "i", "u", "e", "o"];
+  for (let i = 0; i < 5; i++) if (chars[i] !== "・") K2V[chars[i]] = [cons, vs[i]];
+}
+Object.assign(K2V, {
+  "シ": ["sh", "i"], "チ": ["ch", "i"], "ツ": ["ts", "u"], "ジ": ["j", "i"], "ヂ": ["j", "i"], "ヅ": ["z", "u"],
+  "フ": ["f", "u"], "ヴ": ["b", "u"], "ヲ": ["", "o"],
+});
+const SMALL = { "ャ": "a", "ュ": "u", "ョ": "o", "ァ": "a", "ィ": "i", "ゥ": "u", "ェ": "e", "ォ": "o" };
+const PALC = { s: "sh", z: "j", t: "ch", d: "j" };
+const PAUSE = new Set(Array.from("、。，．,.!！?？… 　"));
+const PLACE = {
+  p: "lab", b: "lab", m: "lab", f: "lab", w: "lab", t: "alv", d: "alv", n: "alv", s: "alv", z: "alv", ts: "alv",
+  r: "alv", sh: "pal", ch: "pal", j: "pal", y: "pal", k: "vel", g: "vel", h: "glot", "": null,
+};
+const MANNER = {
+  p: "stop", b: "stop", t: "stop", d: "stop", k: "stop", g: "stop", m: "nas", n: "nas", s: "fric", z: "fric",
+  sh: "fric", j: "fric", ch: "affr", ts: "affr", f: "fric", h: "h", r: "tap", y: "glide", w: "glide", "": null,
+};
+const VOICELESS = new Set(["k", "s", "sh", "t", "ch", "ts", "h", "f", "p"]);
+const VOICED_OBS = new Set(["g", "d", "b", "z", "j"]);
+
+// 日本語母音・子音の教科書テーブルと一筆彫り用の確定値
+const KOTOBA_PRM = {
+  alpha: 1.15, alpha3: 1.3, T: 30, Tvc: 30, Tvv: 40, Tpal: 40, undershoot: 80, f1on: 280, f1drop: true,
+  smooth: 30, smooth_j: [30, 30, 30], fric_hold: 20, vl_hold: true, ou_long: true,
+  vdl: -4.0, vbg: 4.0, rdl: -4.0,
+  VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [380, 1300, 2650], e: [520, 2350, 3000], o: [650, 1050, 2850] },
+  LE: { lab: [0.75, 280], alv: [0.40, 1250], pal: [0.30, 1850], velF: [0.95, 300], velB: [1.05, 350] },
+  gl: { y: [300, 2700, 3300], w: [360, 800, 2600] },
+  fricT: { s: [2600, 4600, 6400], z: [2600, 4600, 6400], ts: [2600, 4600, 6400], sh: [1500, 3000, 4000], j: [1500, 3000, 4000], ch: [1500, 3000, 4000] },
+  nasT: { m: [280, 1100, 2500], n: [280, 1600, 2700], N: [300, 1300, 2600] },
+  vl_f1: 1000, vl_on: 0.85, vbar: 350, alvF2: 2350, alvF3: 3000,
+  cues: ["fric", "stop", "nas", "h", "r"], sc: 6000, ssd: 1300, shc: 3600, shsd: 900, fg: 2.2, fvg: 0.15, ng2: 0.15, ndl: -1.2, asp: 3, bg: 3.0,
+  r3: 2000, rtrack: true, cue_dl: true,
+  rate: 1.0, fin: 1.5, pau: 0.35, qn: 0.10,
+  sil: -30.0, qlev: -18.0, decl: 1.5, f0: 220.0, devmax: 0.045, Nlev: -1.0, fend: -6.0, fend_at: 0.16,
+  CDUR: { "": 0, k: 70, g: 50, s: 100, z: 70, sh: 100, j: 70, t: 60, d: 40, ch: 80, ts: 80, n: 50, h: 70, f: 70, m: 50, y: 60, r: 25, w: 55, b: 40, p: 70 },
+  VDUR: { a: 90, e: 90, i: 80, o: 90, u: 85 },
+  VL: { a: 0.0, e: -0.5, i: -0.8, o: -0.3, u: -0.3 },
+  CL: {
+    k: [-12, -5], t: [-12, -5], p: [-12, -5], ch: [-12, -4], ts: [-12, -4], g: [-4, -2], d: [-4, -2], b: [-4, -2],
+    s: [-3, -3], sh: [-3, -3], z: [-3, -2], j: [-3, -2], h: [-5, -4], f: [-5, -4], m: [-1.5, -1.5], n: [-1.5, -1.5],
+    r: [-1.0, -1.0], w: [-0.5, -0.5], y: [-0.5, -0.5],
+  },
+  TAILT: { "stop-vl": -6.0, Q: -6.0, "fric-vl": -1.0, "h-vl": -1.0, stop: -2.0 },
+  HEAD0: { h: -4.0, f: -4.0, r: -2.0, y: -1.0, w: -1.0 },
+};
+
+function toKata(s) {
+  let out = "";
+  for (const ch of s) {
+    const code = ch.codePointAt(0);
+    out += (code >= 0x3041 && code <= 0x3096) ? String.fromCodePoint(code + 0x60) : ch;
+  }
+  return out;
+}
+
+// 句切れ前の「は→ワ」変換から除外する語彙（母・父母・笑い声・連体詞＋歯/葉・固有名詞）
+const HA_LEXICAL_END = new Set(["ハハ", "チチハハ", "コノハ", "ソノハ", "アノハ", "ドノハ", "イロハ", "アロハ", "ヤマハ", "ナハ"]);
+const HA_LAUGH_RE = /^(?:[アワウガエオ]|キャ|ギャ|ニャ)?ハ{2,}$/;
+// 助詞「の・と・も」の直後で「おう→おー」長音化を止める自立語「う〜」語頭（農園=ノウエン・投影=トウエイ・初詣=ハツモウデ等は除外）
+const NO_TO_MO_U_RE = /^(?:ウエ(?![ンイ])|ウチ|ウシロ|ウラ|ウミ|ウタ(?![ンイ])|ウン|ウワサ|ウワギ|ウゴキ|ウサギ|ウナギ)/;
+const NO_ONLY_U_RE = /^(?:ウデ|ウソ|ウマ|ウシ)/;
+
+function tokenizeKana(text, extraCuts = null) {
+  const ms = [];
+  const cuts = new Set();
+  let moraIdx = 0;
+  if (extraCuts) for (const c of extraCuts) cuts.add(c);
+  for (const ch of toKata(text)) {
+    if (ch === "'" || ch === "’") continue;
+    if (ch === "/" || ch === "|") {
+      if (moraIdx > 0) cuts.add(moraIdx);
+      continue;
+    }
+    if (PAUSE.has(ch)) {
+      if (ms.length && ms[ms.length - 1] !== "、") ms.push("、");
+    } else if (SMALL[ch] && ms.length && !["、", "ッ", "ン", "ー"].includes(ms[ms.length - 1])) {
+      ms[ms.length - 1] += ch;
+    } else {
+      ms.push(ch);
+      moraIdx++;
+    }
+  }
+  while (ms.length && ms[ms.length - 1] === "、") ms.pop();
+  return { ms, cuts };
+}
+
+function splitMoras(text) {
+  return tokenizeKana(text).ms;
+}
+
+function parseKana(t, pv) {
+  if (t === "ー") return ["", pv, false];
+  const chars = Array.from(t);
+  if (chars.length === 2 && SMALL[chars[1]]) {
+    const [c] = K2V[chars[0]] || ["", pv];
+    const v = SMALL[chars[1]];
+    if (c === "sh" || c === "ch" || c === "j") return [c, v, false];
+    if ("ャュョ".includes(chars[1])) {
+      if (PALC[c]) return [PALC[c], v, false];
+      return [c, v, true];
+    }
+    return [c || "w", v, false];
+  }
+  const [c, v] = K2V[t] || ["", pv];
+  return [c, v, false];
+}
+
+function fi(s) { return Math.round((s * 1000) / FP); }
+
+function linspace(a, b, k) {
+  if (k <= 0) return [];
+  if (k === 1) return [a];
+  const st = (b - a) / (k - 1);
+  const out = new Array(k);
+  for (let i = 0; i < k; i++) out[i] = a + i * st;
+  out[k - 1] = b;
+  return out;
+}
+
+function clampSlice(n, a, b) {
+  let s = a == null ? 0 : (a < 0 ? Math.max(0, n + a) : Math.min(n, a));
+  let e = b == null ? n : (b < 0 ? Math.max(0, n + b) : Math.min(n, b));
+  if (e < s) e = s;
+  return [s, e];
+}
+
+function setslice(L, a, b, vals) {
+  const [s, e] = clampSlice(L.length, a, b);
+  if (typeof vals !== "object" || vals === null) {
+    for (let i = s; i < e; i++) L[i] = vals;
+  } else {
+    for (let i = s; i < e; i++) L[i] = vals[i - s];
+  }
+}
+
+function bisectRight(xp, v) {
+  let lo = 0, hi = xp.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (v < xp[mid]) hi = mid; else lo = mid + 1;
+  }
+  return lo;
+}
+
+function interp(x, xp, fp) {
+  const n = x.length;
+  if (!xp.length) return new Array(n).fill(0.0);
+  const out = new Array(n);
+  const last = xp.length - 1;
+  for (let i = 0; i < n; i++) {
+    const v = x[i];
+    if (v < xp[0]) { out[i] = fp[0]; continue; }
+    if (v >= xp[last]) { out[i] = fp[last]; continue; }
+    const j = bisectRight(xp, v) - 1;
+    if (v === xp[j]) { out[i] = fp[j]; continue; }
+    out[i] = fp[j] + ((fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j])) * (v - xp[j]);
+  }
+  return out;
+}
+
+function smooth1(x, ms) {
+  const k = Math.max(1, Math.trunc(ms / FP));
+  const n = x.length;
+  if (k <= 1 || n === 0) return Array.from(x);
+  const N = n + 2 * k;
+  const a = new Float64Array(N);
+  for (let i = 0; i < k; i++) a[i] = x[0];
+  for (let i = 0; i < n; i++) a[k + i] = x[i];
+  for (let i = 0; i < k; i++) a[k + n + i] = x[n - 1];
+  const off = Math.floor((k - 1) / 2);
+  const out = new Array(n);
+  const inv = 1.0 / k;
+  for (let i = 0; i < n; i++) {
+    const j = i + k + off;
+    let s = 0.0;
+    for (let m = 0; m < k; m++) {
+      const q = j - m;
+      if (q >= 0 && q < N) s += a[q] * inv;
+    }
+    out[i] = s;
+  }
+  return out;
+}
+
+function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
+  const P = Object.assign({}, KOTOBA_PRM, params || {});
+  const { ms, cuts } = tokenizeKana(text, P.phraseCuts || null);
+  // 読点「、」および空白・スラッシュ句切れごとにチャンク分けし、句末助詞「は→ワ」と「おう→おー」を適用
+  const chunks = [];
+  let curChunk = [], mOrd = 0;
+  for (let j = 0; j < ms.length; j++) {
+    if (ms[j] === "、") {
+      if (curChunk.length) { chunks.push(curChunk); curChunk = []; }
+      continue;
+    }
+    if (cuts.has(mOrd) && curChunk.length) {
+      chunks.push(curChunk);
+      curChunk = [];
+    }
+    curChunk.push(j);
+    mOrd++;
+  }
+  if (curChunk.length) chunks.push(curChunk);
+
+  for (const idxs of chunks) {
+    if (P.ha_wa !== false && idxs.length >= 2 && ms[idxs[idxs.length - 1]] === "ハ") {
+      const prev = ms[idxs[idxs.length - 2]];
+      const chunkStr = idxs.map((i) => ms[i]).join("");
+      if (prev !== "ッ" && !HA_LEXICAL_END.has(chunkStr) && !HA_LAUGH_RE.test(chunkStr)) {
+        ms[idxs[idxs.length - 1]] = "ワ";
+      }
+    }
+    if (P.ou_long) {
+      let pv = null;
+      for (let k = 0; k < idxs.length; k++) {
+        const idx = idxs[k];
+        const t = ms[idx];
+        if (t === "ウ" && pv === "o") {
+          const prev = k > 0 ? ms[idxs[k - 1]] : "";
+          const prev2 = k > 1 ? ms[idxs[k - 2]] : "";
+          const tail = idxs.slice(k).map((i) => ms[i]).join("");
+          const blocked = prev === "ヲ" || (k >= 2 && (
+            (prev === "ノ" && (NO_TO_MO_U_RE.test(tail) || NO_ONLY_U_RE.test(tail))) ||
+            (prev2 !== "ン" && (prev === "ト" || prev === "モ") && NO_TO_MO_U_RE.test(tail))
+          ));
+          if (!blocked) ms[idx] = "ー";
+        } else if (P.ei_long && t === "イ" && pv === "e") {
+          ms[idx] = "ー";
+        }
+        pv = (ms[idx] === "ッ" || ms[idx] === "ン") ? null : parseKana(ms[idx], pv || "a")[1];
+      }
+    }
+  }
+  // モーラ種別と無声化判定 (i/u が無声子音に挟まれたとき母音無声化)
+  const ml = [];
+  let pv = "a";
+  for (let j = 0; j < ms.length; j++) {
+    const t = ms[j];
+    const fin = (j + 1 === ms.length) || (ms[j + 1] === "、");
+    const q = { t, cd: 0.0, vd: 0.0, p: 0.0, final: fin, dev: false };
+    if (t === "、" || t === "ッ" || t === "ン") {
+      Object.assign(q, { kind: t === "、" ? "pau" : (t === "ッ" ? "Q" : "N"), c: "", v: null, pal: false });
+    } else {
+      const [c, v, pal] = parseKana(t, pv);
+      pv = v;
+      Object.assign(q, { kind: "CV", c, v, pal });
+    }
+    ml.push(q);
+  }
+  for (let j = 0; j < ml.length; j++) {
+    const q = ml[j];
+    if (q.kind !== "CV") continue;
+    const nx = j + 1 < ml.length ? ml[j + 1] : null;
+    const nvl = nx !== null && ((nx.kind === "CV" && VOICELESS.has(nx.c)) || nx.kind === "Q");
+    q.dev = !P.no_dev && (q.v === "i" || q.v === "u") && VOICELESS.has(q.c) && (nvl || (q.final && q.c === "s"));
+  }
+  // 拍ごとの子音長 cd / 母音長 vd
+  const cd_s = P.cd_s !== undefined ? P.cd_s : 1.0;
+  const vd_s = P.vd_s !== undefined ? P.vd_s : 1.0;
+  for (const q of ml) {
+    if (q.kind === "pau") { q.cd = 0.0; q.vd = P.pau; continue; }
+    if (q.kind === "Q" || q.kind === "N") { q.cd = 0.0; q.vd = P.qn * ((q.final && q.kind === "Q") ? 1.3 : 1.0); continue; }
+    let c = (P.CDUR[q.c] / 1000) * P.rate * cd_s;
+    let v = (P.VDUR[q.v] / 1000) * P.rate * vd_s;
+    if (q.dev) v = Math.min(v, P.devmax);
+    if (q.final) v *= P.fin;
+    q.cd = c; q.vd = v;
+  }
+  if (P.vd_ms) {
+    let k = 0;
+    for (const q of ml) {
+      if (q.kind === "pau") continue;
+      if (k < P.vd_ms.length && P.vd_ms[k] != null) q.vd = P.vd_ms[k] / 1000;
+      k++;
+    }
+  }
+  // 時間境界 a (開始), b (母音開始), e (終了)
+  const seq = [];
+  let tt = pre;
+  for (const q of ml) {
+    const a = tt, b = a + q.cd, e = b + q.vd;
+    tt = e;
+    const s = Object.assign({}, q, { a, b: q.kind === "Q" ? e : ((q.kind === "N" || q.kind === "pau") ? a : b), e });
+    seq.push(s);
+  }
+  const n = fi(tt + post) + 1;
+
+  // フォルマント軌道 F1..F3 (ローカス方程式 LE と調音点別ターゲット補間)
+  const al = P.alpha, al3 = P.alpha3;
+  const sc = (f) => [f[0] * al, f[1] * al, f[2] * al3];
+  const vt = (s) => sc(P.VT[s.v]);
+  const onset = (c, V, v, pal) => {
+    const pl = PLACE[c], mn = MANNER[c];
+    if (mn === "glide") return sc(P.gl[c]);
+    if (pl === null) return V.slice();
+    let f2 = V[1];
+    if (pl !== "glot") {
+      const [k, cc] = P.LE[pl !== "vel" ? pl : ((v === "i" || v === "e") ? "velF" : "velB")];
+      f2 = k * V[1] + cc * al;
+    }
+    let f1 = V[0];
+    if (P.f1drop) {
+      if (["p", "t", "k", "ch", "ts"].includes(c)) f1 = P.vl_on * V[0];
+      else if (["stop", "nas", "tap"].includes(mn)) f1 = Math.min(V[0], P.f1on * al);
+      else if (mn === "fric") f1 = Math.min(V[0], (P.f1on + 100) * al);
+    }
+    let f3 = V[2];
+    if (pl === "lab") f3 = V[2] - 250 * al3;
+    else if (pl === "vel") f3 = (v === "i" || v === "e") ? Math.max(f2 + 400 * al, V[2] - 200 * al3) : Math.min(V[2], f2 + 900 * al);
+    else if (pl === "alv") f3 = 0.5 * V[2] + 0.5 * 2900 * al3;
+    else if (pl === "pal") f3 = Math.max(V[2], 3300 * al3);
+    let O = [f1, f2, f3];
+    if (pal) {
+      const I = sc(P.VT.i);
+      O = [0.5 * O[0] + 0.5 * I[0], 0.5 * O[1] + 0.5 * I[1], 0.5 * O[2] + 0.5 * I[2]];
+    }
+    return O;
+  };
+  const body = (c, V, v, O) => {
+    const mn = MANNER[c];
+    if (P.fricT[c]) return P.fricT[c].slice();
+    if (c === "f") return O;
+    if (mn === "stop") {
+      const B = O.slice();
+      if (PLACE[c] === "alv") { B[1] = P.alvF2 * al; B[2] = Math.max(O[2], P.alvF3 * al3); }
+      B[0] = (c === "p" || c === "t" || c === "k") ? P.vl_f1 * al : P.vbar * al;
+      return B;
+    }
+    if (mn === "nas") {
+      const B = sc(P.nasT[c]);
+      if (c === "n" && v === "i") B[1] = 2200 * al;
+      return B;
+    }
+    if (mn === "h") return [Math.max(V[0], 1100 * al), V[1], V[2]];
+    if (c === "r" && P.rtrack) return [350.0 * al, 1500.0 * al, P.r3];
+    return O;
+  };
+
+  const kp = [];
+  let cur = sc(P.VT.a), first = true;
+  for (let j = 0; j < seq.length; j++) {
+    const s = seq[j];
+    if (s.kind === "pau") continue;
+    if (s.kind === "Q" || s.kind === "N") {
+      let nx = null;
+      for (let q = j + 1; q < seq.length; q++) if (seq[q].kind === "CV") { nx = seq[q]; break; }
+      const adj = nx !== null && seq[j + 1] === nx && Boolean(nx.c);
+      if (s.kind === "N") {
+        let B;
+        if (adj) {
+          const pl = PLACE[nx.c];
+          B = sc(P.nasT[pl === "lab" ? "m" : ((pl === "alv" || pl === "pal") ? "n" : "N")]);
+          if (pl === "vel") B[1] = onset(nx.c, vt(nx), nx.v, nx.pal)[1];
+        } else B = sc(P.nasT.N);
+        kp.push([s.a + P.Tvc / 1000, ...B], [s.e, ...B]);
+      } else if (adj) {
+        const V = vt(nx), B = body(nx.c, V, nx.v, onset(nx.c, V, nx.v, nx.pal));
+        kp.push([s.a + P.Tvc / 1000, ...B], [s.e, ...B]);
+      }
+      continue;
+    }
+    const c = s.c, v = s.v;
+    let V = vt(s);
+    if (P.undershoot && (s.e - s.b) < P.undershoot / 1000) {
+      const r = Math.max(0.4, (s.e - s.b) / (P.undershoot / 1000));
+      V = [cur[0] + (V[0] - cur[0]) * r, cur[1] + (V[1] - cur[1]) * r, cur[2] + (V[2] - cur[2]) * r];
+    }
+    if (c) {
+      const O = onset(c, V, v, s.pal), B = body(c, V, v, O);
+      const fh = Boolean(P.fric_hold) && (Boolean(P.fricT[c]) || (Boolean(P.vl_hold) && VOICELESS.has(c)));
+      if (!first && s.b > s.a && !fh) kp.push([s.a, ...B]);
+      kp.push([s.a + (fh ? Math.min(P.fric_hold / 1000 + 0.01, (s.b - s.a) * 0.4) : Math.min(P.Tvc / 1000, (s.b - s.a) * 0.5)), ...B]);
+      if (fh) {
+        kp.push([Math.max(s.b - P.fric_hold / 1000 - 0.01, s.a), ...B]);
+        kp.push([Math.max(s.b - P.fric_hold / 1000, s.a), ...V]);
+      } else {
+        kp.push([Math.max(s.b - 0.005, s.a), ...B]);
+        kp.push([s.b, ...O]);
+        const Tt = (P.T + ((s.pal || MANNER[c] === "glide") ? P.Tpal : 0)) / 1000;
+        kp.push([Math.min(s.b + Tt, s.e), ...V]);
+      }
+    } else {
+      kp.push([s.a + P.Tvv / 2000, ...V]);
+    }
+    const nxc = (j + 1 < seq.length && seq[j + 1].kind === "CV" && seq[j + 1].c) ? seq[j + 1].c : "";
+    if (P.fric_hold && nxc && (P.fricT[nxc] || (P.vl_hold && VOICELESS.has(nxc)))) {
+      kp.push([s.e + P.fric_hold / 1000, ...V]);
+    } else {
+      kp.push([s.e - (nxc ? P.Tvc / 1000 : P.Tvv / 2000), ...V]);
+    }
+    cur = V.slice();
+    first = false;
+  }
+  let Tr;
+  if (!kp.length) {
+    Tr = [new Array(n).fill(cur[0]), new Array(n).fill(cur[1]), new Array(n).fill(cur[2])];
+  } else {
+    kp.sort((a, b) => a[0] - b[0]);
+    const tfr = new Array(n);
+    for (let i = 0; i < n; i++) tfr[i] = (i * FP) / 1000;
+    const xp = kp.map((q) => q[0]);
+    const smj = P.smooth_j || [P.smooth, P.smooth, P.smooth];
+    Tr = [0, 1, 2].map((j) => smooth1(interp(tfr, xp, kp.map((q) => q[j + 1])), smj[j]));
+  }
+
+  // 子音ノイズ帯域 bands とフォルマント減衰 G1..G3 / 閉鎖減衰 dl
+  const G = [new Array(n).fill(1.0), new Array(n).fill(1.0), new Array(n).fill(1.0)];
+  const dl = new Array(n).fill(0.0);
+  const rawBands = [];
+  const gset = (a, b, vals) => { for (let j = 0; j < 3; j++) setslice(G[j], a, b, vals[j]); };
+  const gmul = (a, b, f) => {
+    const [s0, e0] = clampSlice(n, a, b);
+    for (let j = 0; j < 3; j++) for (let i = s0; i < e0; i++) G[j][i] *= f;
+  };
+  for (const s of seq) {
+    const i0 = fi(s.a), ib = fi(s.b), ie = fi(s.e);
+    if (s.kind === "Q") { setslice(dl, i0, ie, -6); continue; }
+    if (s.kind === "N") { gset(i0, ie, [0.87, P.ng2, 0.5]); setslice(dl, i0, ie, P.ndl); continue; }
+    if (s.kind !== "CV" || ib <= i0) continue;
+    const c = s.c, v = s.v, nc = ib - i0;
+    if (c === "m" || c === "n") { gset(i0, ib, [0.87, P.ng2, 0.5]); setslice(dl, i0, ib, P.ndl); }
+    const fp_ = ["s", "z", "sh", "j"].includes(c) ? [i0, ib] : ((c === "ch" || c === "ts") ? [i0 + Math.floor(nc / 2), ib] : null);
+    if (fp_) {
+      const [cen, sd] = ["s", "z", "ts"].includes(c) ? [P.sc, P.ssd] : [P.shc, P.shsd];
+      rawBands.push([fp_[0], fp_[1], cen, sd, P.fg + cen / 2500.0]);
+      gmul(fp_[0], fp_[1], VOICED_OBS.has(c) ? 0.45 : P.fvg);
+    }
+    if (c === "h" || c === "f") {
+      setslice(G[0], i0, ib, 0.4); setslice(G[1], i0, ib, 0.9); setslice(G[2], i0, ib, 0.9);
+      if (v === "i" && c === "h") rawBands.push([i0, ib, 3500, 700, 1.0 + 3500 / 2500.0]);
+    }
+    if (["k", "g", "t", "d", "p", "b", "ch", "ts"].includes(c)) {
+      const ce = i0 + ((c === "ch" || c === "ts") ? Math.floor(nc / 2) : Math.max(1, nc - P.asp));
+      if (VOICED_OBS.has(c)) { gset(i0, ce, [0.8, 0.05, 0.05]); setslice(dl, i0, ce, P.vdl); }
+      else setslice(dl, i0, ce, -6);
+      const [cen, sd] = (c === "k" || c === "g") ? [((v === "i" || v === "e") ? 3000 : 1900), 500]
+        : (["t", "d", "ch", "ts"].includes(c) ? [4500, 1000] : [1200, 900]);
+      if (!VOICED_OBS.has(c)) rawBands.push([ce, Math.min(ce + 2, ib + 1), cen, sd, P.bg + cen / 2500.0]);
+      if (c !== "ch" && c !== "ts") gset(ce, ib, VOICED_OBS.has(c) ? [1, 1, 1] : [0.4, 1, 1]);
+    }
+    if (c === "r") setslice(dl, i0, ib, P.rdl);
+  }
+  const Gs = G.map((g) => smooth1(g, 10));
+  const dls = smooth1(dl, 10);
+
+  // 音量対数曲線 loud と有声フラグ voiced
+  const nxcls = (nx) => {
+    if (!nx || nx.kind === "pau") return "end";
+    if (nx.kind !== "CV") return nx.kind;
+    if (!nx.c) return "V";
+    return MANNER[nx.c] + (VOICELESS.has(nx.c) ? "-vl" : "");
+  };
+  let L = new Array(n).fill(P.sil);
+  for (let j = 0; j < seq.length; j++) {
+    const s = seq[j];
+    const ia = fi(s.a), ib = fi(s.a + s.cd), ie = fi(s.e);
+    const nx = j + 1 < seq.length ? seq[j + 1] : null;
+    if (s.kind === "pau") continue;
+    if (s.kind === "Q") { setslice(L, ia, ie, P.qlev); continue; }
+    if (s.kind === "N") {
+      setslice(L, ia, ie, P.Nlev);
+    } else {
+      if (P.CL[s.c] && ib > ia) {
+        const [c1, c2] = P.CL[s.c];
+        const im = ia + Math.trunc(0.7 * (ib - ia));
+        setslice(L, ia, im, c1);
+        setslice(L, im, ib, c2);
+      }
+      const lv = P.VL[s.v] + (s.dev ? -6 : 0);
+      setslice(L, ib, ie, lv);
+      if (P.HEAD0[s.c] !== undefined) {
+        const k = Math.min(8, ie - ib);
+        setslice(L, ib, ib + k, linspace(lv + P.HEAD0[s.c], lv, k));
+      } else {
+        const k = Math.min(3, ie - ib);
+        if (k > 0) {
+          const st = ib > 0 ? L[ib - 1] : P.sil;
+          setslice(L, ib, ib + k, linspace(Math.min(st, lv - 3), lv, k));
+        }
+      }
+    }
+    const cls = nxcls(nx);
+    if (cls === "end") {
+      const k = s.kind === "CV" ? (ie - ib) : (ie - ia);
+      const h = Math.trunc(k * P.fend_at);
+      if (k - h > 0) setslice(L, ie - k + h, ie, linspace(L[ie - k + h], P.fend, k - h));
+    } else if (P.TAILT[cls] !== undefined) {
+      const lv = L[ie - 1];
+      const k = Math.min(12, ie - ib);
+      setslice(L, ie - k, ie, linspace(lv, lv + P.TAILT[cls] * 1.5, k));
+    }
+  }
+  const dc = linspace(0, 1, n);
+  for (let i = 0; i < n; i++) L[i] -= P.decl * dc[i];
+  L = smooth1(L, 10);
+  let mx = -Infinity;
+  for (let i = 0; i < n; i++) if (L[i] > mx) mx = L[i];
+  const loud = L.map((v) => v - mx);
+
+  const vo = new Array(n).fill(false);
+  for (const s of seq) {
+    const a = s.a, b = s.a + s.cd, e = s.e;
+    if (s.kind === "pau" || s.kind === "Q") continue;
+    if (s.kind === "N" || !VOICELESS.has(s.c)) setslice(vo, fi(a), fi(b), true);
+    if (!s.dev) setslice(vo, fi(b), fi(e), true);
+  }
+
+  return {
+    fp_ms: FP, n,
+    F1: Tr[0], F2: Tr[1], F3: Tr[2],
+    G1: Gs[0], G2: Gs[1], G3: Gs[2],
+    dl: dls, loud, voiced: vo,
+    bands: rawBands.map(([a, b, c, d, g]) => [(a * FP) / 1000, (b * FP) / 1000, c, d, g]),
+    moras: seq.map((s) => ({ t: s.t, kind: s.kind, c: s.c, v: s.v, a: s.a, b: s.b, e: s.e })),
+  };
+}
+
+// ============================================================================
+// 2. accent — 東京式ピッチアクセント推定 & 手動韻律記号 (' 核, 0 平板, / 句切れ, 、 間, ? 疑問)
+// ============================================================================
+const SPECIAL = new Set(["ン", "ッ", "ー"]);
+const PART = new Set(Array.from("モニガヲデヘテ"));
+const SMALL_SET = new Set(Array.from("ャュョァィゥェォ"));
+const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
+
+const ACCENT_NORMAL = { reg: 340.0, rng: 8.0, jump: 4.0, fall: 5.0, sag: 1.0, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.5, reset: 0.6, decl: 1.2, fin: 3.0, qrise: 5.0, sm: 35.0 };
+const ACCENT_CUTE = { reg: 410.0, rng: 10.0, jump: 5.6, fall: 6.0, sag: 1.2, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.4, reset: 0.7, decl: 1.0, fin: 2.0, qrise: 6.0, sm: 30.0 };
+
+function splitMarked(text) {
+  const out = [];
+  for (const ch of toKata(text)) {
+    if (ch === "'" || ch === "’") out.push("'");
+    else if (ch === " " || ch === "/" || ch === "|") {
+      if (out.length && out[out.length - 1] !== "/" && out[out.length - 1] !== "、") out.push("/");
+    } else if (ch === "?" || ch === "？") {
+      if (out.length && (out[out.length - 1] === "/" || out[out.length - 1] === "、")) out[out.length - 1] = "?";
+      else if (out.length) out.push("?");
+    } else if (PAUSE.has(ch)) {
+      if (out.length && out[out.length - 1] === "/") out[out.length - 1] = "、";
+      else if (out.length && out[out.length - 1] !== "、" && out[out.length - 1] !== "?") out.push("、");
+    } else if (SMALL_SET.has(ch) && out.length && !["、", "ッ", "ン", "ー", "'", "/"].includes(out[out.length - 1])) {
+      out[out.length - 1] += ch;
+    } else {
+      out.push(ch);
+    }
+  }
+  while (out.length && (out[out.length - 1] === "、" || out[out.length - 1] === "/")) out.pop();
+  return out;
+}
+
+function annotate(text) {
+  const toks = splitMarked(text.replace(/0/g, "#"));
+  const clean = [], phr = [];
+  let cur = null, k = 0;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t === "、" || t === "/" || t === "?") {
+      if (t === "?" && cur !== null) cur[3] = 1;
+      if (t === "、" || (t === "?" && i + 1 < toks.length)) clean.push("、");
+      cur = null;
+      continue;
+    }
+    if (t === "#") { if (cur !== null && cur[2] === null) cur[2] = 0; continue; }
+    if (t === "'") { if (cur !== null) cur[2] = k - cur[0]; continue; }
+    if (cur === null) { cur = [k, 0, null, 0]; phr.push(cur); }
+    cur[1] += 1;
+    clean.push(t);
+    k += 1;
+  }
+  return [clean.join(""), phr];
+}
+
+function guessPhrases(moras, accent = "ante", split = false, minlen = 3) {
+  let ts = typeof moras === "string" ? splitMarked(moras) : moras.map((m) => (typeof m === "object" ? m.t : m));
+  ts = ts.filter((t) => t !== "'" && t !== "/");
+  const chunks = [], qs = [];
+  let cur = [];
+  for (const t of ts) {
+    if (t === "、" || t === "?") {
+      if (cur.length) { chunks.push(cur); qs.push(t === "?"); cur = []; }
+      else if (t === "?" && qs.length) qs[qs.length - 1] = true;
+    } else cur.push(t);
+  }
+  if (cur.length) { chunks.push(cur); qs.push(false); }
+  const phr = [];
+  let k = 0;
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const ch = chunks[ci], isq = qs[ci];
+    const cuts = [];
+    let s = 0;
+    if (split) {
+      for (let j = 0; j < ch.length; j++) {
+        if (PART.has(ch[j]) && (j + 1 - s) >= minlen && (ch.length - (j + 1)) >= minlen && (j + 1 >= ch.length || !SPECIAL.has(ch[j + 1]))) {
+          cuts.push(j + 1); s = j + 1;
+        }
+      }
+    }
+    const bounds = [0, ...cuts, ch.length];
+    for (let bi = 0; bi < bounds.length - 1; bi++) {
+      const a = bounds[bi], b = bounds[bi + 1];
+      const L = b - a, seg = ch.slice(a, b);
+      const endedByPart = cuts.includes(b) || (PART.has(seg[seg.length - 1]) && L > 2);
+      let acc = 0;
+      if (accent === "ante") {
+        const W = L - (endedByPart ? 1 : 0);
+        acc = W >= 3 ? Math.max(1, W - 2) : 1;
+        while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
+      } else if (accent === "mixed") {
+        acc = L <= 2 ? 1 : 0;
+      }
+      phr.push([k + a, L, acc, (isq && b === ch.length) ? 1 : 0]);
+    }
+    k += ch.length;
+  }
+  return phr;
+}
+
+function heavy(m1, m2) {
+  if (SPECIAL.has(m2.t)) return true;
+  const v = m1.v;
+  return v != null && (LONGV[v] || "").includes(m2.t);
+}
+
+function smoothTri(x, k) {
+  if (k <= 1 || !x.length) return x.slice();
+  let cur = x.slice();
+  for (let p = 0; p < 2; p++) {
+    const hl = p === 0 ? Math.floor(k / 2) : (k - 1 - Math.floor(k / 2));
+    const hr = k - 1 - hl;
+    const n = cur.length;
+    const pad = new Float64Array(hl + n + hr);
+    for (let i = 0; i < hl; i++) pad[i] = cur[0];
+    for (let i = 0; i < n; i++) pad[hl + i] = cur[i];
+    for (let i = 0; i < hr; i++) pad[hl + n + i] = cur[n - 1];
+    const c = new Float64Array(pad.length + 1);
+    for (let i = 0; i < pad.length; i++) c[i + 1] = c[i] + pad[i];
+    const nx = new Array(n);
+    for (let i = 0; i < n; i++) nx[i] = (c[i + k] - c[i]) / k;
+    cur = nx;
+  }
+  return cur;
+}
+
+function f0Rule(moras, n, opts = {}) {
+  const {
+    phrases: inPhr = null, accent = "ante", question = false, reg = 340.0, rng = 8.0, jump = 4.0, fall = 5.0,
+    sag = 1.0, lag = 1.0, rlag = 0.5, ds = 2.0, ds_h = 0.5, reset = 0.6, decl = 1.2, fin = 2.5, qrise = 5.0,
+    sm = 35.0, fp_ms = 5.0, fit_range = true,
+  } = opts;
+  const ml = moras.slice();
+  let phrases;
+  if (!inPhr) {
+    phrases = guessPhrases(ml, accent);
+  } else {
+    const nonPau = ml.filter((m) => m.kind !== "pau").map((m) => m.t);
+    phrases = inPhr.map((p) => {
+      if (p[2] !== null && p[2] !== undefined) return p.slice();
+      const g = guessPhrases(nonPau.slice(p[0], p[0] + p[1]), accent, false)[0][2];
+      return [p[0], p[1], g, ...p.slice(3)];
+    });
+  }
+  const idx = [];
+  for (let j = 0; j < ml.length; j++) if (ml[j].kind !== "pau") idx.push(j);
+  const lv = new Array(ml.length).fill(null);
+  if (idx.length && phrases.length) {
+    let top = 0.0;
+    for (let pi = 0; pi < phrases.length; pi++) {
+      const [s, L, acc, qf] = phrases[pi];
+      if (pi > 0) {
+        const [ps, pL, pacc] = phrases[pi - 1];
+        const prevEnd = idx[ps + pL - 1], thisStart = idx[s];
+        top -= pacc ? ds : ds_h;
+        let hasPau = false;
+        for (let j = prevEnd + 1; j < thisStart; j++) if (ml[j].kind === "pau") { hasPau = true; break; }
+        if (hasPau) top *= (1 - reset);
+      }
+      const H = top, Lo = top - jump;
+      const weak = L > 1 && heavy(ml[idx[s]], ml[idx[s + 1]]);
+      for (let q = 0; q < L; q++) {
+        const j = idx[s + q], pos = q + 1;
+        let a, b;
+        if (acc === 1 && pos === 1) { a = b = H; }
+        else if (acc && pos > acc) {
+          const d = fall + sag * (pos - acc - 1);
+          a = b = H - d;
+          if (pos === acc + 1) a = H - fall * (1 - lag);
+        } else if (pos === 1) {
+          a = b = weak ? (H - jump * 0.45) : Lo;
+          if (L === 1) a = b = H - 1.0;
+        } else {
+          a = b = H;
+          if (pos === 2 && !weak) a = H - jump * rlag;
+        }
+        lv[j] = [a, b];
+      }
+      if (qf) {
+        const j = idx[s + L - 1];
+        lv[j][1] = lv[j][0] + qrise;
+      }
+    }
+    const last = idx[idx.length - 1];
+    if (question) lv[last][1] = lv[last][0] + qrise;
+    else if (!phrases[phrases.length - 1][3]) {
+      lv[last][1] = lv[last][0] - fin;
+      if (idx.length > 1) lv[idx[idx.length - 2]][1] -= fin * 0.25;
+    }
+  }
+  const kt = [], kv = [];
+  for (let i = 0; i < ml.length; i++) {
+    if (lv[i] === null) continue;
+    let b = ml[i].b, e = ml[i].e;
+    if (e - b < 0.02) b = ml[i].a;
+    kt.push(b, e);
+    kv.push(lv[i][0], lv[i][1]);
+  }
+  if (!kt.length) return new Array(n).fill(0.0);
+  const t0 = kt[0];
+  for (let i = 0; i < kv.length; i++) kv[i] -= decl * (kt[i] - t0);
+  const fp = fp_ms / 1000.0;
+  let st = new Array(n);
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i * fp;
+    if (t <= kt[0]) { st[i] = kv[0]; continue; }
+    if (t >= kt[kt.length - 1]) { st[i] = kv[kv.length - 1]; continue; }
+    while (kt[j + 1] < t) j++;
+    const a = kt[j], b = kt[j + 1];
+    const w = b <= a ? 0.0 : (t - a) / (b - a);
+    st[i] = kv[j] + w * (kv[j + 1] - kv[j]);
+  }
+  st = smoothTri(st, Math.max(1, Math.trunc(sm / fp_ms)));
+  const vs = st.slice().sort((a, b) => a - b);
+  if (fit_range && rng) {
+    const lo = vs[Math.trunc(0.05 * (vs.length - 1))];
+    const hi = vs[Math.trunc(0.95 * (vs.length - 1))];
+    const k = (hi - lo > 1e-6) ? (rng / (hi - lo)) : 1.0;
+    for (let i = 0; i < n; i++) st[i] *= k;
+    for (let i = 0; i < vs.length; i++) vs[i] *= k;
+  }
+  let sum = 0.0;
+  for (let i = 0; i < vs.length; i++) sum += vs[i];
+  const mu = sum / vs.length;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = reg * Math.pow(2.0, (st[i] - mu) / 12.0);
+  return out;
+}
+
+// ============================================================================
+// 3. 基礎ノミ（時間領域の引き算・移動平均プリミティブ：正弦波オシレータ不使用）
+// ============================================================================
+function perSample(fr, N, fp_ms = 5.0) {
+  const n = fr.length;
+  const step = 1000.0 / (fp_ms * SR);
+  const out = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const t = i * step;
+    const k = Math.trunc(t);
+    if (k >= n - 1) out[i] = fr[n - 1];
+    else {
+      const u = t - k;
+      out[i] = fr[k] * (1.0 - u) + fr[k + 1] * u;
+    }
+  }
+  return out;
+}
+
+// 粗削り（ローパス）：幅 w サンプルの移動平均を p 回かける。最初の零点は SR / w Hz
+function arakezuri(x, w, p = 1) {
+  const n = x.length;
+  let cur = Float64Array.from(x);
+  for (let pass = 0; pass < p; pass++) {
+    const y = new Float64Array(n);
+    let s = 0.0;
+    for (let i = 0; i < n; i++) {
+      s += cur[i];
+      if (i >= w) s -= cur[i - w];
+      y[i] = s / (i + 1 < w ? i + 1 : w);
+    }
+    cur = y;
+  }
+  return cur;
+}
+
+// 時間可変の粗削り：H[i]=1 の区間（破裂・摩擦子音）は高域の鋭さを削り残す
+function arakezuriT(x, w, p, H) {
+  const s = arakezuri(x, w, p);
+  const n = x.length;
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) out[i] = x[i] - (1.0 - H[i]) * (x[i] - s[i]);
+  return out;
+}
+
+// 軽くする（ハイパス）：幅 w の移動平均を引いて DC〜低域の濁りを落とす
+function karuku(x, w) {
+  const a = arakezuri(x, w, 1);
+  const n = x.length;
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) out[i] = x[i] - a[i];
+  return out;
+}
+
+// 原石ホワイトノイズからダシをとるゆっくりした自然な漂い（平滑化ランダムウォーク）
+function furafura(src, d0, haba, osoi) {
+  const n = src.length;
+  const out = new Float64Array(n);
+  if (haba === 0.0) { out.fill(d0); return out; }
+  let v = 0.0;
+  const walk = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    v = (v + src[i]) * 0.9995;
+    walk[i] = v;
+  }
+  const sm = arakezuri(walk, Math.max(1, Math.trunc(osoi * SR)), 2);
+  let sum = 0.0;
+  for (let i = 0; i < n; i++) sum += sm[i];
+  const mean = sum / n;
+  let pk = 0.0;
+  for (let i = 0; i < n; i++) {
+    sm[i] -= mean;
+    const av = Math.abs(sm[i]);
+    if (av > pk) pk = av;
+  }
+  if (pk === 0.0) pk = 1.0;
+  const sc = haba / pk;
+  for (let i = 0; i < n; i++) out[i] = d0 + sm[i] * sc;
+  return out;
+}
+
+// 注意: ensureScratch の作業配列 (_cs, _tmp, _D, _wHi) は heikin/ffbb/yamaBp 内で共有するため入れ子呼び出し禁止
+let _cs = new Float64Array(0), _tmp = new Float64Array(0), _D = new Float64Array(0), _wHi = new Float64Array(0);
+function ensureScratch(n) {
+  if (_cs.length < n + 1) {
+    _cs = new Float64Array(n + 1);
+    _tmp = new Float64Array(n);
+    _D = new Float64Array(n);
+    _wHi = new Float64Array(n);
+  }
+}
+
+// 前後に位相ずれのない中心移動平均（累積和で O(N)）
+function heikin(x, W, out = null) {
+  const n = x.length;
+  ensureScratch(n);
+  const cs = _cs;
+  cs[0] = 0.0;
+  for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + x[i];
+  const y = out || new Float64Array(n);
+  if (typeof W === "number") {
+    const h = Math.max(1, Math.trunc(W / 2));
+    for (let i = 0; i < n; i++) {
+      const a = i - h > 0 ? i - h : 0;
+      const b = i + h + 1 < n ? i + h + 1 : n;
+      y[i] = (cs[b] - cs[a]) / (b - a);
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const h = Math.max(1, Math.trunc(W[i] / 2));
+      const a = i - h > 0 ? i - h : 0;
+      const b = i + h + 1 < n ? i + h + 1 : n;
+      y[i] = (cs[b] - cs[a]) / (b - a);
+    }
+  }
+  return y;
+}
+
+// 半周期 D 前の自分を反転フィードバックして奇数倍音 (SR / 2D) を立てる
+function combHalf(x, D, g, out = null) {
+  const n = x.length;
+  const y = out || new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const d = D[i];
+    const k = Math.trunc(d);
+    const fr = d - k;
+    const a = i - k, b = a - 1;
+    y[i] = x[i] - g * (b >= 0 ? (y[a] * (1.0 - fr) + y[b] * fr) : 0.0);
+  }
+  return y;
+}
+
+// 前後双方向コムフィルタ（ゼロ位相共振）
+function ffbb(x, D, g) {
+  const n = x.length;
+  ensureScratch(n);
+  const y1 = combHalf(x, D, g, _tmp);
+  const out = new Float64Array(n);
+  for (let j = n - 1; j >= 0; j--) {
+    const d = D[j];
+    const k = Math.trunc(d);
+    const fr = d - k;
+    const a = j + k, b = a + 1;
+    out[j] = y1[j] - g * (b < n ? (out[a] * (1.0 - fr) + out[b] * fr) : 0.0);
+  }
+  return out;
+}
+
+// 受動フォルマント帯域通過：周波数 F[i] Hz の山1つだけを残し、上下の裾を引き算で削る
+function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
+  const n = x.length;
+  ensureScratch(n);
+  const D = _D, wHi = _wHi;
+  for (let i = 0; i < n; i++) {
+    const fc = F[i] / 0.95;
+    D[i] = SR / (2.0 * fc);
+    wHi[i] = (2.0 * SR) / fc;
+  }
+  const bp = ffbb(x, D, g);
+  let norm = (1.0 - g) * (1.0 - g);
+  for (let p = 0; p < pLow; p++) {
+    heikin(bp, D, bp);
+    norm /= 0.6366;
+  }
+  for (let p = 0; p < pHigh; p++) {
+    heikin(bp, wHi, _tmp);
+    for (let i = 0; i < n; i++) bp[i] -= _tmp[i];
+  }
+  for (let i = 0; i < n; i++) bp[i] *= norm;
+  return bp;
+}
+
+// 因果2極声道共振器（直列カスケード用、DCゲイン=1、高域は Q <= qMax で自然に帯域幅を広げる）
+function resonator2Pole(x, F, bwMin, qMax = 12.0) {
+  const n = x.length;
+  const y = new Float64Array(n);
+  const k = (2.0 * Math.PI) / SR;
+  const piOverSR = Math.PI / SR;
+  let y1 = 0.0, y2 = 0.0;
+  for (let i = 0; i < n; i++) {
+    const f = F[i];
+    const bw = Math.max(bwMin, f / qMax);
+    const r = Math.exp(-piOverSR * bw);
+    const c = -r * r;
+    const b = 2.0 * r * Math.cos(k * f);
+    const a = 1.0 - b - c;
+    const yi = a * x[i] + b * y1 + c * y2;
+    y[i] = yi;
+    y2 = y1;
+    y1 = yi;
+  }
+  return y;
+}
+
+// 引き算①（音源くびれ）：周期 PER[i] と食い違う倍音間の谷を3次ラグランジュ補間コムで削る
+// 入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする
+// damp > 0 のときはフィードバック帰還路に1極ローパス平滑を混ぜ、高域ほど自然に元のノイズの息を残す
+function combPeriod(x, PER, G, damp = 0.0) {
+  const n = x.length;
+  const y = new Float64Array(n);
+  let lp = 0.0;
+  for (let i = 0; i < n; i++) {
+    const g = G[i];
+    if (g <= 1e-4) { y[i] = x[i]; lp = x[i]; continue; }
+    const cIn = Math.sqrt(1.0 - g * g);
+    const p = PER[i];
+    const k = Math.trunc(p);
+    const u = p - k;
+    const i0 = i - k;
+    let fb;
+    if (i0 - 2 >= 0 && i0 + 1 < i) {
+      const ym1 = y[i0 + 1], y0 = y[i0], y1 = y[i0 - 1], y2 = y[i0 - 2];
+      fb = (
+        (-u * (u - 1.0) * (u - 2.0) / 6.0) * ym1
+        + ((u + 1.0) * (u - 1.0) * (u - 2.0) / 2.0) * y0
+        - ((u + 1.0) * u * (u - 2.0) / 2.0) * y1
+        + ((u + 1.0) * u * (u - 1.0) / 6.0) * y2
+      );
+    } else if (i0 - 1 >= 0) {
+      fb = y[i0] * (1.0 - u) + y[i0 - 1] * u;
+    } else {
+      fb = 0.0;
+    }
+    if (damp > 0.0) {
+      lp = (1.0 - damp) * fb + damp * lp;
+      fb = lp;
+    }
+    y[i] = cIn * x[i] + g * fb;
+  }
+  return y;
+}
+
+function rmsActive(x) {
+  let s = 0.0, c = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = x[i];
+    if (v !== 0.0) { s += v * v; c++; }
+  }
+  return Math.sqrt(s / (c || 1));
+}
+
+function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gateEnd = x.length) {
+  const n = x.length;
+  const out = new Float32Array(n);
+  let s = 0.0, c = 0;
+  for (let i = gateStart; i < gateEnd; i++) { s += x[i] * x[i]; c++; }
+  const cur = Math.sqrt(s / (c || 1)) || 1.0;
+  let gain = targetRms / cur;
+  let pk = 0.0;
+  for (let i = gateStart; i < gateEnd; i++) {
+    const av = Math.abs(x[i]) * gain;
+    if (av > pk) pk = av;
+  }
+  if (pk > ceiling) gain *= ceiling / pk;
+  const fade = Math.min(882, Math.floor((gateEnd - gateStart) / 4));
+  for (let i = gateStart; i < gateEnd; i++) {
+    let w = 1.0;
+    if (i - gateStart < fade) w = (i - gateStart) / fade;
+    else if (gateEnd - 1 - i < fade) w = (gateEnd - 1 - i) / fade;
+    out[i] = x[i] * gain * w;
+  }
+  return out;
+}
+
+// ============================================================================
+// 4. 本体：1本のホワイトノイズから4手で彫る音声・歌声合成
+// ============================================================================
+function makeHitofude(text, opts = {}) {
+  const {
+    seed = 2024,
+    hz = 350.0,       // 基準ピッチ高さ (Hz)。女声 300〜360、子ども 400、男声 135〜165
+    fscale = 1.17,    // 声道長逆スケール（フォルマント倍率）。1.15〜1.22=女声、0.88=太い男声
+    rate = 1.26,      // 話速倍率（小さいほど速い、1.25〜1.30=自然な会話）
+    g_vo = 0.92,      // 有声くびれ深さ G (0.0〜0.97)。2段直列の谷深さ ≒ 40*log10((1+G)/(1-G)) dB
+    tilt_w = 5,       // 高域粗削り幅 w (整数 >=1)。4〜5=明るい女声、6=柔らかい吐息、>=8=こもった暗声
+    sigh = 0.0,       // 句末の息抜き量 (0.0〜1.0)。句末母音後半で G を緩め、声を元の吐息へ戻す
+    jitter = 0.0013,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
+    wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
+    damp = 0.0,       // コム帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
+    shin = 0.0,       // 周期内の純粋乗算時間くびれ (0.0..1.0、パルス加算なしで声の芯を整える)
+    level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
+    pre = 0.6,        // 発話前の無音長 (秒)
+    post = 0.1,       // 発話後の無音長 (秒)
+    uta_hz = null,    // 歌モード：モーラごとの目標周波数配列 [Hz, ...]
+    vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
+    vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
+    captureSteps = false, // true のとき [原石0, ①倍音谷, ②粗削り, ③声道, ④完成] の5波形を返す
+  } = opts;
+
+  let accentKw = null, targetText = text, phraseCuts = null;
+  const hasMarks = /['’0/| 　?？]/.test(text);
+  if (hasMarks && !uta_hz) {
+    const [clean, phrases] = annotate(text);
+    accentKw = { phrases, question: /[?？]$/.test(text.trim()) };
+    targetText = clean;
+    phraseCuts = phrases.slice(1).map((p) => p[0]);
+  }
+
+  const fpz = FP / 1000.0;
+  const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
+  if (vd_ms) prm.vd_ms = vd_ms;
+  if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; }
+  const r = tracksFromKana(targetText, pre, post, prm);
+  const n = r.n;
+  const N = Math.trunc(n * fpz * SR);
+  if (!r.voiced.some(Boolean) && r.bands.length === 0) {
+    const z = new Float32Array(N);
+    return { samples: z, steps: captureSteps ? [z, z, z, z, z] : null, r: Object.assign({}, r, { f0_tr: new Array(n).fill(0.0) }), moras: r.moras };
+  }
+
+  // === Step 0: 原石ホワイトノイズ（声・息・漂い・ジッタ・ビブラートのすべてをこの1本から彫る） ===
+  const rng = makeRng(seed);
+  let x = new Float64Array(N);
+  for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
+  const x0 = captureSteps ? x.slice() : null;
+
+  // ピッチ軌道 f0_fr (Hz, 5ms フレーム)
+  let f0_fr;
+  if (uta_hz && uta_hz.length) {
+    f0_fr = new Array(n).fill(uta_hz[0]);
+    let k_ = 0;
+    for (const m_ of r.moras) {
+      if (m_.kind === "pau") continue;
+      const h_ = uta_hz[Math.min(k_, uta_hz.length - 1)];
+      k_++;
+      for (let t_ = Math.max(0, Math.trunc(m_.a / fpz)); t_ < n; t_++) f0_fr[t_] = h_;
+    }
+    f0_fr = smooth1(f0_fr, 34);
+    var vibWave = null;
+    if (vib_c > 0.0) {
+      const vHz = 4.2 + 1.8 * (x[0] * 0.5 + 0.5);
+      const wv = Math.max(3, Math.round(1000.0 / FP / vHz / 2.0));
+      const lenV = n + 30 * wv;
+      const vn = new Float64Array(lenV);
+      for (let i = 0; i < lenV; i++) vn[i] = x[(i * 220) % N];
+      const vw = arakezuri(combHalf(vn, new Float64Array(lenV).fill(wv), 0.92), Math.max(2, Math.floor(wv / 2)), 2).subarray(30 * wv, 30 * wv + n);
+      let vSq = 0.0;
+      for (let i = 0; i < n; i++) vSq += vw[i] * vw[i];
+      const invV = 1.0 / ((Math.sqrt(vSq / n) || 1.0) * 1.414);
+      vibWave = new Float64Array(n);
+      for (let t_ = 0; t_ < n; t_++) {
+        vibWave[t_] = vw[t_] * invV;
+        f0_fr[t_] *= Math.pow(2.0, (vib_c * 0.72 * vibWave[t_]) / 1200.0);
+      }
+    }
+  } else {
+    const acc = sigh >= 0.25
+      ? Object.assign({}, ACCENT_NORMAL, { rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, decl: 1.4, fin: 2.6 })
+      : ACCENT_CUTE;
+    f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
+  }
+
+  // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
+  const sigh_fr = new Array(n).fill(0.0);
+  if (sigh > 0.0) {
+    for (let idx_m = 0; idx_m < r.moras.length; idx_m++) {
+      const m_ = r.moras[idx_m];
+      const ib = Math.max(0, Math.trunc(m_.b / fpz)), ie = Math.min(n, Math.trunc(m_.e / fpz));
+      let hasVo = false;
+      for (let t_ = ib; t_ < ie; t_++) if (r.voiced[t_]) { hasVo = true; break; }
+      if (m_.kind !== "CV" || (ie - ib) < 7 || !hasVo) continue;
+      let remVo = false;
+      for (let k2 = idx_m + 1; k2 < r.moras.length; k2++) {
+        const m2 = r.moras[k2];
+        if (m2.kind === "pau") break;
+        const b2 = Math.max(0, Math.trunc(m2.b / fpz)), e2 = Math.min(n, Math.trunc(m2.e / fpz));
+        for (let t_ = b2; t_ < e2; t_++) if (r.voiced[t_]) { remVo = true; break; }
+      }
+      if (!remVo) {
+        const sp_ = Math.max(1, ie - ib);
+        for (let t_ = ib; t_ < ie; t_++) {
+          const u = (t_ - ib) / sp_;
+          if (u > 0.30) {
+            const s_v = Math.min(1.0, sigh) * Math.pow((u - 0.30) / 0.70, 1.10);
+            sigh_fr[t_] = s_v;
+            f0_fr[t_] *= Math.pow(2.0, (-0.18 * s_v) / 12.0);
+          }
+        }
+      }
+    }
+  }
+
+  // 声道共鳴周波数 F1..F4 と子音共鳴中心 f_cons_cen
+  const fs = fscale;
+  const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
+  for (let t = 0; t < n; t++) {
+    F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
+    F2[t] = Math.min(Math.max(r.F2[t] * fs, F1[t] + 280.0), 8500.0);
+    F3[t] = Math.min(Math.max(r.F3[t] * fs, F2[t] + 350.0), 9000.0);
+    F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
+  }
+
+  const f_cons_cen = new Array(n).fill(2500.0);
+  const f_cons_w = new Array(n).fill(0.0);
+  const cons_sharp = new Array(n).fill(0.0);
+  const sortedBands = r.bands.slice().sort((a, b) => a[0] - b[0]);
+  for (const [t0, t1, cen, , lev] of sortedBands) {
+    const ia = Math.max(0, Math.round(t0 / fpz)), ib = Math.min(n, Math.round(t1 / fpz) + 1);
+    for (let t_ = Math.max(0, ia - 2); t_ < Math.min(n, ib + 2); t_++) f_cons_cen[t_] = cen;
+    for (let t_ = ia; t_ < ib; t_++) {
+      f_cons_w[t_] = Math.max(f_cons_w[t_], Math.min(3.4, 0.58 * lev));
+      cons_sharp[t_] = 1.0;
+    }
+  }
+  for (let t_ = 1; t_ < n; t_++) {
+    if (f_cons_w[t_] === 0.0 && cons_sharp[t_] === 0.0) f_cons_cen[t_] = f_cons_cen[t_ - 1];
+  }
+
+  const vo_sm = smooth1(r.voiced.map((v) => (v ? 1.0 : 0.0)), 10);
+  const sigh_sm = smooth1(sigh_fr, 14);
+  const g_fr = new Array(n);
+  for (let t = 0; t < n; t++) g_fr[t] = vo_sm[t] * g_vo * (1.0 - 0.88 * sigh_sm[t]);
+
+  // サンプル単位の基本周期 PER[i] (原石ノイズ x からダシをとった自然漂い wander + 周期ごとの微細ジッタ)
+  const f0S = perSample(f0_fr, N);
+  const wander = furafura(x, 0.0, wander_st, 0.09);
+  const PER = new Float64Array(N);
+  for (let i = 0; i < N; i++) PER[i] = SR / Math.max(60.0, f0S[i] * Math.pow(2.0, wander[i] / 12.0));
+  if (jitter > 0.0) {
+    let idxP = 0;
+    while (idxP < N) {
+      const pl = Math.max(2, Math.trunc(PER[idxP]));
+      const jf = 1.0 + jitter * x[idxP];
+      const end = Math.min(N, idxP + pl);
+      for (let k = idxP; k < end; k++) PER[k] *= jf;
+      idxP += pl;
+    }
+  }
+
+  // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、必要なら高域減衰 damp と乗算時間くびれ shin） ===
+  const GS = perSample(g_fr, N);
+  const wNorm = wander_st > 0.0 ? (1.0 / wander_st) : 0.0;
+  if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
+  x = combPeriod(x, PER, GS, damp);
+  if (shin > 0.0) {
+    let ph = 0.0;
+    const p = 1.0 + 3.0 * shin;
+    for (let i = 0; i < N; i++) {
+      ph += 1.0 / PER[i];
+      if (ph >= 1.0) ph -= 1.0;
+      const w = Math.pow(Math.max(0.0, 1.0 - Math.abs(ph - 0.5) * 2.0), p);
+      const s = shin * GS[i];
+      x[i] *= (1.0 - s) + s * (0.30 + 1.85 * w);
+    }
+  }
+  x = combPeriod(x, PER, GS, damp);
+  const x1 = captureSteps ? x.slice() : null;
+
+  // === Step 2: 【引き算②】低域濁りと高域の角を引く ===
+  x = karuku(x, hz >= 200.0 ? 115 : 220);
+  const tw = Math.max(1, Math.round(tilt_w));
+  x = arakezuriT(x, tw, 2, perSample(cons_sharp, N));
+  if (sigh > 0.0) {
+    const sighKeep = new Array(n);
+    for (let t = 0; t < n; t++) sighKeep[t] = 1.0 - 0.85 * sigh_sm[t];
+    x = arakezuriT(x, tw + 3, 2, perSample(sighKeep, N));
+  }
+  const x2 = captureSteps ? x.slice() : null;
+
+  // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
+  let yc = resonator2Pole(x, perSample(F1, N), 80.0, 8.0);
+  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0);
+  yc = resonator2Pole(yc, perSample(F3, N), 150.0, 13.0);
+  yc = resonator2Pole(yc, perSample(F4, N), 220.0, 14.0);
+  const ycRad = new Float64Array(N);
+  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
+  const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
+  const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
+  const G1S = perSample(r.G1, N);
+  const FCW = perSample(smooth1(f_cons_w, 6), N);
+
+  const y = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i];
+  }
+  const x3 = captureSteps ? y.slice() : null;
+
+  // === Step 4: 【引き算④】1スカラー整音 ＋ 時間包絡 ===
+  if (level_k > 0.0) {
+    const wSc = Math.trunc(0.028 * SR);
+    const sq = new Float64Array(N);
+    for (let i = 0; i < N; i++) sq[i] = y[i] * y[i];
+    const pLoc = heikin(sq, wSc);
+    const vPows = [];
+    for (let t = 0; t < n; t++) {
+      if (r.voiced[t] && sigh_sm[t] < 0.1 && cons_sharp[t] < 0.1) {
+        vPows.push(pLoc[Math.trunc((t + 0.5) * fpz * SR)]);
+      }
+    }
+    let refRms;
+    if (vPows.length) {
+      vPows.sort((a, b) => a - b);
+      refRms = Math.sqrt(vPows[Math.floor(vPows.length / 2)]);
+    } else {
+      refRms = rmsActive(y) || 1.0;
+    }
+    const eps = Math.pow(0.12 * refRms, 2) + 1e-24;
+    const wLvFr = new Array(n);
+    for (let t = 0; t < n; t++) wLvFr[t] = level_k * vo_sm[t] * (1.0 - sigh_sm[t]) * (1.0 - cons_sharp[t]);
+    const wLv = perSample(smooth1(wLvFr, 14), N);
+    const rawGlv = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      const ratio = Math.min(2.2, Math.max(0.45, refRms / Math.sqrt(pLoc[i] + eps)));
+      rawGlv[i] = 1.0 + wLv[i] * (ratio - 1.0);
+    }
+    const gLv = heikin(rawGlv, Math.trunc(0.018 * SR));
+    for (let i = 0; i < N; i++) y[i] *= gLv[i];
+  }
+
+  const loExp = new Array(n);
+  for (let t = 0; t < n; t++) loExp[t] = Math.exp((r.loud[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
+  const env = perSample(loExp, N);
+  let pk = 0.0;
+  for (let i = 0; i < N; i++) {
+    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.55, 1.0 + 0.24 * wander[i] * wNorm) : 1.0);
+    const av = Math.abs(y[i]);
+    if (av > pk) pk = av;
+  }
+  if (pk === 0.0) pk = 1.0;
+  const out = new Float32Array(N);
+  const scale = 0.891 / pk;
+  for (let i = 0; i < N; i++) out[i] = y[i] * scale;
+
+  let steps = null;
+  if (captureSteps) {
+    let vSq = 0.0, vCnt = 0;
+    for (let t = 0; t < n; t++) {
+      if (r.voiced[t]) {
+        const a = Math.trunc(t * fpz * SR), b = Math.min(N, Math.trunc((t + 1) * fpz * SR));
+        for (let i = a; i < b; i++) vSq += out[i] * out[i];
+        vCnt += Math.max(0, b - a);
+      }
+    }
+    const targetRms = Math.min(0.18, Math.max(0.11, Math.sqrt(vSq / (vCnt || 1))));
+    const gStart = Math.max(0, Math.trunc((r.moras[0]?.a ?? pre) * SR));
+    const gEnd = Math.min(N, Math.trunc((r.moras[r.moras.length - 1]?.e ?? (N / SR - post)) * SR));
+    steps = [
+      normalizeToRms(x0, targetRms * 0.72, 0.75, gStart, gEnd),
+      normalizeToRms(x1, targetRms * 0.85, 0.85, gStart, gEnd),
+      normalizeToRms(x2, targetRms * 0.92, 0.85, gStart, gEnd),
+      normalizeToRms(x3, targetRms * 0.98, 0.88, gStart, gEnd),
+      out,
+    ];
+  }
+
+  return { samples: out, steps, r: Object.assign({}, r, { f0_tr: f0_fr }), moras: r.moras };
+}
+
+// ============================================================================
+// 5. WAV エンコード & 音響自己計測 hakaru（ブラウザ・Node 共通、外部依存ゼロ）
+// ============================================================================
+function encodeWav(samples, sampleRate = SR) {
+  const n = samples.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const view = new DataView(buf);
+  const writeAscii = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + n * 2, true);
+  writeAscii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const clamped = Math.max(-1.0, Math.min(1.0, samples[i]));
+    view.setInt16(44 + i * 2, Math.round(clamped * 32767.0), true);
+  }
+  return new Uint8Array(buf);
+}
+
+const FFT_CACHE = new Map();
+
+function fftRadix2(reIn) {
+  const n = reIn.length;
+  let plan = FFT_CACHE.get(n);
+  if (!plan) {
+    const bits = Math.round(Math.log2(n));
+    const bitrev = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      let x = i, r = 0;
+      for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; }
+      bitrev[i] = r;
+    }
+    const twRe = [], twIm = [], steps = [];
+    for (let step = 2; step <= n; step <<= 1) {
+      const half = step >> 1;
+      const cRe = new Float64Array(half), cIm = new Float64Array(half);
+      for (let k = 0; k < half; k++) {
+        const ang = (-2.0 * Math.PI * k) / step;
+        cRe[k] = Math.cos(ang);
+        cIm[k] = Math.sin(ang);
+      }
+      steps.push(step);
+      twRe.push(cRe);
+      twIm.push(cIm);
+    }
+    plan = { bitrev, steps, twRe, twIm };
+    FFT_CACHE.set(n, plan);
+  }
+  const re = new Float64Array(n), im = new Float64Array(n);
+  for (let i = 0; i < n; i++) re[i] = reIn[plan.bitrev[i]];
+  for (let si = 0; si < plan.steps.length; si++) {
+    const step = plan.steps[si], half = step >> 1;
+    const cRe = plan.twRe[si], cIm = plan.twIm[si];
+    for (let s = 0; s < n; s += step) {
+      for (let k = 0; k < half; k++) {
+        const i1 = s + k, i2 = i1 + half;
+        const vr = re[i2] * cRe[k] - im[i2] * cIm[k];
+        const vi = re[i2] * cIm[k] + im[i2] * cRe[k];
+        re[i2] = re[i1] - vr;
+        im[i2] = im[i1] - vi;
+        re[i1] += vr;
+        im[i1] += vi;
+      }
+    }
+  }
+  return { re, im };
+}
+
+function hakaru(samples, rInfo) {
+  const N = samples.length;
+  const fpz = FP / 1000.0;
+  const voiced = rInfo.voiced || [];
+  const moras = rInfo.moras || [];
+  const f0Tr = rInfo.f0_tr || [0.0];
+  let pk = 0.0;
+  for (let i = 0; i < N; i++) { const av = Math.abs(samples[i]); if (av > pk) pk = av; }
+  let vSq = 0.0, vCnt = 0;
+  for (let t = 0; t < voiced.length; t++) {
+    if (voiced[t]) {
+      const a = Math.trunc(t * fpz * SR), b = Math.min(N, Math.trunc((t + 1) * fpz * SR));
+      for (let i = a; i < b; i++) vSq += samples[i] * samples[i];
+      vCnt += Math.max(0, b - a);
+    }
+  }
+  const rmsV = vCnt > 0 ? Math.sqrt(vSq / vCnt) : rmsActive(samples);
+  const crestDb = (pk > 0.0 && rmsV > 0.0) ? 20.0 * Math.log10(pk / (rmsV + 1e-12)) : 0.0;
+
+  const nf = 2048, hb = (nf >> 1) + 1;
+  const win = new Float64Array(nf);
+  for (let k = 0; k < nf; k++) win[k] = 0.5 - 0.5 * Math.cos((2.0 * Math.PI * k) / nf);
+  const fq = new Float64Array(hb);
+  for (let k = 0; k < hb; k++) fq[k] = (k * SR) / nf;
+
+  const winSpec = (s0) => {
+    const buf = new Float64Array(nf);
+    const end = Math.min(nf, Math.max(0, N - s0));
+    for (let k = 0; k < end; k++) buf[k] = samples[s0 + k] * win[k];
+    return fftRadix2(buf);
+  };
+
+  const spAcc = new Float64Array(hb);
+  if (N > 0 && N < nf && voiced.some(Boolean)) {
+    const { re, im } = winSpec(0);
+    for (let k = 0; k < hb; k++) spAcc[k] += re[k] * re[k] + im[k] * im[k];
+  }
+  for (let s0 = 0; s0 <= N - nf; s0 += nf) {
+    const tc = Math.trunc(((s0 + (nf >> 1)) / SR) / fpz);
+    if (tc >= 0 && tc < voiced.length && voiced[tc]) {
+      const { re, im } = winSpec(s0);
+      for (let k = 0; k < hb; k++) spAcc[k] += re[k] * re[k] + im[k] * im[k];
+    }
+  }
+  let hasSp = false;
+  for (let k = 0; k < hb; k++) if (spAcc[k] > 0.0) { hasSp = true; break; }
+  let s0b = 1e-24, s1b = 1e-24, s2b = 1e-24;
+  for (let k = 0; k < hb; k++) {
+    if (fq[k] >= 120.0 && fq[k] < 1000.0) s0b += spAcc[k];
+    else if (fq[k] >= 1000.0 && fq[k] < 2600.0) s1b += spAcc[k];
+    else if (fq[k] >= 2600.0 && fq[k] < 5600.0) s2b += spAcc[k];
+  }
+  const b1 = hasSp ? 10.0 * Math.log10(s1b / s0b) : 0.0;
+  const b2 = hasSp ? 10.0 * Math.log10(s2b / s0b) : 0.0;
+
+  const taniAt = (ts) => {
+    if (N === 0) return 0.0;
+    const s0 = Math.max(0, Math.min(Math.max(0, N - nf), Math.trunc(ts * SR) - (nf >> 1)));
+    const { re, im } = winSpec(s0);
+    const spDb = new Float64Array(hb);
+    for (let k = 0; k < hb; k++) spDb[k] = 10.0 * Math.log10(re[k] * re[k] + im[k] * im[k] + 1e-24);
+    const f0 = Math.max(80.0, f0Tr[Math.min(f0Tr.length - 1, Math.max(0, Math.trunc(ts / fpz)))]);
+    const diffs = [];
+    for (let hIdx = 1; hIdx <= 6; hIdx++) {
+      let pMax = -Infinity, vMin = Infinity, hp = false, hv = false;
+      for (let k = 0; k < hb; k++) {
+        if (fq[k] >= (hIdx - 0.18) * f0 && fq[k] <= (hIdx + 0.18) * f0) { if (spDb[k] > pMax) pMax = spDb[k]; hp = true; }
+        if (fq[k] >= (hIdx + 0.32) * f0 && fq[k] <= (hIdx + 0.68) * f0) { if (spDb[k] < vMin) vMin = spDb[k]; hv = true; }
+      }
+      if (hp && hv) diffs.push(pMax - vMin);
+    }
+    return diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : 0.0;
+  };
+
+  const cvs = moras.filter((m) => m.kind === "CV" && voiced.slice(Math.trunc(m.b / fpz), Math.trunc(m.e / fpz)).some(Boolean));
+  const ml = cvs.length ? cvs[cvs.length - 1] : (moras[0] || null);
+  const tCore = (ml && hasSp) ? taniAt(ml.b + 0.18 * (ml.e - ml.b)) : 0.0;
+  const tTail = (ml && hasSp) ? taniAt(ml.b + 0.85 * (ml.e - ml.b)) : 0.0;
+  return {
+    dur_s: Number((N / SR).toFixed(2)),
+    crest_db: Number(crestDb.toFixed(1)),
+    band_1k_2k6_db: Number(b1.toFixed(1)),
+    band_2k6_5k6_db: Number(b2.toFixed(1)),
+    tani_core_db: Number(tCore.toFixed(1)),
+    tani_tail_db: Number(tTail.toFixed(1)),
+  };
+}
+
+
+const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+const VENUES = {
+  live:      { name: "ライブハウス（熱気＆近距離）",     dur: 1.25, decay: 2.8, bright: 0.34, wetMul: 0.72, hpf: 240, slapMs: 18,  lowGain: 3.2, hiGain: -1.8, skyHue: [14, 10, 32] },
+  hall:      { name: "木造ホール（温かく澄んだ響き）",   dur: 2.35, decay: 2.2, bright: 0.24, wetMul: 1.00, hpf: 260, slapMs: 32,  lowGain: 2.4, hiGain: -2.8, skyHue: [10, 14, 28] },
+  cathedral: { name: "大聖堂（荘厳な石造り＆光の幹）",   dur: 3.40, decay: 1.8, bright: 0.20, wetMul: 1.32, hpf: 290, slapMs: 48,  lowGain: 2.0, hiGain: -3.2, skyHue: [8, 12, 34]  },
+  stadium:   { name: "夜のスタジアム（広大な屋外残響）", dur: 2.90, decay: 2.0, bright: 0.30, wetMul: 1.12, hpf: 230, slapMs: 115, lowGain: 2.8, hiGain: -2.0, skyHue: [6, 11, 26]  },
+};
+
+const ARCHETYPES = [
+  { id: "shojo",    name: "澄み少女",       part: "S", hzHint: 350, fs: 1.110, fsR: 0.04, gvo: 0.905, tw: 6.0, jit: 0.0013, wan: 0.16, vib: 10.5, sigh: 0.18, damp: 0.24 },
+  { id: "seinen",   name: "青年テノール",   part: "T", hzHint: 155, fs: 0.925, fsR: 0.04, gvo: 0.910, tw: 6.0, jit: 0.0014, wan: 0.14, vib: 11.0, sigh: 0.10, damp: 0.22 },
+  { id: "chibi",    name: "ちびっ子",       part: "S", hzHint: 390, fs: 1.185, fsR: 0.05, gvo: 0.900, tw: 5.0, jit: 0.0016, wan: 0.20, vib: 6.5,  sigh: 0.05, damp: 0.14 },
+  { id: "alto",     name: "アルトお姉さん", part: "A", hzHint: 195, fs: 1.015, fsR: 0.04, gvo: 0.895, tw: 6.5, jit: 0.0013, wan: 0.14, vib: 12.5, sigh: 0.22, damp: 0.28 },
+  { id: "ossan",    name: "おっさんバス",   part: "B", hzHint: 125, fs: 0.830, fsR: 0.04, gvo: 0.920, tw: 6.5, jit: 0.0018, wan: 0.13, vib: 9.5,  sigh: 0.08, damp: 0.24 },
+  { id: "whisper",  name: "吐息ウィスパー", part: "S", hzHint: 300, fs: 1.090, fsR: 0.04, gvo: 0.790, tw: 7.0, jit: 0.0017, wan: 0.17, vib: 8.5,  sigh: 0.42, damp: 0.36 },
+  { id: "husky",    name: "ハスキー姉御",   part: "A", hzHint: 190, fs: 0.980, fsR: 0.04, gvo: 0.860, tw: 5.5, jit: 0.0024, wan: 0.15, vib: 12.0, sigh: 0.20, damp: 0.26 },
+  { id: "mezzo",    name: "朗らかメゾ",     part: "A", hzHint: 240, fs: 1.045, fsR: 0.04, gvo: 0.905, tw: 6.0, jit: 0.0012, wan: 0.15, vib: 11.5, sigh: 0.12, damp: 0.22 },
+  { id: "genki",    name: "元気っ子",       part: "S", hzHint: 360, fs: 1.135, fsR: 0.04, gvo: 0.915, tw: 5.0, jit: 0.0015, wan: 0.18, vib: 7.5,  sigh: 0.05, damp: 0.15 },
+  { id: "boy",      name: "ボーイソプラノ", part: "S", hzHint: 330, fs: 1.105, fsR: 0.04, gvo: 0.920, tw: 6.5, jit: 0.0010, wan: 0.11, vib: 7.5,  sigh: 0.10, damp: 0.26 },
+  { id: "baritone", name: "包容バリトン",   part: "B", hzHint: 140, fs: 0.870, fsR: 0.04, gvo: 0.915, tw: 6.5, jit: 0.0014, wan: 0.12, vib: 12.5, sigh: 0.10, damp: 0.24 },
+  { id: "elder",    name: "長老ビブラート", part: "B", hzHint: 130, fs: 0.850, fsR: 0.04, gvo: 0.895, tw: 7.0, jit: 0.0024, wan: 0.22, vib: 19.0, sigh: 0.18, damp: 0.30 },
+  { id: "seika",    name: "聖歌隊ソプラノ", part: "S", hzHint: 350, fs: 1.080, fsR: 0.04, gvo: 0.920, tw: 6.5, jit: 0.0009, wan: 0.10, vib: 13.5, sigh: 0.14, damp: 0.28 },
+  { id: "soul",     name: "ソウルフル",     part: "T", hzHint: 170, fs: 0.950, fsR: 0.04, gvo: 0.915, tw: 5.5, jit: 0.0019, wan: 0.20, vib: 16.0, sigh: 0.10, damp: 0.18 },
+  { id: "rock",     name: "熱血ロック",     part: "T", hzHint: 180, fs: 0.960, fsR: 0.04, gvo: 0.925, tw: 5.0, jit: 0.0024, wan: 0.18, vib: 13.0, sigh: 0.05, damp: 0.12 },
+  { id: "robot",    name: "冷凍ロボ(1名)",  part: "A", hzHint: 220, fs: 1.050, fsR: 0.01, gvo: 0.955, tw: 4.0, jit: 0.0,    wan: 0.0,  vib: 0.0,  sigh: 0.0,  damp: 0.0  },
+];
+
+const STAGES = [
+  { count: 1,   key: "D major", lyric: "しろいあめのなかうまれたこえ", display: "しろい あめの なか　うまれた こえ", newArch: "澄み少女（1本の白いノイズから誕生）", maxArchIdx: 1,
+    S: [66,69,71,74,73,71,69,66,69,71,74,73,71,69], A: [62,66,67,69,69,67,66,62,66,67,69,69,67,64], T: [57,62,62,66,64,64,62,59,62,62,66,64,64,61], B: [50,50,50,50,49,49,49,47,47,47,47,45,45,45],
+    vd:[240,240,240,310,240,240,380,240,240,240,310,240,240,440], spread: 0.0,  gain: 0.72, wet: 0.18 },
+  { count: 2,   key: "D major", lyric: "ひとりじゃないよとだれかがよぶ", display: "ひとりじゃないよと　だれかが よぶ", newArch: "＋青年テノール", maxArchIdx: 2,
+    S: [67,69,71,74,73,71,69,67,66,67,69,71,73,73], A: [62,64,67,69,69,67,66,64,62,64,67,67,69,69], T: [59,59,62,66,66,62,62,59,59,59,64,64,64,64], B: [55,55,55,54,54,54,54,52,52,52,52,57,57,57],
+    vd:[230,230,230,300,230,230,370,230,230,230,300,230,230,430], spread: 0.30, gain: 0.77, wet: 0.22 },
+  { count: 4,   key: "D major", lyric: "わらうこえもなみだもかさなり", display: "わらう こえも なみだも かさなり", newArch: "＋ちびっ子・アルトお姉さん", maxArchIdx: 4,
+    S: [71,73,74,76,74,73,71,71,73,74,76,78,76,74], A: [66,69,71,73,69,69,66,67,69,71,71,74,73,69], T: [62,62,66,66,66,61,61,62,62,67,67,69,69,66], B: [47,47,47,54,54,54,54,55,55,55,55,50,50,50],
+    vd:[225,225,225,295,225,225,360,225,225,225,295,225,225,430], spread: 0.50, gain: 0.82, wet: 0.28 },
+  { count: 8,   key: "D major", lyric: "でこぼこのこえがいまひとつに", display: "でこぼこの こえが　いま ひとつに", newArch: "＋おっさんバス・吐息・ハスキー・メゾ", maxArchIdx: 8,
+    S: [74,73,71,74,76,74,73,71,73,74,76,74,76,76], A: [67,67,67,69,73,71,69,66,69,71,71,69,73,73], T: [62,62,62,64,69,66,66,61,64,67,67,67,69,69], B: [55,55,55,57,57,59,59,54,54,55,55,55,57,57],
+    vd:[220,220,220,285,220,220,350,220,220,220,285,220,220,440], spread: 0.70, gain: 0.87, wet: 0.35 },
+  { count: 16,  key: "D major", lyric: "とおいそらのあかりがあつまる", display: "とおい そらの あかりが あつまる", newArch: "＋元気っ子・ボーイ・バリトン・長老（2列目開花）", maxArchIdx: 12,
+    S: [78,76,74,73,74,76,73,71,74,76,78,76,74,76], A: [74,73,69,69,69,71,69,67,69,71,74,73,71,73], T: [66,66,66,64,64,64,64,62,66,67,67,64,64,69], B: [50,50,50,45,45,45,45,47,47,55,55,52,52,57],
+    vd:[220,220,220,285,220,220,350,220,220,220,285,220,220,440], spread: 0.84, gain: 0.93, wet: 0.44 },
+  { count: 32,  key: "D major", lyric: "かぜにのせてとどけよこのうた", display: "かぜに のせて　とどけよ この うた", newArch: "＋聖歌隊・ソウル・ロック・冷凍ロボ(1名)", maxArchIdx: 16,
+    S: [79,78,76,74,76,78,76,74,76,78,79,78,76,78], A: [71,71,71,69,73,73,73,71,71,71,74,73,71,75], T: [67,67,67,66,69,69,66,66,67,67,67,69,69,71], B: [55,55,55,57,57,54,54,59,59,52,52,57,57,59],
+    vd:[215,215,215,275,215,215,340,215,215,215,275,215,215,470], spread: 0.92, gain: 0.97, wet: 0.52 },
+  { count: 64,  key: "E major (+2転調!!)", lyric: "よるをこえてあさひがさすまで", display: "よるを こえて　あさひが さすまで", newArch: "全16属性 ×4・気流うねり3層距離・E major 転調！", maxArchIdx: 16,
+    S: [80,78,76,75,76,78,75,73,76,78,80,78,76,78], A: [76,75,71,71,71,73,71,68,71,73,76,75,73,75], T: [68,68,68,66,66,66,66,64,68,69,69,66,66,71], B: [52,52,52,51,51,51,51,49,49,57,57,57,59,59],
+    vd:[215,215,215,275,215,215,340,215,215,215,275,215,215,460], spread: 0.96, gain: 1.01, wet: 0.60 },
+  { count: 128, key: "E major フィナーレ", lyric: "いませかいじゅうでうたおうああ", display: "いま せかいじゅうで うたおう ——！", newArch: "全16属性 ×8 = 128人・気流のうねるライブ大合唱！", maxArchIdx: 16,
+    S: [81,80,78,76,78,80,78,76,78,80,81,78,80,80], A: [73,73,73,71,75,75,71,68,73,73,75,75,76,76], T: [69,69,69,68,71,71,68,64,69,69,71,71,71,71], B: [57,57,57,59,59,56,56,49,57,57,59,59,52,52],
+    vd:[230,230,230,270,230,230,310,250,250,270,300,340,480,960], spread: 1.00, gain: 1.06, wet: 0.68 },
+];
+
+function applyAirLPInPlace(sig, cutoffHz) {
+  const rc = 1.0 / (2 * Math.PI * cutoffHz);
+  const dt = 1.0 / SR;
+  const a = dt / (rc + dt);
+  let y = 0;
+  for (let i = 0; i < sig.length; i++) {
+    y += a * (sig[i] - y);
+    sig[i] = y;
+  }
+}
+
+const yieldFrame = () => new Promise((r) => setTimeout(r, 0));
+
+async function synthStageAsync(stIdx, chaos01, isFinal, isAlive, onVoiceProgress) {
+  const st = STAGES[stIdx];
+  const rng = makeRng(202600 + stIdx * 997 + Math.round(chaos01 * 100));
+  const voices = [];
+  const orbs = [];
+  let maxLen = 0;
+
+  const isSmallStage = st.count <= 8;
+  const c2 = chaos01 * chaos01;
+  const spreadMul = 0.20 + chaos01 * 1.1 + c2 * 1.2;
+  const baseVd = st.vd.slice();
+  if (isFinal && stIdx < 7) baseVd[baseVd.length - 1] = 820;
+
+  for (let i = 0; i < st.count; i++) {
+    if (!isAlive()) return null;
+    let archIdx;
+    if (st.count === 1) archIdx = 0;
+    else if (i < st.maxArchIdx) archIdx = i;
+    else {
+      archIdx = Math.floor(rng.uniform(0, st.maxArchIdx));
+      if (archIdx === 15 && chaos01 < 0.75) archIdx = Math.floor(rng.uniform(0, 15));
+    }
+    const a = ARCHETYPES[archIdx];
+    const isRobot = a.id === "robot";
+    const partNotes = st[a.part];
+
+    // Distance row: 0 = Front (0..11), 1 = Mid (12..35), 2 = Back (36..127)
+    const row = i < 12 ? 0 : i < 36 ? 1 : 2;
+
+    // Individual singer skill tier: 0 = anchor (38%), 1 = normal (34%), 2 = wildcard (28%)
+    const rSkill = rng.random();
+    const tier = (st.count === 1 || isRobot || rSkill < 0.38) ? 0 : (rSkill < 0.72 ? 1 : 2);
+
+    const detuneMax = tier === 0
+      ? (1.5 + chaos01 * 5)
+      : tier === 1
+        ? (3 + chaos01 * 22)
+        : (4 + chaos01 * 38 + c2 * 75);
+    const baseDelay = st.count === 1 ? 0 : (
+      tier === 0 ? (0.004 + chaos01 * 0.012)
+      : tier === 1 ? (0.006 + chaos01 * 0.042)
+      : (0.008 + chaos01 * 0.075 + c2 * 0.16)
+    );
+    const rowDelay = row === 0 ? 0 : row === 1 ? rng.uniform(0.012, 0.034) : rng.uniform(0.026, 0.068);
+    const tempoSpread = isRobot ? 0.0 : (tier === 0 ? 0.014 : tier === 1 ? (0.018 + 0.025 * chaos01) : (0.025 + 0.12 * c2));
+
+    const detuneCents = (st.count === 1 || isRobot) ? 0 : rng.uniform(-detuneMax, detuneMax);
+    const detune = Math.pow(2, detuneCents / 1200);
+    const octShift = (st.count >= 64 && row >= 1 && a.part === "B" && i % 4 === 0) ? -12 : 0;
+
+    const noteChaos = tier === 2 ? Math.max(0, chaos01 - 0.45) / 0.55 : 0;
+    const uta_hz = partNotes.map((m) => {
+      const errSt = noteChaos > 0 ? rng.uniform(-1.8 * noteChaos, 1.8 * noteChaos) : 0;
+      return midiHz(m + octShift + errSt) * detune;
+    });
+
+    const tempoMul = (st.count === 1 || isRobot) ? 1.0 : (1.0 + rng.uniform(-tempoSpread, tempoSpread));
+    const vd = baseVd.map((ms) => Math.max(110, Math.round(ms * tempoMul * ((st.count === 1 || isRobot) ? 1.0 : rng.uniform(0.97, 1.03)))));
+
+    const partCenterFs = a.part === "S" ? 1.11 : a.part === "A" ? 1.03 : a.part === "T" ? 0.94 : 0.86;
+    const baseFs = partCenterFs + (a.fs - partCenterFs) * Math.min(1.40, 0.35 + chaos01 * 1.05);
+    const fscale = Math.max(0.70, Math.min(1.36, baseFs + rng.uniform(-a.fsR, a.fsR) * (tier === 0 ? 0.75 : spreadMul)));
+
+    const rowGvoBoost = isRobot ? 0.0 : (row === 0 ? 0.0 : row === 1 ? 0.022 : 0.040);
+    const g_vo = Math.max(0.55, Math.min(0.962, a.gvo + rowGvoBoost + (isRobot ? 0 : rng.uniform(-0.028, 0.025) * spreadMul)));
+    const tilt_w = Math.max(3, Math.min(8, Math.round(a.tw + (isRobot ? 0 : rng.uniform(-1.0, 1.0) * spreadMul))));
+    const jitter = isRobot ? 0 : Math.max(0.0004, a.jit * (tier === 0 ? 0.75 : (0.6 + chaos01 * 1.0 + (tier === 2 ? c2 * 1.2 : 0))));
+    const wander_st = isRobot ? 0 : a.wan * (tier === 0 ? 0.70 : tier === 1 ? (0.65 + chaos01 * 0.9) : (0.75 + chaos01 * 1.3 + c2 * 2.2));
+    const vib_c = isRobot ? 0 : a.vib * (tier === 0 ? 0.80 : tier === 1 ? (0.70 + chaos01 * 0.7) : (0.75 + chaos01 * 1.0 + c2 * 1.6));
+    const rowDamp = isRobot ? 0.0 : Math.min(0.52, a.damp + (row === 1 ? 0.08 : row === 2 ? 0.16 : 0.0));
+    const rowSigh = isRobot ? 0.0 : a.sigh * (row === 0 ? (0.6 + chaos01 * 0.7) : row === 1 ? 0.45 : 0.20);
+
+    // Humans: level_k = 0.0 (raw uncrushed white-noise airflow swell!); Robot: level_k = 0.65 (compressed flat robot!)
+    const res = makeHitofude(st.lyric, {
+      seed: 7000 + stIdx * 1000 + i * 29,
+      hz: a.hzHint, fscale, uta_hz, vd_ms: vd,
+      g_vo, tilt_w, sigh: rowSigh,
+      jitter, wander_st, damp: rowDamp, vib_c,
+      level_k: isRobot ? 0.65 : 0.0,
+      pre: 0.08, post: isFinal ? 0.35 : 0.14,
+    });
+
+    const y = res.samples;
+    if (!isRobot) {
+      if (row === 1) applyAirLPInPlace(y, 5200);
+      else if (row === 2) applyAirLPInPlace(y, 3000);
+    }
+
+    const delaySamp = Math.round((rng.uniform(0, baseDelay) + rowDelay) * SR);
+    let pan = 0.0;
+    if (st.count > 1) {
+      const partCenter = a.part === "S" ? -0.58 : a.part === "A" ? -0.18 : a.part === "T" ? 0.22 : 0.60;
+      const seated = Math.max(-0.95, Math.min(0.95, partCenter * st.spread + rng.uniform(-0.34, 0.34) * st.spread));
+      const scattered = rng.uniform(-st.spread, st.spread);
+      pan = seated * (1 - chaos01 * 0.55) + scattered * (chaos01 * 0.55);
+    }
+    const partGain = a.part === "B" ? (isSmallStage ? 1.08 : 1.24) : a.part === "T" ? 1.06 : a.part === "A" ? 1.00 : 0.96;
+    const dryGain = row === 0 ? 1.00 : row === 1 ? 0.48 : 0.22;
+    const sendGain = row === 0 ? 0.55 : row === 1 ? 0.95 : 1.22;
+
+    voices.push({ y, delaySamp, pan, partGain, dryGain, sendGain });
+    orbs.push({ pan, part: a.part, id: a.id, tier, row, yNorm: a.part === "S" ? 0.23 : a.part === "A" ? 0.43 : a.part === "T" ? 0.62 : 0.80, phase: rng.uniform(0, 6.28) });
+    if (y.length + delaySamp > maxLen) maxLen = y.length + delaySamp;
+
+    if (onVoiceProgress) onVoiceProgress(i + 1, st.count);
+    await yieldFrame();
+  }
+  if (!isAlive()) return null;
+
+  const dryL = new Float32Array(maxLen), dryR = new Float32Array(maxLen);
+  const sendL = new Float32Array(maxLen), sendR = new Float32Array(maxLen);
+  for (const v of voices) {
+    const pL = Math.cos((v.pan + 1) * Math.PI * 0.25) * v.partGain;
+    const pR = Math.sin((v.pan + 1) * Math.PI * 0.25) * v.partGain;
+    const dL = pL * v.dryGain, dR = pR * v.dryGain;
+    const sL = pL * v.sendGain, sR = pR * v.sendGain;
+    for (let i = 0; i < v.y.length; i++) {
+      dryL[i + v.delaySamp] += v.y[i] * dL;
+      dryR[i + v.delaySamp] += v.y[i] * dR;
+      sendL[i + v.delaySamp] += v.y[i] * sL;
+      sendR[i + v.delaySamp] += v.y[i] * sR;
+    }
+  }
+
+  let sq = 0;
+  for (let i = 0; i < maxLen; i++) {
+    const mL = dryL[i] + sendL[i] * st.wet * 0.5;
+    const mR = dryR[i] + sendR[i] * st.wet * 0.5;
+    sq += mL * mL + mR * mR;
+  }
+  const rms = Math.sqrt(sq / (2 * maxLen)) || 1.0;
+  const sc = (0.175 * st.gain) / rms;
+  const fade = Math.round(0.05 * SR);
+  for (let i = 0; i < maxLen; i++) {
+    let w = 1.0;
+    if (i < fade) w = i / fade;
+    else if (i > maxLen - fade) w = (maxLen - i) / fade;
+    dryL[i] = Math.tanh(dryL[i] * sc * w * 1.1) / 1.1;
+    dryR[i] = Math.tanh(dryR[i] * sc * w * 1.1) / 1.1;
+    sendL[i] = Math.tanh(sendL[i] * sc * w * 1.1) / 1.1;
+    sendR[i] = Math.tanh(sendR[i] * sc * w * 1.1) / 1.1;
+  }
+  return { stIdx, count: st.count, key: st.key, display: st.display, newArch: st.newArch, wet: st.wet, dryL, dryR, sendL, sendR, orbs };
+}
+
+// === UI & Web Audio Controller ===
+const qs = new URLSearchParams(location.search);
+let maxCount = [8, 16, 32, 64, 128].includes(Number(qs.get("max"))) ? Number(qs.get("max")) : 128;
+let chaosPct = qs.has("chaos") ? Math.max(0, Math.min(100, Number(qs.get("chaos")) || 50)) : 50;
+let venueId = VENUES[qs.get("venue")] ? qs.get("venue") : "live";
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const cntNum = document.getElementById("cntNum");
+const cntUnit = document.getElementById("cntUnit");
+const keyBadge = document.getElementById("keyBadge");
+const lyricText = document.getElementById("lyricText");
+const archText = document.getElementById("archText");
+const venueLabel = document.getElementById("venueLabel");
+const maxLabel = document.getElementById("maxLabel");
+const chaosLabel = document.getElementById("chaosLabel");
+const chaosSlider = document.getElementById("chaosSlider");
+const btnPlay = document.getElementById("btnPlay");
+const btnShare = document.getElementById("btnShare");
+const statusText = document.getElementById("statusText");
+const progFill = document.getElementById("progFill");
+const segBtns = Array.from(document.querySelectorAll("#maxSeg button"));
+const venueBtns = Array.from(document.querySelectorAll("#venueSeg button"));
+
+function updateControlsUI() {
+  const v = VENUES[venueId];
+  venueLabel.textContent = v.name;
+  venueBtns.forEach(b => b.classList.toggle("active", b.dataset.venue === venueId));
+  const stages = Math.round(Math.log2(maxCount)) + 1;
+  maxLabel.textContent = "1 → " + maxCount + "人（" + stages + "段階）";
+  segBtns.forEach(b => b.classList.toggle("active", Number(b.dataset.max) === maxCount));
+  chaosSlider.value = chaosPct;
+  const mood = chaosPct < 20 ? "きっちり聖歌隊" : chaosPct < 45 ? "まとまり合唱" : chaosPct < 70 ? "自然なライブ合唱" : chaosPct < 90 ? "にぎやか個性派" : "球場カオス大集合";
+  chaosLabel.textContent = chaosPct + "%（" + mood + "）";
+}
+updateControlsUI();
+
+let audioCtx = null, analyser = null, dryBus = null, sendBus = null;
+let convolver = null, revHPF = null, warmLow = null, silkyHigh = null, venueWetGain = null;
+let isPlaying = false, activeRunId = 0;
+let scheduledSources = [], nextStartTime = 0, playTimer = null;
+let visualOrbs = [], currentStageIdx = -1, targetSkyWarmth = 0, skyWarmth = 0, flashAlpha = 0;
+let stageEvents = [];
+
+function createVenueIR(ac, v) {
+  const len = Math.floor(ac.sampleRate * v.dur);
+  const slapIdx = Math.floor(ac.sampleRate * v.slapMs * 0.001);
+  const buf = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let lp = 0.0;
+    for (let i = 0; i < len; i++) {
+      const p = i / len;
+      let env = Math.pow(1 - p, v.decay) * 0.54;
+      // Early reflection / stadium slapback accent
+      if (i > slapIdx && i < slapIdx + 1200) env *= 1.45;
+      const raw = (Math.random() * 2 - 1) * env;
+      const alpha = v.bright * (1 - p) + 0.04;
+      lp += alpha * (raw - lp);
+      d[i] = lp;
+    }
+  }
+  return buf;
+}
+
+function applyVenueAudio() {
+  if (!audioCtx || !convolver) return;
+  const v = VENUES[venueId];
+  convolver.buffer = createVenueIR(audioCtx, v);
+  revHPF.frequency.setTargetAtTime(v.hpf, audioCtx.currentTime, 0.05);
+  venueWetGain.gain.setTargetAtTime(v.wetMul, audioCtx.currentTime, 0.08);
+  warmLow.gain.setTargetAtTime(v.lowGain, audioCtx.currentTime, 0.08);
+  silkyHigh.gain.setTargetAtTime(v.hiGain, audioCtx.currentTime, 0.08);
+}
+
+venueBtns.forEach(b => b.addEventListener("click", () => {
+  venueId = b.dataset.venue;
+  updateControlsUI();
+  applyVenueAudio();
+}));
+segBtns.forEach(b => b.addEventListener("click", () => {
+  maxCount = Number(b.dataset.max);
+  updateControlsUI();
+}));
+chaosSlider.addEventListener("input", () => {
+  chaosPct = Number(chaosSlider.value);
+  updateControlsUI();
+});
+
+function playWhiteRainIntro(ac, dest) {
+  const dur = 0.95;
+  const len = Math.floor(ac.sampleRate * dur);
+  const buf = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const p = i / len;
+      const env = (4 * p * (1 - p)) * Math.pow(1 - p * 0.4, 1.5) * 0.09;
+      lp += 0.14 * ((Math.random() * 2 - 1) - lp);
+      d[i] = lp * env;
+    }
+  }
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  src.connect(dest);
+  src.start(ac.currentTime + 0.02);
+  scheduledSources.push(src);
+}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+    dryBus = audioCtx.createGain();
+    dryBus.gain.value = 0.90;
+
+    sendBus = audioCtx.createGain();
+    sendBus.gain.value = 0.90;
+
+    revHPF = audioCtx.createBiquadFilter();
+    revHPF.type = "highpass";
+
+    convolver = audioCtx.createConvolver();
+
+    venueWetGain = audioCtx.createGain();
+
+    warmLow = audioCtx.createBiquadFilter();
+    warmLow.type = "lowshelf";
+    warmLow.frequency.value = 260;
+
+    silkyHigh = audioCtx.createBiquadFilter();
+    silkyHigh.type = "highshelf";
+    silkyHigh.frequency.value = 3800;
+
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+
+    dryBus.connect(warmLow);
+    sendBus.connect(revHPF);
+    revHPF.connect(convolver);
+    convolver.connect(venueWetGain);
+    venueWetGain.connect(warmLow);
+    warmLow.connect(silkyHigh);
+    silkyHigh.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    applyVenueAudio();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function stopAll(resetMsg = true) {
+  isPlaying = false;
+  activeRunId++;
+  for (const s of scheduledSources) { try { s.stop(); } catch {} }
+  scheduledSources = [];
+  stageEvents = [];
+  if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+  btnPlay.classList.remove("playing");
+  btnPlay.textContent = "▶ ライブ合唱スタート";
+  keyBadge.classList.remove("mod");
+  if (resetMsg) {
+    statusText.textContent = "停止しました";
+    cntUnit.textContent = "人待機中";
+    targetSkyWarmth = 0;
+  }
+}
+
+function scheduleStage(data) {
+  if (!isPlaying || !audioCtx) return;
+  const dryBuf = audioCtx.createBuffer(2, data.dryL.length, SR);
+  dryBuf.getChannelData(0).set(data.dryL);
+  dryBuf.getChannelData(1).set(data.dryR);
+
+  const sendBuf = audioCtx.createBuffer(2, data.sendL.length, SR);
+  sendBuf.getChannelData(0).set(data.sendL);
+  sendBuf.getChannelData(1).set(data.sendR);
+
+  const drySrc = audioCtx.createBufferSource();
+  drySrc.buffer = dryBuf;
+  drySrc.connect(dryBus);
+
+  const sendSrc = audioCtx.createBufferSource();
+  sendSrc.buffer = sendBuf;
+  const stageWet = audioCtx.createGain();
+  stageWet.gain.value = data.wet;
+  sendSrc.connect(stageWet);
+  stageWet.connect(sendBus);
+
+  const now = audioCtx.currentTime;
+  const overlap = 0.22;
+  const startAt = Math.max(now + 0.04, nextStartTime);
+  drySrc.start(startAt);
+  sendSrc.start(startAt);
+  scheduledSources.push(drySrc, sendSrc);
+
+  stageEvents.push({
+    t0: startAt,
+    tEnd: startAt + dryBuf.duration,
+    stIdx: data.stIdx,
+    count: data.count,
+    key: data.key,
+    display: data.display,
+    newArch: data.newArch,
+    orbs: data.orbs,
+  });
+  nextStartTime = startAt + dryBuf.duration - overlap;
+}
+
+async function startChoir() {
+  try {
+    stopAll(false);
+    ensureAudio();
+    applyVenueAudio();
+    isPlaying = true;
+    const runId = ++activeRunId;
+    const isAlive = () => isPlaying && activeRunId === runId;
+
+    playWhiteRainIntro(audioCtx, dryBus);
+    nextStartTime = audioCtx.currentTime + 0.68;
+    currentStageIdx = -1;
+    visualOrbs = [];
+    btnPlay.classList.add("playing");
+    btnPlay.textContent = "■ 停止";
+    progFill.style.width = "2%";
+    statusText.textContent = "白い雨から1人目を彫っています…";
+    cntUnit.textContent = "人誕生中";
+    lyricText.textContent = "…… しろい あめの おと ……";
+    archText.textContent = "ホワイトノイズ1本から最初の声と気流がほどけだす";
+
+    const numStages = Math.round(Math.log2(maxCount)) + 1;
+    const totalVoices = maxCount * 2 - 1;
+    const chaos01 = chaosPct / 100;
+
+    for (let s = 0; s < numStages; s++) {
+      if (!isAlive()) return;
+      const prevSum = (1 << s) - 1;
+      const out = await synthStageAsync(s, chaos01, s === numStages - 1, isAlive, (done, total) => {
+        const pct = Math.min(100, Math.round(((prevSum + done) / totalVoices) * 100));
+        progFill.style.width = pct + "%";
+        statusText.textContent = "鍛造中: " + (1 << s) + "人 (" + done + "/" + total + ")";
+      });
+      if (!out || !isAlive()) return;
+      scheduleStage(out);
+      if (s === 0) statusText.textContent = "ライブ再生中！（演奏中に会場切替もできます）";
+    }
+
+    if (!isAlive()) return;
+    progFill.style.width = "100%";
+    statusText.textContent = "全" + maxCount + "人の鍛造完了！会場切替もリアルタイムで効きます";
+    const lastEv = stageEvents[stageEvents.length - 1];
+    if (lastEv) {
+      const remMs = Math.max(500, (lastEv.tEnd + 2.2 - audioCtx.currentTime) * 1000);
+      playTimer = setTimeout(() => {
+        if (activeRunId === runId) {
+          isPlaying = false;
+          btnPlay.classList.remove("playing");
+          btnPlay.textContent = "▶ もういちどライブ合唱";
+          statusText.textContent = "完奏！ 1 → " + maxCount + "人（" + VENUES[venueId].name.split("（")[0] + "・バラバラさ " + chaosPct + "%）";
+        }
+      }, remMs);
+    }
+  } catch (err) {
+    statusText.textContent = "エラー: " + (err && err.message ? err.message : String(err));
+    stopAll(false);
+  }
+}
+
+btnPlay.addEventListener("click", () => {
+  if (isPlaying) stopAll(true);
+  else startChoir();
+});
+
+btnShare.addEventListener("click", () => {
+  const shareUrl = "https://poidowl.github.io/tsukinami/kusanagi_choir.html?venue=" + venueId + "&max=" + maxCount + "&chaos=" + chaosPct;
+  const vName = VENUES[venueId].name.split("（")[0];
+  const text = "ホワイトノイズ1本から気流うねる1→" + maxCount + "人ライブ大合唱（" + vName + "・バラバラさ" + chaosPct + "%・録音0Byte）！ #草薙kusanagi";
+  window.open("https://x.com/intent/tweet?text=" + encodeURIComponent(text) + "&url=" + encodeURIComponent(shareUrl), "_blank", "noopener");
+});
+
+// === 60fps Live Stage, Harmonic Trunk & Sunrise Canvas ===
+const PART_COLOR = { S: "#fde047", A: "#c084fc", T: "#38bdf8", B: "#fb923c" };
+const waveBuf = new Uint8Array(128);
+let ripples = [];
+let lanterns = [];
+const rainDrops = Array.from({ length: 42 }, (_, i) => ({
+  x: (i * 0.6180339) % 1,
+  y: (i * 0.371) % 1,
+  s: 0.4 + (i % 5) * 0.18,
+}));
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.max(300, Math.round(r.width * dpr));
+  cv.height = Math.max(180, Math.round(r.height * dpr));
+}
+window.addEventListener("resize", resize);
+resize();
+
+let previewOrbs = [];
+function rebuildPreviewOrbs() {
+  const r = makeRng(12345 + maxCount);
+  const parts = ["S", "A", "T", "B"];
+  const arr = [];
+  for (let i = 0; i < maxCount; i++) {
+    const pIdx = i % 4;
+    const part = parts[pIdx];
+    const tier = (maxCount === 1 || i % 10 < 4) ? 0 : (i % 10 < 7 ? 1 : 2);
+    const row = i < 12 ? 0 : i < 36 ? 1 : 2;
+    const partCenter = pIdx === 0 ? -0.58 : pIdx === 1 ? -0.18 : pIdx === 2 ? 0.22 : 0.60;
+    const colNorm = maxCount === 1 ? 0 : Math.max(-0.92, Math.min(0.92, partCenter + r.uniform(-0.32, 0.32)));
+    arr.push({
+      pan: colNorm,
+      part,
+      id: (i === 15 && maxCount >= 32) ? "robot" : "prev",
+      tier, row,
+      yNorm: pIdx === 0 ? 0.22 : pIdx === 1 ? 0.42 : pIdx === 2 ? 0.62 : 0.80,
+      phase: r.uniform(0, 6.28),
+      born: 0,
+    });
+  }
+  previewOrbs = arr;
+}
+rebuildPreviewOrbs();
+segBtns.forEach(b => b.addEventListener("click", rebuildPreviewOrbs));
+
+function setLyricAnimated(text) {
+  lyricText.classList.add("fade");
+  setTimeout(() => {
+    lyricText.textContent = text;
+    lyricText.classList.remove("fade");
+  }, 140);
+}
+
+let trunkPower = 0;
+
+function draw(nowMs) {
+  requestAnimationFrame(draw);
+  const W = cv.width, H = cv.height;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const tSec = nowMs * 0.001;
+
+  let amp = 0;
+  if (isPlaying && audioCtx) {
+    const ct = audioCtx.currentTime;
+    for (let i = stageEvents.length - 1; i >= 0; i--) {
+      if (ct >= stageEvents[i].t0 - 0.03) {
+        const ev = stageEvents[i];
+        if (ev.stIdx !== currentStageIdx) {
+          currentStageIdx = ev.stIdx;
+          cntNum.textContent = ev.count;
+          cntNum.classList.add("pop");
+          setTimeout(() => cntNum.classList.remove("pop"), 260);
+          cntUnit.textContent = "人ライブ合唱中";
+          keyBadge.textContent = ev.key;
+          keyBadge.classList.toggle("mod", ev.stIdx >= 6);
+          setLyricAnimated(ev.display);
+          archText.textContent = "参加：" + ev.newArch;
+          visualOrbs = ev.orbs.map((o, idx) => ({
+            ...o,
+            born: tSec + (idx / Math.max(1, ev.orbs.length)) * 0.25,
+          }));
+          targetSkyWarmth = ev.stIdx / 7;
+          ripples.push({ t0: tSec, col: ev.stIdx >= 6 ? "#fbbf24" : "#38bdf8" });
+          if (ev.stIdx >= 6) {
+            flashAlpha = ev.stIdx === 6 ? 0.55 : 0.40;
+            ripples.push({ t0: tSec + 0.16, col: "#f472b6" });
+            for (let k = 0; k < 24; k++) {
+              lanterns.push({
+                x: Math.random() * W,
+                y: H + Math.random() * 40 * dpr,
+                vy: (22 + Math.random() * 34) * dpr,
+                r: (1.6 + Math.random() * 2.4) * dpr,
+                a: 0.75 + Math.random() * 0.25,
+              });
+            }
+          }
+        }
+        break;
+      }
+    }
+    if (analyser) {
+      analyser.getByteTimeDomainData(waveBuf);
+      let sum = 0;
+      for (let i = 0; i < waveBuf.length; i++) {
+        const v = (waveBuf[i] - 128) / 128;
+        sum += v * v;
+      }
+      amp = Math.sqrt(sum / waveBuf.length);
+    }
+  }
+
+  skyWarmth += (targetSkyWarmth - skyWarmth) * 0.03;
+  flashAlpha *= 0.93;
+  const targetTrunk = (isPlaying && currentStageIdx >= 4) ? ((currentStageIdx - 3) / 4) : 0;
+  trunkPower += (targetTrunk - trunkPower) * 0.04;
+
+  const vh = VENUES[venueId].skyHue;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  const rTop = Math.round(vh[0] + skyWarmth * 54);
+  const gTop = Math.round(vh[1] + skyWarmth * 28);
+  const bTop = Math.round(vh[2] + skyWarmth * 42);
+  const rBot = Math.round(vh[0] + 6 + skyWarmth * 128);
+  const gBot = Math.round(vh[1] + 8 + skyWarmth * 64);
+  const bBot = Math.round(vh[2] + 10 + skyWarmth * 24);
+  g.addColorStop(0, "rgb(" + rTop + "," + gTop + "," + bTop + ")");
+  g.addColorStop(1, "rgb(" + rBot + "," + gBot + "," + bBot + ")");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle white-rain particles
+  const rainAlpha = Math.max(0.05, 0.34 * (1 - skyWarmth * 0.85));
+  ctx.strokeStyle = "rgba(226, 232, 240, " + rainAlpha + ")";
+  ctx.lineWidth = 1 * dpr;
+  for (const d of rainDrops) {
+    const rx = d.x * W;
+    const ry = ((d.y + tSec * 0.14 * d.s) % 1) * H;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx - 1.5 * dpr, ry + 7 * dpr * d.s);
+    ctx.stroke();
+  }
+
+  // Live Harmonic Trunk Pillar (invisible at 1..8, blooms from 16..128)
+  if (trunkPower > 0.02) {
+    const breathe = 0.84 + amp * 1.6;
+    const trunkW = W * (0.14 + 0.22 * trunkPower) * breathe;
+    const tg = ctx.createLinearGradient(W * 0.5 - trunkW, 0, W * 0.5 + trunkW, 0);
+    const colA = (0.16 * trunkPower * Math.min(1.5, breathe)).toFixed(3);
+    tg.addColorStop(0, "rgba(251,191,36,0)");
+    tg.addColorStop(0.5, "rgba(253,224,71," + colA + ")");
+    tg.addColorStop(1, "rgba(251,191,36,0)");
+    ctx.fillStyle = tg;
+    ctx.fillRect(W * 0.5 - trunkW, 0, trunkW * 2, H);
+  }
+
+  // Stage spotlights for Live House / Sunrise beams for others
+  if (venueId === "live" || skyWarmth > 0.65) {
+    const beamA = venueId === "live" ? (0.35 + skyWarmth * 0.65) : ((skyWarmth - 0.65) / 0.35);
+    ctx.save();
+    for (let b = 0; b < 5; b++) {
+      const bx = W * (0.15 + b * 0.175) + Math.sin(tSec * 0.4 + b) * 18 * dpr;
+      const bg = ctx.createLinearGradient(bx, venueId === "live" ? 0 : H, bx, venueId === "live" ? H : 0);
+      const rgb = (venueId === "live" && b % 2 === 1) ? "56,189,248" : "251,191,36";
+      bg.addColorStop(0, "rgba(" + rgb + "," + (0.13 * beamA) + ")");
+      bg.addColorStop(1, "rgba(" + rgb + ",0)");
+      ctx.fillStyle = bg;
+      ctx.fillRect(bx - 22 * dpr, 0, 44 * dpr, H);
+    }
+    ctx.restore();
+  }
+
+  // Rising golden lanterns
+  lanterns = lanterns.filter(l => l.y > -20 && l.a > 0.02);
+  for (const l of lanterns) {
+    l.y -= l.vy * 0.016;
+    l.a *= 0.994;
+    ctx.beginPath();
+    ctx.arc(l.x + Math.sin(tSec * 2 + l.r) * 4 * dpr, l.y, l.r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(254, 240, 138, " + l.a + ")";
+    ctx.fill();
+  }
+
+  // Expanding ripples
+  ripples = ripples.filter(rp => tSec - rp.t0 < 1.9);
+  for (const rp of ripples) {
+    const p = (tSec - rp.t0) / 1.9;
+    if (p < 0) continue;
+    ctx.beginPath();
+    ctx.arc(W * 0.5, H * 0.5, p * Math.max(W, H) * 0.68, 0, Math.PI * 2);
+    ctx.strokeStyle = rp.col;
+    ctx.globalAlpha = (1 - p) * 0.42;
+    ctx.lineWidth = 2.2 * dpr;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  const orbs = (isPlaying && visualOrbs.length) ? visualOrbs : previewOrbs;
+  const baseR = (orbs.length <= 2 ? 10 : orbs.length <= 8 ? 7.5 : orbs.length <= 32 ? 5.2 : 3.7) * dpr;
+  const ch = chaosPct / 100;
+  const ch2 = ch * ch;
+  const pts = [];
+
+  for (let i = 0; i < orbs.length; i++) {
+    const o = orbs[i];
+    const age = isPlaying ? Math.max(0, Math.min(1, (tSec - o.born) * 2.8)) : 1;
+    if (age <= 0) continue;
+    const isRobot = o.id === "robot";
+    const isWild = o.tier === 2 && !isRobot;
+    const isMid = o.tier === 1 && !isRobot;
+    const driftScale = isRobot ? 0 : (isWild ? (12 + ch * 32 + ch2 * 52) : isMid ? (4 + ch * 14) : (1.5 + ch * 3));
+    const freqX = isWild ? (1.4 + ch * 2.4) : 1.1;
+    const freqY = isWild ? (1.7 + ch * 2.8) : 1.4;
+    const driftX = isRobot ? 0 : Math.sin(tSec * freqX + o.phase) * driftScale * dpr;
+    const driftY = isRobot ? 0 : Math.cos(tSec * freqY + o.phase * 1.3) * (driftScale * 0.75) * dpr;
+    const depthScale = o.row === 0 ? 1.15 : o.row === 1 ? 0.92 : 0.72;
+    const x = W * (0.5 + o.pan * 0.43) + driftX;
+    const y = H * (0.16 + o.yNorm * 0.62) + driftY;
+    const pulse = isRobot ? 1.0 : (1 + amp * (isWild ? 2.4 : 1.7) * (0.65 + 0.35 * Math.sin(tSec * 6.5 + o.phase)));
+    const r = baseR * depthScale * age * pulse;
+    const col = isRobot ? "#22d3ee" : (PART_COLOR[o.part] || "#fff");
+    pts.push({ x, y, r, col, isWild, isRobot, row: o.row || 0, age });
+  }
+
+  // Constellation threads
+  if (pts.length >= 2) {
+    ctx.save();
+    ctx.lineWidth = 0.8 * dpr;
+    const maxDist = (pts.length <= 8 ? 190 : pts.length <= 32 ? 95 : 54) * dpr;
+    const maxLinks = pts.length <= 16 ? 40 : 75;
+    let links = 0;
+    for (let i = 0; i < pts.length && links < maxLinks; i++) {
+      for (let j = i + 1; j < pts.length && links < maxLinks; j++) {
+        const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < maxDist) {
+          ctx.strokeStyle = "rgba(253, 224, 71, " + ((1 - dist / maxDist) * (0.18 + amp * 0.35)) + ")";
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+          ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.stroke();
+          links++;
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  pts.sort((a, b) => b.row - a.row);
+  for (const p of pts) {
+    const depthAlpha = p.row === 0 ? 1.0 : p.row === 1 ? 0.82 : 0.64;
+    ctx.save();
+    ctx.globalAlpha = depthAlpha;
+    if (p.isRobot) {
+      // Robot stays a crisp, stationary cyan square!
+      const s = p.r * 1.9;
+      ctx.fillStyle = "#22d3ee";
+      ctx.fillRect(p.x - s * 0.5, p.y - s * 0.5, s, s);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1 * dpr;
+      ctx.strokeRect(p.x - s * 0.5, p.y - s * 0.5, s, s);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 2.1, 0, Math.PI * 2);
+      ctx.fillStyle = p.col;
+      ctx.globalAlpha = depthAlpha * (0.17 + amp * 0.22);
+      ctx.fill();
+
+      ctx.globalAlpha = depthAlpha;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.col;
+      ctx.fill();
+
+      if (p.isWild && ch > 0.35) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * 1.45, 0, Math.PI * 2);
+        ctx.strokeStyle = "#f472b6";
+        ctx.globalAlpha = depthAlpha * ((ch - 0.35) * 0.9);
+        ctx.lineWidth = 1.1 * dpr;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  if (flashAlpha > 0.01) {
+    ctx.fillStyle = "rgba(254, 240, 138, " + flashAlpha + ")";
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+const copyBtn = document.getElementById("copyChoirUrlBtn");
+if (copyBtn) {
+  copyBtn.addEventListener("click", () => {
+    const u = "https://poidowl.github.io/tsukinami/kusanagi_choir.html";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(u).then(() => {
+        copyBtn.textContent = "✓ コピー完了";
+        setTimeout(() => { copyBtn.textContent = "🔗 X投稿用URLをコピー"; }, 2200);
+      });
+    }
+  });
+}
+requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
