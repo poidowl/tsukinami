@@ -21,6 +21,8 @@ jobs:
           node --check tools/hibiki_listen.mjs
           node --check b1_akambo.mjs
           node --check b1_yomu.mjs
+          node --check b2_akambo.mjs
+          node --check b2_yomu.mjs
       - name: Synthesis regression tests
         run: node --test tests/hibiki.test.mjs
       - name: Blind listening pack smoke test
@@ -32,6 +34,10 @@ jobs:
         run: |
           node b1_yomu.mjs --seed 42 --phrases 3 --out "$RUNNER_TEMP/b1.wav"
           test -s "$RUNNER_TEMP/b1.wav"
+      - name: B2 embodied babble smoke render
+        run: |
+          node b2_yomu.mjs --seed 42 --phrases 3 --out "$RUNNER_TEMP/b2.wav"
+          test -s "$RUNNER_TEMP/b2.wav"
       - name: CLI smoke render
         run: |
           node yomu.mjs --preset hibiki_katari --measure "あさのひかり、ゆめのかけら"
