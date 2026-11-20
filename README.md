@@ -265,3 +265,25 @@ https://commons.wikimedia.org/wiki/File:Gabbling_baby_2_months_old.ogg
 
 **比較状況**: 音声ファイルのローカル取得は環境側の通信制約で失敗。
 現段階で実録との音響距離や聴感の一致を確認したと主張しない。音は別途実録とAB比較が必要。
+
+### B2再調整（Hodoki実測を受けた試作）
+
+使用者の計測（対象録音: 2か月、23秒）:
+| 指標 | 実録 | B2改 | 目標 |
+| --- | ---: | ---: | --- |
+| 中央F0 | 349 Hz | 388 Hz | 高すぎる基準音を下げる |
+| Jitter | 2.2% | 2.1% | なるべく維持 |
+| Shimmer | 5.7% | 12.2% | 周期振幅差を減らす |
+| HNR | 16.2 dB | 8.8 dB | ノイズを減らす |
+| 周期類似 | 0.99 | 0.93 | 周期形状を安定させる |
+
+数値は測定手法と録音条件に依存。**新バージョンの実測値ではない。**
+試作では `hz` を390→351にし、`b2_breaks` と `b2_body` を弱めて、
+`b2_clean` で声門へ注ぐ非周期ノイズ・息漏れを減らした。
+ジッターのノブは保持。耳で聴いた似方・HNR/シマーの改善は追試が必要。
+
+```bash
+node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --out b2_tuned.wav
+node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --profile legacy --out b2_legacy.wav
+node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --clean 0 --out b2_no_clean.wav
+```
