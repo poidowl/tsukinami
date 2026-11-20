@@ -234,3 +234,21 @@ test("B3 kai starts from exact soroe1 input, not higher-jitter candidate",async(
   const wrong=b3KaiProcess(renderB3({...p,profile:"candidate"}).samples,{seed:p.seed,...B3_KAI_SETTINGS});
   assert.notEqual(hashish(kai.samples),hashish(wrong));
 });
+
+test("lab baseline retains B3 clean and budget 54 covers three pitch bands",async()=>{
+ const {chooseCandidates,renderLabCandidate}=await import("../tools/infant_lab.mjs");
+ const {B3_BASE}=await import("../b3_akambo.mjs");
+ const candidates=chooseCandidates(54,350);
+ assert.equal(candidates.length,54);
+ assert.ok(candidates.every(x=>x.clean===B3_BASE.b2_clean));
+ assert.equal(candidates[0].clean,0.74);
+ const middle=350*.95;
+ for(const hz of [middle*.88,middle,middle*1.10])
+   assert.ok(candidates.some(x=>Math.abs(x.hz-hz)<1e-6),"pitch band missing "+hz);
+ assert.ok(new Set(candidates.map(x=>x.combG)).size>1);
+ assert.ok(new Set(candidates.map(x=>x.jitter)).size>1);
+ assert.deepEqual(candidates,chooseCandidates(54,350));
+ const actual=renderLabCandidate("アー、ウー、ウアー",42,candidates[0]);
+ const expected=makeHitofude("アー、ウー、ウアー",{...B3_BASE,seed:42}).samples;
+ assert.equal(hashish(actual),hashish(expected));
+});
