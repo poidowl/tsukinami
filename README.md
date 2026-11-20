@@ -90,3 +90,27 @@ node tools/build_x_player.mjs
 1. **帯域別 AGC を足さない**：`bp1..bp4` の各帯域に個別正規化を入れると、`tilt_w` や音源の傾きが打ち消されて再度多段補正が必要になる。
 2. **別系統の息ノイズを足さない**：息や囁きは別乱数を加算するのではなく、同じ1本線上の `g_vo` / `sigh` を下げて倍音の谷を残すことで表現する（マイク吹かれ音にならない）。
 3. **`hitofude.mjs` に Node 専用 `import` を入れない**：[`hitofude.mjs`](hitofude.mjs) はブラウザでもそのまま動く純粋 ES Module として保ち、ファイル入出力は [`yomu.mjs`](yomu.mjs) 側に置く。
+
+## 5. 変態耳（`kiku` ＋ `mimi`）— ニューラルでない、ニューラルぽく育てた耳
+
+- `kiku.mjs`（Neon）: 16 帯のノミ（hitofude の式の鏡写し）で断面を取り、手で決めた閾値で書き取る「手の耳」。比べる元として残す。
+- `mimi.mjs`: 同じ断面から 42 次元の特徴 → 音ごとの混合ガウス（対角、`mimi_table.json`）＋ モーラ 2-gram → Viterbi（隠れマルコフ）で書き取る「育てた耳」。重みはただの平均・分散・回数の表（JSON、約 300 KB）。
+- `tools/mimi_sodate.mjs`: 育てる。关亡婆の台本（`tools/kiku_corpus_itako.json` の調整用だけ）を kusanagi に読ませ、kusanagi 自身のモーラ時刻表をフレームの正解にして、k-means → EM で表を作る。確認用の台本は読まん。
+- `tools/kiku_eval.mjs`: 測る。台本 × プリセット 6 × seed 3 を読ませ、かな正答・母音正答・取り違えの表を出し、`--ledger` でオバケ台帳（jsonl、1 発話 1 行）に足す。`--ear hand|mimi`。
+- 台本の割り振りは id の md5（先頭 2 桁 < 64 が確認用）なので、台本を足しても前の割り振りは変わらん。
+
+```bash
+node tools/test_mimi.mjs                                   # 確かめ（約 2 秒）
+node tools/mimi_sodate.mjs --wavdir /tmp/wav               # 育てる → mimi_table.json（8 コアで約 1 分）
+node tools/kiku_eval.mjs --split test --ear mimi --wavdir /tmp/wav --ledger /tmp/obake_daichou.jsonl
+node tools/kiku_eval.mjs --split test --ear hand            # 元の手の耳
+```
+
+kusanagi 89b059e（soroe2 既定）での成績（かな正答 / 母音正答、プリセット 6 × seed 3）:
+
+| 耳 | 調整用 26 台本 157 行 | 確認用 8 台本 51 行 |
+|---|---|---|
+| 手の耳 kiku 90cc28d | 14.2% / 56.0% | 12.9% / 54.6% |
+| 育てた耳 mimi r1 | 91.1% / 93.7% | 85.0% / 90.2% |
+
+（育てていない seed 555 の確認用 85.1%、育てていない robot プリセットの確認用 78.7%（手の耳 14.2%）。）
