@@ -44,26 +44,35 @@ function loadReference(entry,root){
 }
 export function chooseCandidates(budget=24, referenceF0=350){
   if(!Number.isInteger(budget)||budget<1||budget>512)throw RangeError("budget must be 1..512");
-  // Deterministic enumeration, first candidate is exactly the measured soroe1 source.
+  // Deterministic anchors, then round-robin stratified sweeps across pitch bands.
   const targetHz = Math.max(200,Math.min(700,referenceF0*0.95));
   const presets=[
-   {hz:351,combG:.99,rawAirMul:1,clean:0,jitter:.018,cutoffHz:2300,tiltMix:0,airLevel:0},
-   {hz:351,combG:.99,rawAirMul:1,clean:0,jitter:.018,cutoffHz:2300,tiltMix:.72,airLevel:.0028},
-   {hz:targetHz,combG:.99,rawAirMul:1,clean:0,jitter:.018,cutoffHz:2300,tiltMix:0,airLevel:0},
-   {hz:targetHz,combG:.99,rawAirMul:1,clean:0,jitter:.018,cutoffHz:2300,tiltMix:.72,airLevel:.0028},
+   {hz:351,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:0,airLevel:0},
+   {hz:351,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:.72,airLevel:.0028},
+   {hz:targetHz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:0,airLevel:0},
+   {hz:targetHz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:.72,airLevel:.0028},
   ];
-  for(const hz of [targetHz*0.88,targetHz,targetHz*1.10])
-   for(const combG of [.985,.99,.995])
-    for(const rawAirMul of [.4,.6,1])
-     for(const jitter of [.014,.018,.022])
-      for(const tiltMix of [0,.55]){
-       presets.push({hz,combG,rawAirMul,clean:0,jitter,cutoffHz:2400,tiltMix,airLevel:tiltMix?.0015:0});
-      }
+  const bands=[targetHz*0.88,targetHz,targetHz*1.10];
+  const buckets=bands.map(hz=>{
+    const bucket=[];
+    for(const combG of [.985,.99,.995])
+      for(const rawAirMul of [.4,.6,1])
+        for(const jitter of [.014,.018,.022])
+          for(const tiltMix of [0,.55])
+            bucket.push({hz,combG,rawAirMul,clean:B3_BASE.b2_clean,jitter,
+              cutoffHz:2400,tiltMix,airLevel:tiltMix?.0015:0});
+    return bucket;
+  });
+  // Interleave pitch bands and vary initial positions in the other dimensions.
+  const stride=17; // coprime to each 54-entry band
+  for(let i=0;i<buckets[0].length;i++)
+    for(let k=0;k<buckets.length;k++)
+      presets.push(buckets[k][(i+k*stride)%buckets[k].length]);
   return presets.slice(0,budget).map((p,i)=>({...p,id:"v"+String(i).padStart(3,"0")}));
 }
-function render(text,seed,opts){
+export function renderLabCandidate(text,seed,opts){
   const base=makeHitofude(text,{...B3_BASE,seed,hz:opts.hz,jitter:opts.jitter,
-    b3_combG:opts.combG,b3_rawAirMul:opts.rawAirMul,b2_clean:0});
+    b3_combG:opts.combG,b3_rawAirMul:opts.rawAirMul,b2_clean:opts.clean});
   if(opts.tiltMix===0 && opts.airLevel===0)return base.samples;
   return b3KaiProcess(base.samples,{...B3_KAI_SETTINGS,seed,tiltMix:opts.tiltMix,
     cutoffHz:opts.cutoffHz,airLevel:opts.airLevel});
@@ -80,7 +89,7 @@ export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,se
   fs.mkdirSync(out,{recursive:true});
   const rows=[];
   for(const opts of chooseCandidates(budget,target.f0_median_hz)){
-    const samples=render(text,seed,opts), m=metrics(samples,SR);
+    const samples=renderLabCandidate(text,seed,opts), m=metrics(samples,SR);
     const item={id:opts.id,params:opts,metrics:cut(m),
       score:finite(m)?+score(m,target).toFixed(4):null,
       wav:opts.id+".wav"};
