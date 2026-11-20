@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * tools/test_sarasara.mjs — v10 既定（本命：子音・ハ行明瞭度 × 粘膜クッション）＆ combG / rawAirMul オプション回帰テスト
+ * tools/test_sarasara.mjs — v11 サラサラ既定合流（soroe2 = {combG: 0.985, rawAirMul: 0.6}）の回帰テスト
  *
  *   node tools/test_sarasara.mjs
  *
- * (a) 既定（オプションなし）が GOLDEN_V10 と全プリセット × 2文 × seed 2 つ ＋ 歌モードでバイト一致すること。
- * (b) {combG: null, rawAirMul: 1.0} の明示が既定（オプションなし）とバイト一致すること。
- * (c) サラサラ化オプション {combG: 0.985, rawAirMul: 0.6}（soroe2）を渡したとき、shin > 0 では有効に変化し（robot は不変）、有限・ピーク 1 以下を保つこと。
+ * (a) {combG: null, rawAirMul: 1.0} を明示すると、出力 WAV が草薙 90f0c44（v10 非サラサラ既定）と全プリセット × 2文 × seed 2 つ ＋ 歌モードでバイト一致すること。
+ * (b) 既定（オプションなし）が、soroe2 {combG: 0.985, rawAirMul: 0.6} を明示した音とバイト一致すること。
+ * (c) 既定は 90f0c44 の音から有効に変化し（robot は shin=0 でコム不使用のため不変）、有限・長さ同一・ピーク 1 以下であること。
  */
 import crypto from "node:crypto";
 import { makeHitofude, PRESETS, encodeWav } from "../hitofude.mjs";
 
-const GOLDEN_V10 = {
+const GOLDEN_90f0c44 = {
   "hitofude|t0|2024": "bb99a11d963aa2e2154ae492",
   "hitofude|t0|7": "d178e57ca5eaa8b5d4012e2e",
   "hitofude|t1|2024": "194d850e7ac782e5f3a41212",
@@ -48,7 +48,7 @@ const GOLDEN_V10 = {
   "robot|t1|7": "9e6b9158ec48b48927f7e426",
   "robot|uta": "d37e9f58af7bcf4483551aae"
 };
-const DEF_EXPLICIT = { combG: null, rawAirMul: 1.0 }, SOROE2 = { combG: 0.985, rawAirMul: 0.6 };
+const OLD = { combG: null, rawAirMul: 1.0 }, SOROE2 = { combG: 0.985, rawAirMul: 0.6 };
 const TEXTS = ["わたし、にほんご、ちょっとしゃべれます", "ヤマノウエニ、アオイソラガミエル?"];
 const h = (s) => crypto.createHash("sha256").update(encodeWav(s)).digest("hex").slice(0, 24);
 const n = { a: [0, 0], b: [0, 0], c: [0, 0] };
@@ -59,20 +59,19 @@ for (const [pn, p] of Object.entries(PRESETS)) {
   for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7]) cases.push([`${pn}|t${k}|${seed}`, t, { ...p, seed }]);
   cases.push([`${pn}|uta`, "ア", { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 }]);
   for (const [key, t, o] of cases) {
+    const old = makeHitofude(t, { ...o, ...OLD }).samples;
     const def = makeHitofude(t, o).samples;
-    const exp = makeHitofude(t, { ...o, ...DEF_EXPLICIT }).samples;
-    const sor = makeHitofude(t, { ...o, ...SOROE2 }).samples;
-    check("a", h(def) === GOLDEN_V10[key], `${key}: 既定が GOLDEN_V10 とバイト一致せん`);
-    check("b", h(def) === h(exp), `${key}: {combG:null, rawAirMul:1.0} 明示が既定とバイト一致せん`);
+    check("a", h(old) === GOLDEN_90f0c44[key], `${key}: 旧い既定 {combG:null, rawAirMul:1.0} が 90f0c44 とバイト一致せん`);
+    check("b", h(def) === h(makeHitofude(t, { ...o, ...SOROE2 }).samples), `${key}: 新しい既定が soroe2 明示とバイト一致せん`);
     let fin = true, pk = 0, diff = 0;
-    for (let i = 0; i < sor.length; i++) { if (!Number.isFinite(sor[i])) fin = false; pk = Math.max(pk, Math.abs(sor[i])); if (i < def.length) diff = Math.max(diff, Math.abs(sor[i] - def[i])); }
+    for (let i = 0; i < def.length; i++) { if (!Number.isFinite(def[i])) fin = false; pk = Math.max(pk, Math.abs(def[i])); if (i < old.length) diff = Math.max(diff, Math.abs(def[i] - old[i])); }
     const changed = p.shin > 0.0 ? diff > 1e-4 : diff === 0;
-    check("c", fin && sor.length === def.length && pk <= 1.0 && changed, `${key}: 有限 ${fin} 長さ ${sor.length}/${def.length} ピーク ${pk.toFixed(3)} 既定との差 ${diff.toExponential(2)}`);
+    check("c", fin && def.length === old.length && pk <= 1.0 && changed, `${key}: 有限 ${fin} 長さ ${def.length}/${old.length} ピーク ${pk.toFixed(3)} 90f0c44 との差 ${diff.toExponential(2)}`);
   }
 }
-console.log(`(a) v10 既定 = GOLDEN_V10 バイト一致: ${n.a[0]}/${n.a[1]}`);
-console.log(`(b) v10 既定 = {combG:null, rawAirMul:1.0} 明示 バイト一致: ${n.b[0]}/${n.b[1]}`);
-console.log(`(c) soroe2 オプション {combG:0.985, rawAirMul:0.6} 動作・有限・robot不変: ${n.c[0]}/${n.c[1]}`);
+console.log(`(a) 旧い既定 {combG:null, rawAirMul:1.0} = 90f0c44 バイト一致: ${n.a[0]}/${n.a[1]}`);
+console.log(`(b) 新しい既定 = soroe2 明示 バイト一致: ${n.b[0]}/${n.b[1]}`);
+console.log(`(c) 新しい既定は 90f0c44 から変わる（robot は不変）・壊れん: ${n.c[0]}/${n.c[1]}`);
 const ng = n.a[1] - n.a[0] + n.b[1] - n.b[0] + n.c[1] - n.c[0];
 console.log(ng ? `NG ${ng}` : "ALL OK");
 process.exit(ng ? 1 : 0);
