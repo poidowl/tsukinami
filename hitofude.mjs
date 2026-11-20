@@ -1218,6 +1218,7 @@ export function makeHitofude(text, opts = {}) {
     b2_cycle = 0.0,   // B2専用: ジッターを変えず、周期ごとの振幅だけを局所的に整える
     b3_combG = null,   // B3 opt-in: 有声コム帰還利得 (Hodoki soroe1=0.99)
     b3_rawAirMul = 1.0, // B3 opt-in: 扉を通る生ノイズ倍率 (soroe2=0.6)
+    b3_jitter_corr = null, // B3実験: 隣接周期の揺れ相関。null=従来ジッターと完全一致
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1550,13 +1551,43 @@ export function makeHitofude(text, opts = {}) {
   for (let i = 0; i < N; i++) PER[i] = SR / Math.max(60.0, f0S[i] * Math.pow(2.0, wander[i] / 12.0));
   const hRef = Math.max(85.0, hz);
   if (jitter > 0.0) {
-    let idxP = 0;
-    while (idxP < N) {
-      const pl = Math.max(2, Math.trunc(PER[idxP]));
-      const jf = 1.0 + jitter * x[idxP];
-      const end = Math.min(N, idxP + pl);
-      for (let k = idxP; k < end; k++) PER[k] *= jf;
-      idxP += pl;
+    if (b3_jitter_corr !== null && Number.isFinite(b3_jitter_corr)
+        && b3_jitter_corr >= 0 && b3_jitter_corr < 0.99) {
+      // Experimental cycle-to-cycle correlated period variation. Unlike the
+      // legacy per-cycle rectangular jump, interpolate continuously from one
+      // cycle's target to the next. Avoids phase-period discontinuities, but
+      // might measure as LESS local jitter: Hodoki listening decides.
+      const rho = b3_jitter_corr;
+      const innovations = Math.sqrt(1 - rho * rho);
+      const cycles = [];
+      let idxP = 0, prevNoise = 0;
+      while (idxP < N) {
+        const pl = Math.max(2, Math.trunc(PER[idxP]));
+        const raw = x[idxP];
+        prevNoise = rho * prevNoise + innovations * raw;
+        cycles.push({start:idxP, end:Math.min(N,idxP+pl), value:prevNoise});
+        idxP += pl;
+      }
+      for (let i = 0; i < cycles.length; i++) {
+        const cur = cycles[i], next = cycles[Math.min(i+1, cycles.length-1)];
+        const len = Math.max(1,cur.end-cur.start);
+        for (let k = cur.start; k < cur.end; k++) {
+          const u = (k-cur.start)/len;
+          const smooth = u*u*(3-2*u);
+          const v = cur.value+(next.value-cur.value)*smooth;
+          PER[k] *= Math.max(0.65,1.0+jitter*v);
+        }
+      }
+    } else {
+      // Unmodified legacy engine behavior; bit-identical at default.
+      let idxP = 0;
+      while (idxP < N) {
+        const pl = Math.max(2, Math.trunc(PER[idxP]));
+        const jf = 1.0 + jitter * x[idxP];
+        const end = Math.min(N, idxP + pl);
+        for (let k = idxP; k < end; k++) PER[k] *= jf;
+        idxP += pl;
+      }
     }
     if (shin > 0.0) heikin(PER, Math.max(10, Math.round(SR / (hRef * 6.0))), PER);
   }
