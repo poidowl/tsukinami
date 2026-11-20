@@ -9,7 +9,7 @@ permissions:
 jobs:
   import:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,13 +23,20 @@ jobs:
             "https://upload.wikimedia.org/wikipedia/commons/2/2a/Gabbling_baby_2_months_old.ogg" \
             --output samples/reference/infant_2months_stephan.ogg
           test "$(wc -c < samples/reference/infant_2months_stephan.ogg)" -gt 100000
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --user-agent "tsukinami-infant-reference/1.0 (GitHub Actions)" \
+            "https://upload.wikimedia.org/wikipedia/commons/a/ab/Baby_5_months_old_gabbling_laughing_practising_voice.ogg" \
+            --output samples/reference/infant_5months_stephan.ogg
+          test "$(wc -c < samples/reference/infant_5months_stephan.ogg)" -gt 7000000
+          file samples/reference/infant_5months_stephan.ogg
+          sha256sum samples/reference/infant_5months_stephan.ogg
           file samples/reference/infant_2months_stephan.ogg
           sha256sum samples/reference/infant_2months_stephan.ogg
       - name: Commit verified reference recording
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add samples/reference/infant_2months_stephan.ogg
+          git add samples/reference/infant_2months_stephan.ogg samples/reference/infant_5months_stephan.ogg
           if ! git diff --cached --quiet; then
             git commit -m "data(B2): add public-domain 2-month-old infant cooing reference"
             git push origin HEAD:hibiki
