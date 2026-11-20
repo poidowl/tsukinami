@@ -198,3 +198,25 @@ test("B3 default is preferred soroe1, experimental jitter remains opt-in",async(
  assert.equal(B3_PRESET.jitter,0.018);
  assert.equal(B3_JITTER_EXPERIMENT.jitter,0.027);
 });
+
+test("B3-kai soft transitions, tilt and low-level gaps; soroe1 bit-identical",async()=>{
+  const {renderB3}=await import("../b3_akambo.mjs");
+  const opts={text:"アー、ウー、ウアー",seed:42};
+  const base=renderB3({...opts,profile:"soroe1"});
+  const kai=renderB3({...opts,profile:"kai"});
+  const repeat=renderB3({...opts,profile:"kai"});
+  assert.equal(hashish(kai.samples),hashish(repeat.samples));
+  assert.notEqual(hashish(kai.samples),hashish(base.samples));
+  assert.equal(kai.samples.length,base.samples.length);
+  assert.ok(kai.samples.every(Number.isFinite));
+  // silence is no longer digital zero, but remains low enough to avoid hissing over speech
+  const pad=Math.min(10000,Math.floor(kai.samples.length/10));
+  let gapEnergy=0;
+  for(let i=0;i<pad;i++)gapEnergy+=kai.samples[i]*kai.samples[i];
+  assert.ok(gapEnergy>0);
+  assert.ok(Math.sqrt(gapEnergy/pad)<0.015);
+  // setting the new stage's parameters must not alter the old soroe1 rendering.
+  assert.equal(hashish(base.samples),hashish(renderB3({...opts,profile:"soroe1",
+    attackMs:100,releaseMs:180,cutoffHz:700,airLevel:0.02}).samples));
+  assert.throws(()=>renderB3({...opts,profile:"kai",cutoffHz:1}),RangeError);
+});
