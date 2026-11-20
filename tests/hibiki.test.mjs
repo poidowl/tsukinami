@@ -221,3 +221,16 @@ test("B3-kai soft transitions, tilt and low-level gaps; soroe1 bit-identical",as
     attackMs:100,releaseMs:180,cutoffHz:700,airLevel:0.02}).samples));
   assert.throws(()=>renderB3({...opts,profile:"kai",cutoffHz:1}),RangeError);
 });
+
+test("B3 kai starts from exact soroe1 input, not higher-jitter candidate",async()=>{
+  const {renderB3}=await import("../b3_akambo.mjs");
+  const {b3KaiProcess,B3_KAI_SETTINGS}=await import("../b3_kai.mjs");
+  const p={seed:42,text:"アー、ウー、ウアー"};
+  const base=renderB3({...p,profile:"soroe1"});
+  const kai=renderB3({...p,profile:"kai"});
+  const expected=b3KaiProcess(base.samples,{seed:p.seed,...B3_KAI_SETTINGS});
+  assert.equal(kai.samples.length,expected.length);
+  for(let i=0;i<expected.length;i++)assert.equal(kai.samples[i],expected[i]);
+  const wrong=b3KaiProcess(renderB3({...p,profile:"candidate"}).samples,{seed:p.seed,...B3_KAI_SETTINGS});
+  assert.notEqual(hashish(kai.samples),hashish(wrong));
+});
