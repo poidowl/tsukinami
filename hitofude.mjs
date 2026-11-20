@@ -1291,7 +1291,7 @@ export function makeHitofude(text, opts = {}) {
       } else {
         uFlow *= 0.50;
       }
-      uOut[i] = (1.0 - vo) * xClean[i] + vo * (uFlow * 3.6);
+      uOut[i] = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
       const bw1 = Math.max(80.0, F1S[i] / 8.0) + 150.0 * door;
       const r1 = Math.exp(-piSR * bw1), c1 = -r1 * r1, b1 = 2.0 * r1 * Math.cos(twoPiSR * F1S[i]);
       const o1 = (1.0 - b1 - c1) * uOut[i] + b1 * y1_1 + c1 * y1_2; y1_2 = y1_1; y1_1 = o1;
