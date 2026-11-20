@@ -37,6 +37,8 @@ jobs:
       - name: B2 embodied babble smoke render
         run: |
           node b2_yomu.mjs --seed 42 --phrases 3 --out "$RUNNER_TEMP/b2.wav"
+          node b2_yomu.mjs --seed 42 --profile tuned --out "$RUNNER_TEMP/b2_tuned.wav"
+          test -s "$RUNNER_TEMP/b2_tuned.wav"
           node b2_yomu.mjs --seed 42 --profile legacy --out "$RUNNER_TEMP/b2_legacy.wav"
           test -s "$RUNNER_TEMP/b2_legacy.wav"
           node b2_yomu.mjs --seed 42 --mode babble --out "$RUNNER_TEMP/b2_babble.wav"
