@@ -7,7 +7,7 @@ import * as H from "../hitofude.mjs";
 import * as K from "../kiku.mjs";
 import * as M from "../mimi.mjs";
 import { moraTimes, unitOf } from "./mimi_sodate.mjs";
-import { truthOf, ed, moras, isDev } from "./kiku_eval.mjs";
+import { truthOf, ed, moras, isDev, spokenKana } from "./kiku_eval.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 let ok = 0, ng = 0;
@@ -22,6 +22,9 @@ for (const p of Object.keys(H.PRESETS)) {
   const prm = { ...H.PRESETS[p], seed: 7 }, k = "ネコガハコニハイルトキ、メオホソメマス";
   check("moraTimes " + p, JSON.stringify(moraTimes(H, k, prm)) === JSON.stringify(H.makeHitofude(k, prm).moras));
 }
+// 2b) 正解は kusanagi が実際に読んだモーラ（「ほう」→「ほー」→ ほお）
+const sp = truthOf(spokenKana(H, "ホウコウ、ユウキ", { ...H.PRESETS.hitofude, seed: 1 }));
+check("spokenKana", sp === "ほおこおゆうき", sp);
 // 3) フレームの札
 const lab = M.frameLabels([{ kind: "pau", a: 0, e: 0.1 }, { kind: "CV", c: "k", v: "a", a: 0.1, b: 0.15, e: 0.25 }, { kind: "N", a: 0.25, e: 0.3 }], [0.05, 0.12, 0.2, 0.27, 0.4]);
 check("frameLabels", lab.join(",") === "sil,c:k,v:a,N,sil", lab.join(","));
@@ -35,6 +38,7 @@ let md = 0; for (let t = 0; t < fa.T; t++) for (let d = 0; d < 42; d++) md = Mat
 check("features wav 往復", fa.T === fb.T && md < 0.05, "maxdiff " + md);
 // 5) 表で書き取る（表は tools/mimi_sodate.mjs が調整用の台本だけで作ったもの）
 const table = JSON.parse(fs.readFileSync(path.join(ROOT, "mimi_table.json"), "utf8"));
+check("表の長さ (r2)", table.vdur && table.vdur.a > 5 && table.dec.nobi > 1);
 check("表の形", table.kind === "mimi-table v1" && table.units.length > 40 && table.lm.length === table.units.length + 1 && table.from.split.startsWith("tune"));
 let e = 0, n = 0, eh = 0;
 for (const [k, p, seed] of [["ソレワハコナノダ", "hitofude", 2024], ["キョウワサムイノダ", "alto", 555], ["アシタモアソボウ", "ossan", 31]]) {

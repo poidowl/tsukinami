@@ -13,7 +13,7 @@ const EPS = 1e-9;
 export const FEAT_BASE = 21;
 
 /** kiku.analyze のフレーム → 特徴（21 次元 ＋ 前後差 21 次元）。発話ごとに帯の形の平均を引く（声の主の違いを薄める）。 */
-export function features(samples, sr) {
+export function features(samples, sr, feat = "v1") {
   // 16bit の格子に丸めてから聴く（wav を通しても通さんでも同じ特徴になる。無音が「ぴったり 0」になるのが肝）
   const q = new Float32Array(samples.length);
   for (let i = 0; i < q.length; i++) q[i] = Math.round(Math.max(-1, Math.min(1, samples[i])) * 32767) / 32767;
@@ -37,8 +37,13 @@ export function features(samples, sr) {
   const X = new Array(T);
   for (let t = 0; t < T; t++) {
     const a = B[Math.max(0, t - 2)], b = B[Math.min(T - 1, t + 2)];
-    const v = new Float32Array(FEAT_BASE * 2);
+    const v2 = feat === "v2";
+    const v = new Float32Array(FEAT_BASE * 2 + (v2 ? 5 : 0));
     for (let d = 0; d < FEAT_BASE; d++) { v[d] = B[t][d]; v[FEAT_BASE + d] = (b[d] - a[d]) / 2; }
+    if (v2) { // v2: 音量・有声度・d1・高域比・f0 の ±5 フレーム（約 50ms）の変わり方（音節の境目を見やすく）
+      const a5 = B[Math.max(0, t - 5)], b5 = B[Math.min(T - 1, t + 5)];
+      for (let d = 16; d < FEAT_BASE; d++) v[FEAT_BASE * 2 + d - 16] = (b5[d] - a5[d]) / 5;
+    }
     X[t] = v;
   }
   return { X, T, frames: fr, medF0 };
@@ -71,7 +76,7 @@ export function gmmLogLik(g, x) {
 
 /** 書き取り: Viterbi（モーラ環・2-gram）。table は mimi_sodate が書いた表。 */
 export function decodeMimi(samples, sr, table, opt = {}) {
-  const { X, T } = features(samples, sr);
+  const { X, T } = features(samples, sr, table.feat || "v1");
   if (!T) return { text: "", moras: [] };
   const lmw = opt.lmw ?? table.dec.lmw, pen = opt.pen ?? table.dec.pen;
   const mean = table.norm.mean, sd = table.norm.sd;
@@ -129,13 +134,30 @@ export function decodeMimi(samples, sr, table, opt = {}) {
   // 終わり: 単位の最後の小部屋のいちばん良い所
   let s = -1, best = -Infinity;
   for (let u = 0; u < U; u++) { if (silU >= 0 && u !== silU && opt.endSil !== false) continue; const v = dp[lastOf[u]]; if (v > best) { best = v; s = lastOf[u]; } }
-  const seq = [];
+  const seq = [], vlen = [];
+  let lastLen = 0;
   for (let t = T - 1; t >= 0; t--) {
-    if (t === 0 || bpPrev[t][s] >= 0) seq.push(sub[s].u);
+    const r = sub[s];
+    if (r.lastState) lastLen++;
+    if (t === 0 || bpPrev[t][s] >= 0) { seq.push(r.u); vlen.push(lastLen); lastLen = 0; }
     if (t > 0) s = bp[t][s];
   }
-  seq.reverse();
+  seq.reverse(); vlen.reverse();
   const toks = seq.map((u) => units[u]);
-  const text = toks.map((x) => x.kana).join("").replace(/、+/g, "、").replace(/^、|、$/g, "");
+  // 長さで母音を足す（r2）: 母音で終わる単位の母音が、1 モーラ分の平均長 vdur の thr 倍を超えたら同じ母音を足す
+  //（kusanagi の「ほー」「ああ」は境目のない一続きの母音なので、HMM は 1 つにまとめがち）
+  const nobi = opt.nobi ?? table.dec.nobi;
+  const VK = { a: "あ", i: "い", u: "う", e: "え", o: "お" };
+  const kanaOf = (x, k) => {
+    const st = x.states[x.states.length - 1];
+    if (!nobi || !table.vdur || !st.startsWith("v:")) return x.kana;
+    const v = st.slice(2), m = table.vdur[v];
+    // 句末（次が無音）の母音は kusanagi が句末で伸ばすので、閾値を nobiKu 倍にする
+    const th = nobi * m * (toks[k + 1] && toks[k + 1].tok !== "sil" ? 1 : (opt.nobiKu ?? table.dec.nobiKu ?? 1));
+    if (!m || vlen[k] < th) return x.kana;
+    const extra = Math.min(2, 1 + Math.floor((vlen[k] - th) / m));
+    return x.kana + VK[v].repeat(extra);
+  };
+  const text = toks.map((x, k) => kanaOf(x, k)).join("").replace(/、+/g, "、").replace(/^、|、$/g, "");
   return { text, units: toks.map((x) => x.tok) };
 }
