@@ -38,6 +38,7 @@ export function synth(text, prm, utaHz = null) {
     cadence: prm.cadence === undefined ? 0.0 : Number(prm.cadence),
     closeness: prm.closeness === undefined ? 0.0 : Number(prm.closeness),
     signature: prm.signature === undefined ? 0.0 : Number(prm.signature),
+    gesture: prm.gesture === undefined ? 0.0 : Number(prm.gesture),
     uta_hz: utaHz,
   });
 }
@@ -149,6 +150,7 @@ Options:
   --cadence <float>        響の文脈に反応する節回し (0.0..1.0、既存音声は0)
   --closeness <float>      響の句内の存在感 (0.0..1.0、既存音声は0)
   --signature <float>      音素連鎖による声の指紋 (0.0..1.0、既存音声は0)
+  --gesture <float>        音程と声道の同時ジェスチャー (0.0..1.0、既存音声は0)
   -h, --help               このヘルプを表示`);
 }
 
@@ -184,6 +186,7 @@ function main() {
       cadence: { type: "string" },
       closeness: { type: "string" },
       signature: { type: "string" },
+      gesture: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -214,7 +217,7 @@ function main() {
   const flagMap = {
     seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
     "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
-    damp: "damp", shin: "shin", character: "character", edge: "edge", cadence: "cadence", closeness: "closeness", signature: "signature",
+    damp: "damp", shin: "shin", character: "character", edge: "edge", cadence: "cadence", closeness: "closeness", signature: "signature", gesture: "gesture",
   };
   for (const [flag, key] of Object.entries(flagMap)) {
     if (values[flag] !== undefined) {
@@ -257,6 +260,10 @@ function main() {
 
   if (prm.signature !== undefined && (!Number.isFinite(Number(prm.signature)) || Number(prm.signature) < 0 || Number(prm.signature) > 1)) {
     dieParam(`signature must be in [0, 1], got ${prm.signature}`);
+  }
+
+  if (prm.gesture !== undefined && (!Number.isFinite(Number(prm.gesture)) || Number(prm.gesture) < 0 || Number(prm.gesture) > 1)) {
+    dieParam(`gesture must be in [0, 1], got ${prm.gesture}`);
   }
 
   if (values["save-recipe"]) {
