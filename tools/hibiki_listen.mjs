@@ -9,7 +9,7 @@ import { encodeWav, makeHitofude, makeRng, PRESETS } from "../hitofude.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.resolve(process.argv[2] || path.join(root, "out", "hibiki_blind"));
-const voices = ["hibiki", "hibiki_katari", "hibiki_awa", "hibiki_kiba", "hibiki_yorisoi", "hibiki_natsuku"];
+const voices = ["hibiki", "hibiki_katari", "hibiki_awa", "hibiki_kiba", "hibiki_yorisoi", "hibiki_natsuku", "hibiki_ibuki"];
 const lines = [
   "あさのひかり、ゆめのかけら",
   "あのひとのこえが、まだみみにのこっている",
@@ -35,7 +35,7 @@ for (let j = 0; j < lines.length; j++) {
 }
 const guide = [
   "# 響：匿名試聴",
-  "音声は line1_A → line1_F、続いて line2, line3 の順に聴く。",
+  "音声は line1_A → line1_G、続いて line2, line3 の順に聴く。",
   "採点時には answer_key.json を開かない。",
   "各WAVについて、以下を1〜5で採点（1=低い、5=高い）。",
   "可読性 / 耳の快適さ / 記憶に残る度合い / 続きを聴きたい度合い",
