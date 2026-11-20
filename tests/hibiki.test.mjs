@@ -252,3 +252,18 @@ test("lab baseline retains B3 clean and budget 54 covers three pitch bands",asyn
  const expected=makeHitofude("アー、ウー、ウアー",{...B3_BASE,seed:42}).samples;
  assert.equal(hashish(actual),hashish(expected));
 });
+
+test("jitter sweep spans 0.018–0.05 without changing baseline",async()=>{
+ const {chooseCandidates,renderLabCandidate}=await import("../tools/infant_lab.mjs");
+ const {B3_BASE}=await import("../b3_akambo.mjs");
+ const c=chooseCandidates(54,350,"jitter");
+ assert.equal(c.length,54);
+ for(const j of [.018,.022,.03,.04,.05])
+   assert.ok(c.some(x=>x.jitter===j),"missing jitter "+j);
+ assert.ok(c.every(x=>x.clean===B3_BASE.b2_clean));
+ assert.equal(c[0].jitter,.018);
+ const base=renderLabCandidate("アー、ウー、ウアー",42,c[0]);
+ assert.equal(hashish(base),hashish(makeHitofude("アー、ウー、ウアー",{...B3_BASE,seed:42}).samples));
+ assert.ok(new Set(c.map(x=>x.hz)).size>=2);
+ assert.throws(()=>chooseCandidates(54,350,"invalid"),RangeError);
+});
