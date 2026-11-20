@@ -152,3 +152,20 @@ test("B2 reference-led clean preset remains reversible to B2 legacy", async () =
   const v = PRESETS.hibiki_ibuki;
   assert.equal(hashish(render(v)), hashish(render({ ...v, b2_clean: 0 })));
 });
+
+test("B2 cycle levelling isolates shimmer without altering period timing", async () => {
+  const { renderB2, B2_TUNED, B2_PRESET } = await import("../b2_akambo.mjs");
+  const args = { seed: 42, text: "アー、ウー、ウアー" };
+  const latest = renderB2(args);
+  const reference = renderB2({ ...args, profile: "tuned" });
+  const bypass = renderB2({ ...args, cycle: 0 });
+  assert.notEqual(hashish(latest.samples), hashish(reference.samples));
+  assert.equal(hashish(reference.samples), hashish(bypass.samples));
+  assert.equal(hashish(reference.samples), hashish(makeHitofude(args.text, { ...B2_TUNED, seed: 42 }).samples));
+  assert.equal(hashish(latest.samples), hashish(renderB2(args).samples));
+  assert.ok(latest.samples.every(Number.isFinite));
+  assert.ok(B2_PRESET.b2_cycle > 0);
+  assert.throws(() => renderB2({ cycle: 1.01 }), RangeError);
+  const v = PRESETS.hibiki_ibuki;
+  assert.equal(hashish(render(v)), hashish(render({ ...v, b2_cycle: 0 })));
+});
