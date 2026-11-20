@@ -21,7 +21,7 @@ const metrics=(x,sr)=>{const s=analyze(x,sr).summary;return Object.fromEntries(F
 const finite=(m)=>FIELDS.every(k=>Number.isFinite(m[k]));
 const cut=(m)=>Object.fromEntries(FIELDS.map(k=>[k,Number.isFinite(m[k])?+m[k].toFixed(k==="period_corr_median"?5:2):null]));
 const score=(x,y)=>FIELDS.reduce((acc,k)=>acc+Math.pow((x[k]-y[k])/WEIGHTS[k],2),0);
-function loadReference(entry,root){
+export function loadReference(entry,root){
   if(typeof entry.file!=="string" || !entry.file.trim())throw Error("reference file path missing");
   const full=path.resolve(root,entry.file);
   if(!fs.existsSync(full))throw Error("reference missing: "+full);
