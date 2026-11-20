@@ -1,0 +1,73 @@
+{
+ "analysis": [
+  {
+   "rank": 1,
+   "cause": "母音の識別ミス（u→o/o→a/i→eが突出）",
+   "evidence": "confusion_vowelの[u→o:417,o→a:273,i→e:105]",
+   "share": "全体誤りの40%以上"
+  },
+  {
+   "rank": 2,
+   "cause": "無音（∅）からの子音誤認識（r/y/m/nが突出）",
+   "evidence": "confusion_consonantの[∅→r:137,∅→y:100,∅→m:93,∅→n:92]",
+   "share": "全体誤りの30%弱"
+  },
+  {
+   "rank": 3,
+   "cause": "母音削除（u/i/oが突出）",
+   "evidence": "deletionsの[u:601,i:386,o:337]",
+   "share": "全体誤りの25%程度"
+  }
+ ],
+ "proposals": [
+  {
+   "id": "P1",
+   "title": "母音特徴の拡張",
+   "change": "F1/F2の周波数帯域を拡張し、音響エネルギーの時間変化率を特徴に追加",
+   "why": "u/o/aの混同は周波数特徴の精度不足に起因。エネルギー変化率で音節境界を明確化",
+   "expected_gain": "+3.2",
+   "cost": "中",
+   "risk": "過学習リスク"
+  },
+  {
+   "id": "P2",
+   "title": "無音遷移モデルの改善",
+   "change": "状態sil→子音の遷移確率を0.6→0.8に引き上げ、音響特徴の門限値を再調整",
+   "why": "∅→r/y/m/nのエラーは無音からの音声開始検出不良。遷移確率の変更で開始検出を改善",
+   "expected_gain": "+2.8",
+   "cost": "小",
+   "risk": "音声の長さモデルの再調整が必要"
+  },
+  {
+   "id": "P3",
+   "title": "母音削除抑制のための発話文脈モデル",
+   "change": "deletion_context_prevVowel_plus_moraの統計を用いて、前母音とモーラの組み合わせで削除確率を補正",
+   "why": "u/i/oの削除は音響特徴の変動が原因。文脈依存的な削除抑制で改善",
+   "expected_gain": "+2.5",
+   "cost": "中",
+   "risk": "モデルサイズの増加"
+  },
+  {
+   "id": "P4",
+   "title": "音声合成の参照生成方法の見直し",
+   "change": "janomeでのカタカナ読みを廃止し、kusanagiの実際の読み（tracksFromKana）を参照に変更",
+   "why": "reference_vs_kusanagi_spokenの差異が44/156ラインで、参照生成方法がエラーの根源",
+   "expected_gain": "+4.1",
+   "cost": "大",
+   "risk": "再トレーニングコスト"
+  }
+ ],
+ "_meta": {
+  "sec": 75.4,
+  "usage": {
+   "prompt_tokens": 3689,
+   "completion_tokens": 1084,
+   "total_tokens": 4773,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   }
+  },
+  "think_chars": 0,
+  "model": "default_model"
+ }
+}
