@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "入力": "草薙合成 preset=hitofude",
+    "テキスト": "わたし、にほんご、ちょっとしゃべれます",
+    "wav": "out/hodoki_src_hitofude.wav",
+    "サンプルレート": "44100 Hz",
+    "解析時間": "234 ms"
+  },
+  "summary": {
+    "duration_s": 4.174988662131519,
+    "voiced_s": 1.83,
+    "f0_median_hz": 373.6309265512171,
+    "periods": 639,
+    "pairs": 617,
+    "jitter_local_pct": 0.9081645664604885,
+    "jitter_detrended_pct": 0.6035013028638223,
+    "jitter_abs_us": 24.877674003228925,
+    "shimmer_local_pct": 13.770481228020977,
+    "shimmer_local_db": 1.537158944562325,
+    "hnr_db": 11.281846466756424,
+    "inharm_cents": 15.55235176380089,
+    "inharm_frames": 183,
+    "period_corr_median": 0.9629161151133956
+  }
+}
