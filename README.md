@@ -306,3 +306,29 @@ node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --profile cycle 
 
 注意：**シマー・HNR改善は未計測**。また周期整流だけでHNRが一致する保証はない。
 発声源の構造を取り替えること、録音を計測のみに使うこと、サンプルを合成へ使うことのいずれもBシリーズでは選択可能。
+
+## B3 — サラサラ技術 / 実録への一致を最優先
+
+Hodoki `hodoki/zarazara` で突き止めた一次原因は、有声コム帰還の非周期ノイズ注入。
+`combG=0.99`（soroe1）と `combG=0.985,rawAirMul=0.6`（soroe2）を、
+`hitofude.mjs` に**ゼロ影響のオプトイン**として統合。B1・B2・Vのデフォルトは不変。
+
+B3は B2改2（`B2_TUNED`）を基礎に、**baby bendを保持**し、B2後段cycle整流は無効。
+`--profile soroe1` は Hodoki実測に近い設定、`--profile candidate` は
+`soroe1` に周期ジッターを増やす仮説（0.018→0.027）を加えた**未評価候補**。
+`--profile soroe2` も独立比較可能。
+
+```bash
+node b3_yomu.mjs --seed 42 --profile soroe1 --text "アー、ウー、ウアー" --out b3_soroe1.wav
+node b3_yomu.mjs --seed 42 --profile candidate --text "アー、ウー、ウアー" --out b3_candidate.wav
+node b3_yomu.mjs --seed 42 --profile soroe2 --text "アー、ウー、ウアー" --out b3_soroe2.wav
+```
+
+目標: 実録 F0 349Hz / jitter 2.18% / shimmer 5.70% / HNR 16.16dB /
+周期相関 .991。Hodokiによる既知のB2改2+soroe1実測:
+348Hz / 1.36% / 8.1% / 14.4dB / .983。
+数値は音声区間・検出条件・圧縮条件に依存するため、測定値は再現条件を明記すること。
+**歌の長さ指定・baby bend歌唱対応は別課題。**
+
+実録 `samples/reference/infant_2months_stephan.ogg` と生成したWAVを
+同じ `soroi` 解析器で比較する `tools/b3_measure.mjs` を整備。
