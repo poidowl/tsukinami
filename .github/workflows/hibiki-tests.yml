@@ -28,6 +28,7 @@ jobs:
           node --check b3_kai.mjs
           node --check tools/b3_measure.mjs
           node --check tools/b3_sweep.mjs
+          node --check tools/infant_lab.mjs
       - name: Synthesis regression tests
         run: node --test tests/hibiki.test.mjs
       - name: Blind listening pack smoke test
@@ -60,6 +61,19 @@ jobs:
           ffmpeg -loglevel error -y -i samples/reference/infant_2months_stephan.ogg -ar 44100 -ac 1 "$RUNNER_TEMP/infant.wav"
           node tools/b3_measure.mjs "$RUNNER_TEMP/infant.wav" "$RUNNER_TEMP/b3_soroe1.wav" "$RUNNER_TEMP/b3_kai.wav" "$RUNNER_TEMP/b3_candidate.wav" "$RUNNER_TEMP/b3_soroe2.wav"
           node tools/b3_sweep.mjs "$RUNNER_TEMP/infant.wav"
+      - name: Multi-reference infant lab smoke
+        run: |
+          node tools/infant_lab.mjs --reference stephan_2m --budget 4 --out "$RUNNER_TEMP/infant_lab" --seed 20261120
+          test "$(find "$RUNNER_TEMP/infant_lab" -name '*.wav' | wc -l)" -eq 4
+          test -s "$RUNNER_TEMP/infant_lab/results.json"
+          test -s "$RUNNER_TEMP/infant_lab/PROMOTION.md"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: infant-reference-lab
+          path: ${{ runner.temp }}/infant_lab/
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:
