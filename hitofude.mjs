@@ -1132,6 +1132,66 @@ function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gat
 // ============================================================================
 // 4. 本体：1本のホワイトノイズから4手で彫る音声・歌声合成
 // ============================================================================
+// B2実験: 周期同期の振幅整流。周期長PERは元の生成器の値をそのまま使い、
+// ピッチ位相は書き換えない。前後2周期のRMSだけに近づけ、句の強弱を保つ。
+// 周期境界でゲインが飛ばないよう隣接周期間の中央値を線形補間する。
+function b2LevelCycles(samples, period, voiced, amount) {
+  const n = samples.length, frameSamples = SR * FP / 1000.0;
+  const cycles = [];
+  let p = 0;
+  while (p < n) {
+    const voicedHere = !!voiced[Math.min(voiced.length - 1, Math.trunc(p / frameSamples))];
+    if (!voicedHere) { p += Math.max(1, Math.round(period[p] || 120)); continue; }
+    const len = Math.max(35, Math.min(600, Math.round(period[p] || 120)));
+    const end = Math.min(n, p + len);
+    let sum = 0;
+    for (let j = p; j < end; j++) sum += samples[j] * samples[j];
+    const rms = Math.sqrt(sum / (end - p));
+    cycles.push({ a: p, b: end, rms, group: Math.trunc(p / frameSamples) });
+    p = end;
+  }
+  if (!cycles.length) return;
+  const gains = new Float64Array(cycles.length);
+  for (let k = 0; k < cycles.length; k++) {
+    const cy = cycles[k];
+    // 無音と立ち上がりでは不自然なブーストをしない。
+    if (cy.rms < 0.012) { gains[k] = 1; continue; }
+    let weighted = 0, total = 0;
+    for (let delta = -2; delta <= 2; delta++) {
+      const j = k + delta;
+      if (j < 0 || j >= cycles.length) continue;
+      const neighbor = cycles[j];
+      // 無声部をまたぐ周期との平均は禁止。
+      if (Math.abs(neighbor.a - cy.a) > 5 * Math.max(35, cy.b - cy.a) ||
+          neighbor.rms < 0.012) continue;
+      const wt = 3 - Math.abs(delta);
+      weighted += wt * neighbor.rms;
+      total += wt;
+    }
+    const target = total ? weighted / total : cy.rms;
+    const ratio = Math.max(0.66, Math.min(1.45, target / cy.rms));
+    gains[k] = 1 + amount * (ratio - 1);
+  }
+  for (let k = 0; k < cycles.length; k++) {
+    const { a, b } = cycles[k];
+    const linkedBefore = k > 0 && cycles[k - 1].b === a;
+    const linkedAfter = k + 1 < cycles.length && cycles[k + 1].a === b;
+    const left = linkedBefore ? 0.5 * (gains[k - 1] + gains[k]) : 1;
+    const right = linkedAfter ? 0.5 * (gains[k] + gains[k + 1]) : 1;
+    for (let j = a; j < b; j++) {
+      const u = (j - a) / Math.max(1, b - a);
+      samples[j] *= left + (right - left) * u;
+    }
+  }
+  // 後処理の増幅で音量の天井を越えないようにする。
+  let peak = 0;
+  for (let j = 0; j < n; j++) peak = Math.max(peak, Math.abs(samples[j]));
+  if (peak > 0.891) {
+    const g = 0.891 / peak;
+    for (let j = 0; j < n; j++) samples[j] *= g;
+  }
+}
+
 export function makeHitofude(text, opts = {}) {
   const {
     seed = 2024,
@@ -1155,6 +1215,7 @@ export function makeHitofude(text, opts = {}) {
     b2_body = 0.0,    // B2専用: 呼気圧・声門扉・周期が結合する不安定さ
     b2_breaks = 0.0,  // B2専用: 呼気不足時のパルス化・息漏れ（0=従来どおり）
     b2_clean = 0.0,   // B2専用: 周期波形の一貫性を優先して息漏れ・流量の乱れを抑える
+    b2_cycle = 0.0,   // B2専用: ジッターを変えず、周期ごとの振幅だけを局所的に整える
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1680,6 +1741,8 @@ export function makeHitofude(text, opts = {}) {
   const out = new Float32Array(N);
   const scale = 0.891 / pk;
   for (let i = 0; i < N; i++) out[i] = y[i] * scale;
+  const cycleAmt = Math.max(0, Math.min(1, Number.isFinite(b2_cycle) ? b2_cycle : 0));
+  if (cycleAmt > 0 && !uta_hz) b2LevelCycles(out, PER, r.voiced, cycleAmt);
 
   let steps = null;
   if (captureSteps) {
