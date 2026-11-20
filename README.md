@@ -382,3 +382,11 @@ node b3_yomu.mjs --seed 42 --profile kai --attackMs 70 --releaseMs 130 --cutoffH
 **既定は `soroe1` に戻し、`kai` は opt-in の実験として保持**。
 とくにスペクトル高域・オンセットの直接測定と試聴は未実施のため、そこへの効果は断定しない。
 録音の背景雑音と息の違いはスペクトログラムだけでは峻別できない。
+
+### B3改 バグ修正: kaiは必ずsoroe1から後処理する
+
+旧実装の`profile`分岐は`kai`を処理せず、誤って`candidate`（jitter 0.027）を入力にしていた。
+修正後の`kai`入力は `soroe1` （jitter 0.018）とビット単位で同じ。
+テストでは`b3KaiProcess(soroe1.samples)`との**全サンプル一致**を確認する。
+旧B3改の測定表にある「kai」の数値は**誤った入力に対する結果**であり、
+後処理の評価としては無効。訂正後のHodoki再測定結果で評価を更新する。
