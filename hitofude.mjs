@@ -81,6 +81,14 @@ export const PRESETS = {
     jitter: 0.0025, wander_st: 0.11, character: 0.20, edge: 0.16,
     cadence: 0.50, closeness: 0.35, signature: 0.88,
   },
+  hibiki_ibuki: {
+    label: "息吹",
+    description: "息吹（音程と声道の癖が同時に動く、言葉を受け止める電子声）",
+    seed: 2024, hz: 295.0, fscale: 1.125, rate: 1.27,
+    g_vo: 0.87, damp: 0.12, shin: 1.0, tilt_w: 5, sigh: 0.43,
+    jitter: 0.0026, wander_st: 0.12, character: 0.15, edge: 0.10,
+    cadence: 0.58, closeness: 0.28, signature: 0.68, gesture: 0.85,
+  },
   hibiki_awa: {
     label: "泡",
     description: "泡（浮遊するささやきに、小さな歌心が混じる電子声）",
@@ -1142,6 +1150,7 @@ export function makeHitofude(text, opts = {}) {
     cadence = 0.0,    // 響の文脈依存の節回し (0=無変更、0..1=母音・句末へ応答)
     closeness = 0.0,  // 響の句内存在感 (0=無変更、0..1=前半の柔らかさ→後半の芯)
     signature = 0.0,  // 響の音素連鎖に固有の声色 (0=無変更、0..1=強い個体差)
+    gesture = 0.0,    // 響の音程・声道同時ジェスチャー (0=従来通り、0..1=最大)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1268,6 +1277,37 @@ export function makeHitofude(text, opts = {}) {
     }
   }
 
+  // 息吹: 一つの発声ジェスチャーが音程と声道に同期して現れる。
+  // 母音の系列から一意に生じる小さな意外性を与え、予測できる「同一人物」を保つ。
+  // 音の入口・出口は0に戻し、子音の可読性を守る。意味の感情推定は行わない。
+  const gestureAmt = Math.max(0.0, Math.min(1.0, Number.isFinite(gesture) ? gesture : 0.0));
+  const gestureFr = new Float64Array(n);
+  if (gestureAmt > 0.0 && !uta_hz) {
+    const vowels = { a: 0.52, i: -0.35, u: 0.28, e: -0.56, o: 0.42 };
+    let prevV = null;
+    for (let j = 0; j < r.moras.length; j++) {
+      const m = r.moras[j];
+      if (m.kind === "pau") { prevV = null; continue; }
+      if (m.kind !== "CV") continue;
+      const adjacent = j + 1 < r.moras.length ? r.moras[j + 1] : null;
+      const last = !adjacent || adjacent.kind === "pau";
+      const v = vowels[m.v] ?? 0.0;
+      const relation = prevV === null ? 0.0 : (prevV === m.v ? -0.16 : 0.22);
+      const s = Math.max(-0.8, Math.min(0.8, v + relation - (last ? 0.21 : 0.0)));
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      for (let q = ib; q < ie; q++) {
+        if (!r.voiced[q]) continue;
+        const u = (q - ib) / Math.max(1, ie - ib);
+        const shape = Math.sin(Math.PI * u) ** 2;
+        const gestureValue = gestureAmt * s * shape;
+        gestureFr[q] = gestureValue;
+        f0_fr[q] *= Math.pow(2.0, (0.52 * gestureValue) / 12.0);
+      }
+      prevV = m.v;
+    }
+  }
+
   // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
   const sigh_fr = new Array(n).fill(0.0);
   if (sigh > 0.0) {
@@ -1347,8 +1387,8 @@ export function makeHitofude(text, opts = {}) {
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
     F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
-    F2[t] = Math.min(Math.max(r.F2[t] * fs * (1.0 + 0.13 * vowelTint[t] + 0.10 * voicePrint[t]), F1[t] + 280.0), 8500.0);
-    F3[t] = Math.min(Math.max(r.F3[t] * fs * (1.0 - 0.055 * vowelTint[t] - 0.08 * voicePrint[t]), F2[t] + 350.0), 9000.0);
+    F2[t] = Math.min(Math.max(r.F2[t] * fs * (1.0 + 0.13 * vowelTint[t] + 0.10 * voicePrint[t] + 0.042 * gestureFr[t]), F1[t] + 280.0), 8500.0);
+    F3[t] = Math.min(Math.max(r.F3[t] * fs * (1.0 - 0.055 * vowelTint[t] - 0.08 * voicePrint[t] - 0.025 * gestureFr[t]), F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
   }
 
