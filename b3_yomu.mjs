@@ -7,13 +7,15 @@ import {renderB3, encodeWav, SR} from "./b3_akambo.mjs";
 const {values:v}=parseArgs({options:{
   seed:{type:"string",default:"20261120"},phrases:{type:"string",default:"4"},
   text:{type:"string"},mode:{type:"string",default:"coo"},
-  profile:{type:"string",default:"soroe1"},
+  profile:{type:"string",default:"kai"},
   jitter:{type:"string"},combG:{type:"string"},rawAirMul:{type:"string"},bend:{type:"string"},
+  attackMs:{type:"string"},releaseMs:{type:"string"},cutoffHz:{type:"string"},
+  tiltMix:{type:"string"},airLevel:{type:"string"},
   out:{type:"string",default:"b3_akambo.wav"},
 }});
 const opts={seed:Number(v.seed),phrases:Number(v.phrases),text:v.text,
   mode:v.mode,profile:v.profile};
-for(const name of ["jitter","combG","rawAirMul","bend"]){
+for(const name of ["jitter","combG","rawAirMul","bend","attackMs","releaseMs","cutoffHz","tiltMix","airLevel"]){
  if(v[name]!==undefined)opts[name]=Number(v[name]);
 }
 if(!Number.isInteger(opts.phrases)||opts.phrases<1||opts.phrases>32)throw new RangeError("phrases: 1..32");
