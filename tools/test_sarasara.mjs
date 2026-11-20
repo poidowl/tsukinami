@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tools/test_sarasara.mjs — v11 サラサラ既定合流（soroe2 = {combG: 0.985, rawAirMul: 0.6}）の回帰テスト
+ * tools/test_sarasara.mjs — v10.1 サラサラ既定合流（soroe2 = {combG: 0.985, rawAirMul: 0.6}）の回帰テスト
  *
  *   node tools/test_sarasara.mjs
  *

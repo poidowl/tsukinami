@@ -966,7 +966,7 @@ requestAnimationFrame(() => {
 </html>
 `;
 
-const PLAYER_VER = 11;
+const PLAYER_VER = "10.1";
 const ENGINE_KB = Math.round(Buffer.byteLength(engineSrc, "utf8") / 1000);
 
 const shareHtml = `<!DOCTYPE html>
@@ -1133,7 +1133,7 @@ const shareHtml = `<!DOCTYPE html>
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
-      <li><strong>v11：</strong>v10 の子音・ハ行明瞭度×粘膜ソフトクッションに、<strong>v9 サラサラ化（<code>combG: 0.985, rawAirMul: 0.6</code> / soroe2）を既定合流</strong>（持続母音シマー <code>5.5% → 1.8%</code>、<code>{combG: null, rawAirMul: 1.0}</code> で <code>90f0c44</code> の音とバイト一致）。</li>
+      <li><strong>v10.1：</strong>v10 の子音・ハ行明瞭度×粘膜ソフトクッションに、<strong>v9 サラサラ化（<code>combG: 0.985, rawAirMul: 0.6</code> / soroe2）を既定合流</strong>（持続母音シマー <code>5.5% → 1.8%</code>、<code>{combG: null, rawAirMul: 1.0}</code> で <code>90f0c44</code> の音とバイト一致）。</li>
       <li><strong>v10 (<a href="https://github.com/poidowl/tsukinami/commit/90f0c44" target="_blank" rel="noopener noreferrer"><code>90f0c44</code></a>)：</strong>聴き取りと自然さの二軸両立アップデート — <strong>子音明瞭度（<code>/s/, /t/, /k/</code>）とハ行気息（後続母音 F2 同調 <code>h</code> / 両唇 <code>f</code>）の完全復元</strong>、<code>ei</code> 長音同化、および<strong>高域コム減衰＋粘膜ソフトクッション＋等身大声道倍率</strong>による女声・歌唱時のエフェクター（フランジャー・ワウ）感の解消。</li>
       <li><strong>v9 サラサラ化 (<a href="https://github.com/poidowl/tsukinami/commit/2859fff" target="_blank" rel="noopener noreferrer"><code>2859fff</code></a>・11-20)：</strong>有声のあいだ粘膜コム帰還を <code>combG×有声度</code>（既定 <code>0.985</code>）に固定し、扉を通る生ノイズ <code>rawAir</code> を <code>0.6</code> 倍に（<strong>soroe2</strong>）。毎周期まじる新しいノイズによるザラザラ（シマー）を減らす。</li>
       <li><strong>v8 (<a href="https://github.com/poidowl/tsukinami/commit/7f09d18" target="_blank" rel="noopener noreferrer"><code>7f09d18</code></a>)：</strong>2唇粘膜扉×5極声道の再帰結合を <strong>非対称ベルヌーイ閉鎖（上唇は丸く開き・下唇は気流吸い寄せで急閉鎖）＋真の唇微分放射</strong>へ進化させ、女声・歌・新設 <code>アルト</code> まで全人間プリセットへ統合（旧並列時代の <code>fricT</code>/<code>vl_f1</code> 子音F1ワープも撤去）。</li>
