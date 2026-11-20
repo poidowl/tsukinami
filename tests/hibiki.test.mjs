@@ -13,7 +13,7 @@ const hashish = (a) => {
   return h >>> 0;
 };
 test("hibiki variations render finite non-silent deterministic audio", () => {
-  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba"]) {
+  for (const key of ["hibiki", "hibiki_awa", "hibiki_kiba", "hibiki_katari"]) {
     const a = render(PRESETS[key]), b = render(PRESETS[key]);
     assert.equal(a.length, b.length);
     assert.ok(a.length > 44100);
@@ -33,4 +33,20 @@ test("character and edge change the rendered waveform", () => {
 test("zero character and edge preserve legacy settings", () => {
   const p = PRESETS.alto;
   assert.equal(hashish(render(p)), hashish(render({ ...p, character: 0, edge: 0 })));
+});
+
+test("cadence responds to phonetic context, stays deterministic and is disabled in singing", () => {
+  const p = PRESETS.hibiki_katari;
+  const spoken = makeHitofude("あいあい、ああああ", p);
+  const neutral = makeHitofude("あいあい、ああああ", { ...p, cadence: 0 });
+  assert.notEqual(hashish(spoken.samples), hashish(neutral.samples));
+  const repeat = makeHitofude("あいあい、ああああ", p);
+  assert.equal(hashish(spoken.samples), hashish(repeat.samples));
+  const sung = makeHitofude("あいうえお", { ...p, uta_hz: [300, 320, 340, 360, 380] });
+  const sungNeutral = makeHitofude("あいうえお", { ...p, cadence: 0, uta_hz: [300, 320, 340, 360, 380] });
+  assert.equal(hashish(sung.samples), hashish(sungNeutral.samples));
+});
+test("cadence zero is fully backward-compatible", () => {
+  const p = PRESETS.hibiki;
+  assert.equal(hashish(render(p)), hashish(render({ ...p, cadence: 0 })));
 });
