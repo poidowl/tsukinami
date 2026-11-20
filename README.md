@@ -146,7 +146,7 @@ node --test tests/hibiki.test.mjs
 
 ### 試聴評価の実験計画
 
-同一文を**響・語・泡・牙**で生成し、ファイル名を隠して順序を入れ替える。
+同一文を**響・語・泡・牙・寄添**で生成し、ファイル名を隠して順序を入れ替える。
 短文で第一印象、異なる文を10本続けて聴く条件で「途中で止めたくなるか」も比較。
 評価軸は (1) 聞き取れた語 (2) 声の識別 (3) 耳の疲れ (4) 続きを聞きたいか。
 多人数の比較と実測が済むまでは「魅力の改善」とは呼ばない。
@@ -157,7 +157,7 @@ node --test tests/hibiki.test.mjs
 node tools/hibiki_listen.mjs
 ```
 
-`out/hibiki_blind` に4声×3文の12 WAV、採点ガイド `LISTEN_FIRST.txt`、回答表 `answer_key.json` を生成。
+`out/hibiki_blind` に5声×3文の15 WAV、採点ガイド `LISTEN_FIRST.txt`、回答表 `answer_key.json` を生成。
 **試聴前には回答表を開かないこと**。出力フォルダが既にある場合は上書きせず失敗する。
 
 ## 響 v4 — 「寄添」(yorisoi) / 声の親しみ
@@ -173,3 +173,7 @@ node yomu.mjs --preset hibiki_yorisoi --closeness 0 --measure "おかえり、�
 
 判定基準は「近くで鳴っているように感じるか」「繰り返し聞いて疲れないか」。
 聴取実験前なので、これらを達成したとは主張しない。
+
+### 自動テスト
+
+`.github/workflows/hibiki-tests.yml` を追加。`hibiki` への push / PR / 手動実行時に Node.js 22 で構文・回帰テストと短いWAV生成を確認する。ワークフローの追加と実際の実行成功は別なので、Actionsでジョブ完了を確認すること。
