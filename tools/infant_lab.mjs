@@ -72,19 +72,13 @@ export function chooseCandidates(budget=24, referenceF0=350, sweep="grid"){
     // jitter amplitude and correlation, including the unmodified legacy anchor.
     const levels=[.018,.03,.05,.08,.12];
     const correlations=[0,.5,.85,.95];
-    for(const jitter of levels)
-      for(const corr of correlations)
-        for(const tiltMix of [0,.72]){
-          presets.push({hz:351,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,
-            jitter,jitterCorr:corr,cutoffHz:2300,tiltMix,airLevel:tiltMix?.0028:0});
-        }
-    // Alternate correlation levels before spending more budget on large jitter.
-    const core=presets.splice(4);
-    for(const idx of Array.from({length:correlations.length},(_,i)=>i))
-      for(let k=0;k<core.length/correlations.length;k++){
-        const j=k*correlations.length+idx;
-        if(core[j])presets.push(core[j]);
-      }
+    // Interleave timing magnitude and correlation from the start.
+    for(const tiltMix of [0,.72])
+      for(const hz of [351,targetHz])
+        for(const jitter of levels)
+          for(const corr of correlations)
+            presets.push({hz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,
+              jitter,jitterCorr:corr,cutoffHz:2300,tiltMix,airLevel:tiltMix?.0028:0});
     return uniqueCandidates(presets,budget);
   }
   if(sweep==="jitter"){
