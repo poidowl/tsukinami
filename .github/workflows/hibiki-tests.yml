@@ -58,6 +58,16 @@ jobs:
           ffmpeg -loglevel error -y -i samples/reference/infant_2months_stephan.ogg -ar 44100 -ac 1 "$RUNNER_TEMP/infant.wav"
           node tools/b3_measure.mjs "$RUNNER_TEMP/infant.wav" "$RUNNER_TEMP/b3_soroe1.wav" "$RUNNER_TEMP/b3_candidate.wav" "$RUNNER_TEMP/b3_soroe2.wav"
           node tools/b3_sweep.mjs "$RUNNER_TEMP/infant.wav"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: b3-listening-samples
+          path: |
+            ${{ runner.temp }}/b3_soroe1.wav
+            ${{ runner.temp }}/b3_candidate.wav
+            ${{ runner.temp }}/b3_soroe2.wav
+          if-no-files-found: ignore
+          retention-days: 14
       - name: CLI smoke render
         run: |
           node yomu.mjs --preset hibiki_katari --measure "あさのひかり、ゆめのかけら"
