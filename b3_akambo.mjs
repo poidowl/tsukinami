@@ -23,7 +23,8 @@ export function renderB3({ seed = B3_PRESET.seed, phrases = 4, text = null,
   tiltMix = undefined, airLevel = undefined } = {}) {
   if (!["kai", "candidate", "soroe1", "soroe2"].includes(profile)) throw new RangeError("invalid B3 profile");
   if (!["coo", "babble"].includes(mode)) throw new RangeError("invalid B3 mode");
-  const preset = profile === "soroe1" ? B3_PRESET : profile === "soroe2" ? B3_SOROE2 : B3_JITTER_EXPERIMENT;
+  const preset = profile === "soroe2" ? B3_SOROE2
+    : profile === "candidate" ? B3_JITTER_EXPERIMENT : B3_PRESET; // kai explicitly inherits soroe1
   const j = jitter ?? preset.jitter;
   const comb = combG ?? preset.b3_combG, air = rawAirMul ?? preset.b3_rawAirMul;
   const bendAmount = bend ?? preset.baby;
