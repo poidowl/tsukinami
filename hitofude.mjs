@@ -58,6 +58,20 @@ export const PRESETS = {
     g_vo: 0.86, damp: 0.11, shin: 1.0, tilt_w: 4, sigh: 0.34,
     jitter: 0.0028, wander_st: 0.13, character: 0.78,
   },
+  hibiki_awa: {
+    label: "泡",
+    description: "泡（浮遊するささやきに、小さな歌心が混じる電子声）",
+    seed: 2024, hz: 325.0, fscale: 1.20, rate: 1.27,
+    g_vo: 0.81, damp: 0.16, shin: 1.0, tilt_w: 6, sigh: 0.76,
+    jitter: 0.0031, wander_st: 0.20, character: 0.86, edge: 0.13,
+  },
+  hibiki_kiba: {
+    label: "牙",
+    description: "牙（低めで鋭く、拍頭がわずかに噛み付く電子声）",
+    seed: 2024, hz: 250.0, fscale: 1.06, rate: 1.16,
+    g_vo: 0.91, damp: 0.07, shin: 1.0, tilt_w: 4, sigh: 0.16,
+    jitter: 0.0020, wander_st: 0.10, character: 0.68, edge: 0.84,
+  },
   robot: {
     label: "ロボ",
     description: "冷凍ロボット（片道コム shin=0・周期ジッタ0・漂い0・強いくびれG=0.96）",
@@ -1101,6 +1115,7 @@ export function makeHitofude(text, opts = {}) {
     damp = 0.08,      // 声帯波帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
     shin = 1.0,       // 声門2唇粘膜扉×5極声道の再帰結合度 (1.0=既定、0.0=冷凍ロボ用の片道コム)
     character = 0.0,  // 響の固有声色・拍の訛り (0=草薙と同一、0..1=個性を増す)
+    edge = 0.0,       // 響の拍頭アタック／粘膜扉の鋭さ (0=草薙と同一、0..1=鋭い声)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1176,6 +1191,7 @@ export function makeHitofude(text, opts = {}) {
   // 響: 母音の中だけで、モーラごとに決まった小さな音程の訛りを刻む。
   // ランダムな揺らぎではなく反復可能な「口癖」。母音の入りは保ち、核の後半で少し浮く。
   const charm = Math.max(0.0, Math.min(1.0, Number.isFinite(character) ? character : 0.0));
+  const edgeAmt = Math.max(0.0, Math.min(1.0, Number.isFinite(edge) ? edge : 0.0));
   if (charm > 0.0 && !uta_hz) {
     const motif = [-0.80, 0.55, 1.00, -0.30, 0.35]; // 半音、固定の5拍モチーフ
     let mi = 0;
@@ -1265,6 +1281,21 @@ export function makeHitofude(text, opts = {}) {
     if (f_cons_w[t_] === 0.0 && cons_sharp[t_] === 0.0) f_cons_cen[t_] = f_cons_cen[t_ - 1];
   }
 
+  // 響: 拍頭の「噛みつき」軌道。子音と母音の境界で最大、母音中央までに消える。
+  // 音量のゲートは掛けず、既存の粘膜扉のしなりだけに介入する。
+  const biteFr = new Float64Array(n);
+  if (edgeAmt > 0.0) {
+    for (const m of r.moras) {
+      if (m.kind !== "CV") continue;
+      const ib = Math.max(0, Math.trunc(m.b / fpz));
+      const ie = Math.min(n, Math.trunc(m.e / fpz));
+      for (let t = ib; t < ie; t++) {
+        if (!r.voiced[t]) continue;
+        const u = (t - ib) / Math.max(1, ie - ib);
+        biteFr[t] = Math.max(biteFr[t], edgeAmt * Math.pow(Math.max(0.0, 1.0 - u / 0.52), 2));
+      }
+    }
+  }
   const vo_sm = smooth1(r.voiced.map((v) => (v ? 1.0 : 0.0)), 10);
   const sigh_sm = smooth1(sigh_fr, 14);
   const g_fr = new Array(n);
@@ -1290,6 +1321,7 @@ export function makeHitofude(text, opts = {}) {
 
   const GS = perSample(g_fr, N);
   const SIGH_S = perSample(sigh_sm, N);
+  const BITE_S = edgeAmt > 0.0 ? perSample(smooth1(biteFr, 10), N) : null;
   const wNorm = wander_st > 0.0 ? (1.0 / wander_st) : 0.0;
   if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
   const tw = Math.max(1, Math.round(tilt_w));
@@ -1335,12 +1367,13 @@ export function makeHitofude(text, opts = {}) {
       gBuf2[i] = gVal;
       doorLp1 = (1.0 - aClose) * gVal + aClose * doorLp1;
       doorLp2 = (1.0 - aOpen) * doorLp1 + aOpen * doorLp2;
-      const neck = Math.min(doorLp2 * upGain, doorLp1 * loGain - bern * uFlow);
-      const door = (vo > 0.01 && neck > 0.0) ? ((1.0 - hiMix + hiMix * vo) * (neck / (neck + knee))) : 0.0;
+      const bite = BITE_S ? BITE_S[i] : 0.0;
+      const neck = Math.min(doorLp2 * upGain, doorLp1 * loGain - (bern + 0.13 * bite) * uFlow);
+      const door = (vo > 0.01 && neck > 0.0) ? ((1.0 - hiMix + hiMix * vo) * (neck / (neck + knee * (1.0 - 0.23 * bite)))) : 0.0;
       doorPrev = door;
       if (door > 0.0) {
         const pLoad = Math.tanh((0.70 * y1_1 + 0.30 * ycPrev) * 3.0);
-        const aFlHi = door > uFlow ? 0.35 : 0.08;
+        const aFlHi = door > uFlow ? (0.35 - 0.07 * bite) : (0.08 - 0.015 * bite);
         const aFl = 0.88 + (aFlHi - 0.88) * hiMix;
         uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
       } else {
