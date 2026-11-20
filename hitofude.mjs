@@ -1216,6 +1216,8 @@ export function makeHitofude(text, opts = {}) {
     b2_breaks = 0.0,  // B2専用: 呼気不足時のパルス化・息漏れ（0=従来どおり）
     b2_clean = 0.0,   // B2専用: 周期波形の一貫性を優先して息漏れ・流量の乱れを抑える
     b2_cycle = 0.0,   // B2専用: ジッターを変えず、周期ごとの振幅だけを局所的に整える
+    b3_combG = null,   // B3 opt-in: 有声コム帰還利得 (Hodoki soroe1=0.99)
+    b3_rawAirMul = 1.0, // B3 opt-in: 扉を通る生ノイズ倍率 (soroe2=0.6)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
@@ -1600,7 +1602,8 @@ export function makeHitofude(text, opts = {}) {
     const ret = 0.45 * shin;
     const qSoft = 1.45 - 0.30 * hiMix;
     // B2: 元のノイズ線からの非周期な空気流成分を減らす。
-    const rawAir = (0.02 + 0.12 * hiMix) * (1.0 - 0.84 * cleanAmt);
+    // B3: Hodoki zarazara/soroe2 の rawAirMul。既定1.0で全旧音声を維持。
+    const rawAir = (0.02 + 0.12 * hiMix) * (1.0 - 0.84 * cleanAmt) * b3_rawAirMul;
     const radK = 0.42 + 0.54 * hiMix;
     const bern = 0.55 * hiMix;
     const loGain = 1.805 - 0.155 * hiMix;
@@ -1617,7 +1620,10 @@ export function makeHitofude(text, opts = {}) {
       const slack = breaksAmt * Math.max(0, Math.min(1, (-pressure - 0.12) / 0.6));
       const g = bodyPressure ? Math.min(0.975, Math.max(0, GS[i] * (1.0 + 0.11 * bodyAmt * pressure) * (1.0 - 0.36 * slack))) : GS[i];
       const vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
-      const gT = Math.max(g, seedFloor * (1.0 - SIGH_S[i]));
+      const gT0 = Math.max(g, seedFloor * (1.0 - SIGH_S[i]));
+      // Hodoki lab/soroe1 と同じ: 有声中にのみ combG を固定し、新規注入ノイズを抑える。
+      const gT = b3_combG !== null && Number.isFinite(b3_combG)
+        ? (g > 1e-4 ? Math.min(Math.max(0.0, b3_combG), 0.9995) * vo : gT0) : gT0;
       const cIn = (gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0) * (1.0 - 0.33 * cleanAmt);
       const aOpen = Math.exp(-(8.20 + 2.5 * bodyAmt * pressure) / p);
       const aClose = Math.exp(-(closeMul + 4.0 * bodyAmt * pressure) / p);
