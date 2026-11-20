@@ -287,3 +287,22 @@ node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --out b2_tuned.w
 node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --profile legacy --out b2_legacy.wav
 node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --clean 0 --out b2_no_clean.wav
 ```
+
+### B2 周期振幅実験（実録への忠実度優先）
+
+Hodoki計測（ユーザー報告）では B2改2 は F0=347Hz, jitter=1.7%, shimmer=11.0%, HNR=11.2dB, 周期類似度=0.96。
+実録（生後2か月）はそれぞれ 349Hz, 2.2%, 5.7%, 16.2dB, 0.99。
+
+- 新デフォルト `--profile cycle`: 発声器内の実周期 `PER` に基づき、各周期のRMSを前後2周期へ近づけるゲイン整流を導入。**周期長は変更しない**。
+- 整流ゲインは周期境界で連続となるよう補間する。発声の立ち上がり・無声部は無理に増幅しない。
+- `--profile tuned` は測定済みB2改2のコード・数値設定を保持、`--profile legacy` も引き続き再現可能。
+- `--cycle 0..1` が整流量。B1とVシリーズでは既定ゼロ。
+
+```bash
+node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --profile cycle --out b2_cycle.wav
+node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --profile tuned --out b2_tuned.wav
+node b2_yomu.mjs --seed 42 --text "アー、ウー、ウアー" --profile cycle --cycle 0 --out b2_cycle_off.wav
+```
+
+注意：**シマー・HNR改善は未計測**。また周期整流だけでHNRが一致する保証はない。
+発声源の構造を取り替えること、録音を計測のみに使うこと、サンプルを合成へ使うことのいずれもBシリーズでは選択可能。
