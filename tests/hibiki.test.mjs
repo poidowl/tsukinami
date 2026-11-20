@@ -189,3 +189,12 @@ test("B3 soroe parameters modify only B3 and retain baby bend", async () => {
   assert.equal(hashish(render(PRESETS.hibiki_ibuki)),
     hashish(render({...PRESETS.hibiki_ibuki,b3_combG:null,b3_rawAirMul:1})));
 });
+
+test("B3 default is preferred soroe1, experimental jitter remains opt-in",async()=>{
+ const {renderB3,B3_PRESET,B3_JITTER_EXPERIMENT}=await import("../b3_akambo.mjs");
+ const opts={seed:42,text:"アー、ウー、ウアー"};
+ assert.equal(hashish(renderB3(opts).samples),hashish(renderB3({...opts,profile:"soroe1"}).samples));
+ assert.notEqual(hashish(renderB3({...opts,profile:"candidate"}).samples),hashish(renderB3(opts).samples));
+ assert.equal(B3_PRESET.jitter,0.018);
+ assert.equal(B3_JITTER_EXPERIMENT.jitter,0.027);
+});
