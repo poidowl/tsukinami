@@ -289,3 +289,21 @@ test("lab sweep removes duplicate waveforms and exposes correlated period timing
  assert.ok(x.every(Number.isFinite));
  assert.notEqual(hashish(x),hashish(b));
 });
+
+test("additive noise probe is deterministic and never mutates underlying source",async()=>{
+ const {addNoise}=await import("../tools/b3_noise_probe.mjs");
+ const source=new Float32Array(4410);
+ for(let i=0;i<source.length;i++)source[i]=.15*Math.sin(2*Math.PI*350*i/44100);
+ const before=source.slice();
+ const clean=addNoise(source);
+ assert.deepEqual(clean,before);
+ const a=addNoise(source,{snrDb:20,seed:42,kind:"white"});
+ const b=addNoise(source,{snrDb:20,seed:42,kind:"white"});
+ const c=addNoise(source,{snrDb:20,seed:42,kind:"low"});
+ assert.deepEqual(a,b);
+ assert.notDeepEqual(a,clean);
+ assert.notDeepEqual(a,c);
+ assert.deepEqual(source,before);
+ assert.throws(()=>addNoise(source,{snrDb:-1}),RangeError);
+ assert.throws(()=>addNoise(source,{snrDb:20,kind:"recorded"}),RangeError);
+});
