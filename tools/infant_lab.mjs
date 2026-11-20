@@ -42,9 +42,23 @@ function loadReference(entry,root){
   wav=readWav(res.stdout);
   return {x:wav.x.subarray(Math.round(start*SR),end==null?wav.x.length:Math.round(end*SR)),sourceHash};
 }
+function uniqueCandidates(items,budget){
+  const seen=new Set(),output=[];
+  for(const p of items){
+    // Only waveform-affecting knobs are compared; duplicate combinations
+    // with different labels still consume exactly one synthesis budget slot.
+    const key=JSON.stringify([p.hz,p.combG,p.rawAirMul,p.clean,p.jitter,
+      p.jitterCorr??null,p.cutoffHz,p.tiltMix,p.airLevel]);
+    if(seen.has(key))continue;
+    seen.add(key);
+    output.push({...p,id:"v"+String(output.length).padStart(3,"0")});
+    if(output.length>=budget)break;
+  }
+  return output;
+}
 export function chooseCandidates(budget=24, referenceF0=350, sweep="grid"){
   if(!Number.isInteger(budget)||budget<1||budget>512)throw RangeError("budget must be 1..512");
-  if(!["grid","jitter"].includes(sweep))throw RangeError("sweep must be grid or jitter");
+  if(!["grid","jitter","correlated"].includes(sweep))throw RangeError("sweep must be grid, jitter or correlated");
   // Deterministic anchors, then round-robin stratified sweeps across pitch bands.
   const targetHz = Math.max(200,Math.min(700,referenceF0*0.95));
   const presets=[
@@ -53,6 +67,26 @@ export function chooseCandidates(budget=24, referenceF0=350, sweep="grid"){
    {hz:targetHz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:0,airLevel:0},
    {hz:targetHz,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,jitter:.018,cutoffHz:2300,tiltMix:.72,airLevel:.0028},
   ];
+  if(sweep==="correlated"){
+    // Compare the SAME underlying soroe1 source with independently controlled
+    // jitter amplitude and correlation, including the unmodified legacy anchor.
+    const levels=[.018,.03,.05,.08,.12];
+    const correlations=[0,.5,.85,.95];
+    for(const jitter of levels)
+      for(const corr of correlations)
+        for(const tiltMix of [0,.72]){
+          presets.push({hz:351,combG:.99,rawAirMul:1,clean:B3_BASE.b2_clean,
+            jitter,jitterCorr:corr,cutoffHz:2300,tiltMix,airLevel:tiltMix?.0028:0});
+        }
+    // Alternate correlation levels before spending more budget on large jitter.
+    const core=presets.splice(4);
+    for(const idx of Array.from({length:correlations.length},(_,i)=>i))
+      for(let k=0;k<core.length/correlations.length;k++){
+        const j=k*correlations.length+idx;
+        if(core[j])presets.push(core[j]);
+      }
+    return uniqueCandidates(presets,budget);
+  }
   if(sweep==="jitter"){
     // Cross jitter with a fixed, small set of source/timbre knobs. Alternate jitter
     // levels early, rather than exhausting one jitter value before trying the next.
@@ -70,7 +104,7 @@ export function chooseCandidates(budget=24, referenceF0=350, sweep="grid"){
     for(let i=0;i<banks[0].length;i++)
       for(let j=0;j<banks.length;j++)
         presets.push(banks[j][(i+j*3)%banks[j].length]);
-    return presets.slice(0,budget).map((p,i)=>({...p,id:"v"+String(i).padStart(3,"0")}));
+    return uniqueCandidates(presets,budget);
   }
   const bands=[targetHz*0.88,targetHz,targetHz*1.10];
   const buckets=bands.map(hz=>{
@@ -88,11 +122,12 @@ export function chooseCandidates(budget=24, referenceF0=350, sweep="grid"){
   for(let i=0;i<buckets[0].length;i++)
     for(let k=0;k<buckets.length;k++)
       presets.push(buckets[k][(i+k*stride)%buckets[k].length]);
-  return presets.slice(0,budget).map((p,i)=>({...p,id:"v"+String(i).padStart(3,"0")}));
+  return uniqueCandidates(presets,budget);
 }
 export function renderLabCandidate(text,seed,opts){
   const base=makeHitofude(text,{...B3_BASE,seed,hz:opts.hz,jitter:opts.jitter,
-    b3_combG:opts.combG,b3_rawAirMul:opts.rawAirMul,b2_clean:opts.clean});
+    b3_combG:opts.combG,b3_rawAirMul:opts.rawAirMul,b2_clean:opts.clean,
+    b3_jitter_corr:opts.jitterCorr??null});
   if(opts.tiltMix===0 && opts.airLevel===0)return base.samples;
   return b3KaiProcess(base.samples,{...B3_KAI_SETTINGS,seed,tiltMix:opts.tiltMix,
     cutoffHz:opts.cutoffHz,airLevel:opts.airLevel});
@@ -120,7 +155,7 @@ export function evaluate(manifest,referenceId,{out="out/infant_lab",budget=24,se
   rows.sort((a,b)=>(a.score??Infinity)-(b.score??Infinity));
   const report={schema:1,reference:{id:reference.id,file:reference.file,
       sha256:src.sourceHash,start_s:reference.start_s??0,end_s:reference.end_s??null,metrics:cut(target)},
-    settings:{seed,text,budget,sweep,scoring:"weighted squared distance; screen only, not perceptual proof",weights:WEIGHTS},
+    settings:{seed,text,budget,sweep,candidates:rows.length,scoring:"weighted squared distance; screen only, not perceptual proof",weights:WEIGHTS},
     ranked:rows};
   fs.writeFileSync(path.join(out,"results.json"),JSON.stringify(report,null,2)+"\n");
   let txt="# B-series reference-fit report\n\n";
