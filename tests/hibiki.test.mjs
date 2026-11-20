@@ -84,3 +84,22 @@ test("old voice with gesture 0 is unchanged", () => {
   const p = PRESETS.hibiki_natsuku;
   assert.equal(hashish(render(p)), hashish(render({ ...p, gesture: 0 })));
 });
+
+test("B1 babble repeats deterministically and differs by seed", async () => {
+  const { b1Babble, renderB1 } = await import("../b1_akambo.mjs");
+  assert.equal(b1Babble(103, 8), b1Babble(103, 8));
+  assert.notEqual(b1Babble(103, 8), b1Babble(104, 8));
+  const a = renderB1({ seed: 103, phrases: 3 });
+  const b = renderB1({ seed: 103, phrases: 3 });
+  assert.equal(hashish(a.samples), hashish(b.samples));
+  assert.ok(a.samples.every(Number.isFinite));
+  assert.ok(a.samples.some(x => Math.abs(x) > 0.005));
+});
+test("B1 baby articulation is isolated from legacy V audio", async () => {
+  const { renderB1 } = await import("../b1_akambo.mjs");
+  const withBaby = renderB1({ text: "あー、うー、まま", baby: 0.78 });
+  const noBaby = renderB1({ text: "あー、うー、まま", baby: 0 });
+  assert.notEqual(hashish(withBaby.samples), hashish(noBaby.samples));
+  const old = PRESETS.hibiki_ibuki;
+  assert.equal(hashish(render(old)), hashish(render({ ...old, baby: 0 })));
+});
