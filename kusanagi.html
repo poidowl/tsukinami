@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="twitter:card" content="player">
 <meta name="twitter:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
-<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから引き算と声道再帰だけで透明女声から低音『おっさん』・歌まで彫る純JSシンセ（0原石→④完成をその場で聴き比べ）">
+<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズと非対称ベルヌーイ2唇扉×5極声道の再帰だけで女声・大人アルト・低音おっさん・歌まで彫る純JSシンセ（0原石→④完成をその場で聴き比べ）">
 <meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
-<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=7">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=8">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="480">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://poidowl.github.io/tsukinami/kusanagi.html">
 <meta property="og:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
-<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズから引き算と声道再帰だけで日本語の声と吐息を削り出す純JSシンセ。">
+<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズと非対称ベルヌーイ2唇扉×声道再帰だけで日本語の声と吐息を彫る純JSシンセ。">
 <meta property="og:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
 <meta property="og:image:width" content="1024">
 <meta property="og:image:height" content="1024">
@@ -133,12 +133,12 @@
   <header class="hero">
     <div>
       <h1>草薙 kusanagi</h1>
-      <p>Pythonゼロ・録音 0 Byte・正弦波オシレータ不使用。たった1本のホワイトノイズから引き算と声道再帰だけで日本語を彫る純JSシンセ。</p>
+      <p>Pythonゼロ・録音 0 Byte・正弦波オシレータ不使用。たった1本のホワイトノイズから非対称ベルヌーイ粘膜扉と声道再帰だけで日本語を彫る純JSシンセ。</p>
     </div>
   </header>
 
   <div class="frame-shell">
-    <iframe src="./kusanagi_player.html?v=7" title="草薙 kusanagi インタラクティブシンセ"
+    <iframe src="./kusanagi_player.html?v=8" title="草薙 kusanagi インタラクティブシンセ"
       sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
   </div>
 
@@ -146,10 +146,10 @@
     <h2>1本のノイズ線から声になる仕組み</h2>
     <ol class="steps-list">
       <li><strong>0 原石：</strong>軽量PRNG（<code>Mulberry32</code>）で <code>[-1, 1]</code> のホワイトノイズを1本だけ用意する（漂い・ジッタ・ビブラート・呼気圧もすべてこの1本から作る）。</li>
-      <li><strong>① 倍音の谷 / 声帯波：</strong>2段コム（<code>combPeriod</code>）で倍音の隙間の谷を引く。低音（<code>おっさん</code>）では声道からの帰還圧を受けながら揺れる。</li>
-      <li><strong>② 角落とし / 粘膜扉：</strong>DC濁りと高域の角を引く。低音では上下2唇の粘膜ボトルネック扉が開閉し、肺の呼気流を刻む。</li>
-      <li><strong>③ 声道の山：</strong>母音は F1–F4（低音は F1–F5 粘膜Q）因果直列カスケード＋唇放射で1本の管として響かせ、子音帯だけ <code>yamaBp</code> で添える。</li>
-      <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線のくびれを緩めて元の吐息へ戻す。</li>
+      <li><strong>① 声帯組織波：</strong>声道からの帰還圧を受けながら2段コムで揺れる声帯波を立てる（冷凍ロボのみ片道コム <code>shin=0</code>）。</li>
+      <li><strong>② 非対称2唇扉：</strong>上唇は丸くめくれて開き、下唇はベルヌーイ吸い寄せでスパッと閉じて肺の呼気流を刻む（閉じた瞬間に全倍音が揃う）。</li>
+      <li><strong>③ 5極粘膜声道：</strong>扉と1サンプル再帰結合した F1–F5 粘膜声道＋真の唇微分放射（<code>+6dB/oct</code>）で1本の管として響かせ、子音帯だけ <code>yamaBp</code> で添える。</li>
+      <li><strong>④ 完成：</strong>1スカラー整音と時間包絡をかけ、句末は同じ1本線の扉を緩めて元の吐息へ戻す。</li>
     </ol>
     <div class="share-bar">
       <button id="copyUrlBtn" class="btn primary" type="button">X投稿用URLをコピー</button>
@@ -161,7 +161,8 @@
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
-      <li><strong>v7 (<a href="https://github.com/poidowl/tsukinami/commit/755c7a8" target="_blank" rel="noopener noreferrer"><code>755c7a8</code></a>)：</strong>低音男声（<code>ossan</code> / <code>shin &gt; 0</code>）を片道コムから <strong>声門2唇粘膜扉×5極声道（F1–F5）の1サンプル再帰結合系</strong>へ刷新。声道圧の帰還の中で扉が呼気流を刻み、低音の位相ボコーダー感を排した太い「轟」を実現（プレイヤーの <code>damp</code>/<code>shin</code> 連動修正・<code>hz</code> 下限 85Hz 化）。</li>
+      <li><strong>v8 (<a href="https://github.com/poidowl/tsukinami/commit/7f09d18" target="_blank" rel="noopener noreferrer"><code>7f09d18</code></a>)：</strong>2唇粘膜扉×5極声道の再帰結合を <strong>非対称ベルヌーイ閉鎖（上唇は丸く開き・下唇は気流吸い寄せで急閉鎖）＋真の唇微分放射</strong>へ進化させ、女声・歌・新設 <code>アルト</code> まで全人間プリセットへ統合（旧並列時代の <code>fricT</code>/<code>vl_f1</code> 子音F1ワープも撤去）。</li>
+      <li><strong>v7 (<a href="https://github.com/poidowl/tsukinami/commit/755c7a8" target="_blank" rel="noopener noreferrer"><code>755c7a8</code></a>)：</strong>低音男声（<code>ossan</code>）を片道コムから <strong>声門2唇粘膜扉×5極声道（F1–F5）の1サンプル再帰結合系</strong>へ刷新し、低音の位相ボコーダー感を排した太い「轟」を実現。</li>
       <li><strong><a href="https://github.com/poidowl/tsukinami/commit/b114684" target="_blank" rel="noopener noreferrer"><code>b114684</code></a>：</strong>ピッチ漂い・周期ジッタ・歌唱ビブラート用の別シード乱数を全廃し、Step 0 のホワイトノイズ <code>x</code> 1本だけから削り出す真の単一乱数化を達成。</li>
       <li><strong>v6 (<a href="https://github.com/poidowl/tsukinami/commit/1498df1" target="_blank" rel="noopener noreferrer"><code>1498df1</code></a>)：</strong>有声破裂（<code>g/d/b</code>）への高域ノイズ帯域 <code>rawBands</code> 付与を廃止し、ダ行・ガ行・バ行で乗っていた高域クリックノイズを解消。</li>
       <li><strong>v5 (<a href="https://github.com/poidowl/tsukinami/commit/3026d36" target="_blank" rel="noopener noreferrer"><code>3026d36</code></a>)：</strong>歌モード（<code>uta_hz</code>）時に話し声用の母音無声化と <code>ou</code> 長音同化を無効化し、歌唱時の音抜け（ち・つ・し・す・ぴ・ぷ等）を解消。</li>
