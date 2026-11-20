@@ -1,56 +1,54 @@
 #!/usr/bin/env node
 /**
- * tools/test_sarasara.mjs — サラサラ化（11-20 から既定 soroe2 = {combG: 0.985, rawAirMul: 0.6}）の回帰テスト
+ * tools/test_sarasara.mjs — v10 既定（本命：子音・ハ行明瞭度 × 粘膜クッション）＆ combG / rawAirMul オプション回帰テスト
  *
  *   node tools/test_sarasara.mjs
  *
- * (a) 旧い既定 {combG: null, rawAirMul: 1.0} を明示すると、出力 WAV が草薙 7f09d18（この変更の前）とバイト一致すること。
- *     全プリセット × 2文 × seed 2 つ ＋ 歌モード持続母音。GOLDEN は 7f09d18 の hitofude.mjs で encodeWav した sha256 の先頭 24 桁。
- * (b) 新しい既定（オプションなし）が、soroe2 を明示した音とバイト一致すること（同じ範囲）。
- * (c) 新しい既定は旧い音から変わっとる（robot は shin=0 でコムを使わんので変わらんのが正しい）。有限・長さ同じ・ピーク 1 以下。
- * 外部ライブラリなし（node:crypto のみ）。
+ * (a) 既定（オプションなし）が GOLDEN_V10 と全プリセット × 2文 × seed 2 つ ＋ 歌モードでバイト一致すること。
+ * (b) {combG: null, rawAirMul: 1.0} の明示が既定（オプションなし）とバイト一致すること。
+ * (c) サラサラ化オプション {combG: 0.985, rawAirMul: 0.6}（soroe2）を渡したとき、shin > 0 では有効に変化し（robot は不変）、有限・ピーク 1 以下を保つこと。
  */
 import crypto from "node:crypto";
 import { makeHitofude, PRESETS, encodeWav } from "../hitofude.mjs";
 
-const GOLDEN_7f09d18 = {
-  "hitofude|t0|2024": "ff427d94224499c00e485e64",
-  "hitofude|t0|7": "47719b7d1ed152fa1217c025",
-  "hitofude|t1|2024": "fb07960e88579bca6767ce33",
-  "hitofude|t1|7": "5885050218f71fec84c7a3e0",
-  "hitofude|uta": "c4a01f90eae2dbb8d15d65ab",
-  "toiki|t0|2024": "1457af568c4c06e3e0d500bb",
-  "toiki|t0|7": "97c4141366f222d86dc51eea",
-  "toiki|t1|2024": "a4fd53d6de30b03b9e9f18e0",
-  "toiki|t1|7": "643e9d1a018359505066c311",
-  "toiki|uta": "e9c150f86eb692d3bc687027",
-  "alto|t0|2024": "53fb5f69dcd18f5682b65c81",
-  "alto|t0|7": "87e5fbdecf6932100b239394",
-  "alto|t1|2024": "c1929ba3edf966bd68e8ad04",
-  "alto|t1|7": "f4ddaec861a0c4112b25b1f9",
-  "alto|uta": "2dd648103ad69c5c71e49207",
-  "sasayaki|t0|2024": "5e96b652973df503e3ff5f8d",
-  "sasayaki|t0|7": "fefe7b9d6c0c7339fd0e9000",
-  "sasayaki|t1|2024": "7f9a69c38e3d72f6ecb60d33",
-  "sasayaki|t1|7": "ab0f4d5f9fa84e15513779f4",
-  "sasayaki|uta": "8eb8e93af3f035a26ffeeea9",
-  "chibi|t0|2024": "1c0676a031447dbd10589cb4",
-  "chibi|t0|7": "b3af131dfdbd0e200069a91b",
-  "chibi|t1|2024": "2ea8004a20417f5a232bc481",
-  "chibi|t1|7": "92316514d96f86d967994108",
-  "chibi|uta": "6b057d9839f5201991864a07",
-  "ossan|t0|2024": "25cfd414f0b61eb4befcc27c",
-  "ossan|t0|7": "eb18b4f5998e37bfe3055229",
-  "ossan|t1|2024": "25d9195ea0303c12a634abdd",
-  "ossan|t1|7": "344010a89a38a0bf97cdbc35",
-  "ossan|uta": "87f69757f8a3296cacc38fcc",
-  "robot|t0|2024": "52799d6d680d4d6d9422c3e2",
-  "robot|t0|7": "86ad8e53809c6f1cef9a0205",
+const GOLDEN_V10 = {
+  "hitofude|t0|2024": "bb99a11d963aa2e2154ae492",
+  "hitofude|t0|7": "d178e57ca5eaa8b5d4012e2e",
+  "hitofude|t1|2024": "194d850e7ac782e5f3a41212",
+  "hitofude|t1|7": "eb38c6a2e2b1f0b3aeaaba45",
+  "hitofude|uta": "e05203c93d5a865332bf8873",
+  "toiki|t0|2024": "d8eb9ca7433bfde9b57ec139",
+  "toiki|t0|7": "1311b5fb3143999621b1f8de",
+  "toiki|t1|2024": "dc62ce39d68b90e962ea9bb6",
+  "toiki|t1|7": "65b8ab34783a18147badd614",
+  "toiki|uta": "9617c1f2656d8352db3f2b74",
+  "alto|t0|2024": "d064013636c8f8665598d9b8",
+  "alto|t0|7": "5f85853b61c398099ed77cda",
+  "alto|t1|2024": "2d9fd4d7a9be7008bd8063e5",
+  "alto|t1|7": "1dc7847800a921a01e637e25",
+  "alto|uta": "8f9f2f186e8293b1d95f2806",
+  "sasayaki|t0|2024": "a5ca11f87a97d47edfd2a20e",
+  "sasayaki|t0|7": "d4e18852715d3d766d291abc",
+  "sasayaki|t1|2024": "0da200b4aa1bfd6080cd1a60",
+  "sasayaki|t1|7": "d24df4dfe27fb2b0bbb5e543",
+  "sasayaki|uta": "8aa40391ecfbafd7114bcec7",
+  "chibi|t0|2024": "178e853ec8b37ded79dd89e7",
+  "chibi|t0|7": "37724537ef22c2e8b64d819b",
+  "chibi|t1|2024": "9ad32e3df312ef121dcf5726",
+  "chibi|t1|7": "31f2d3f94a4ea23a1545863c",
+  "chibi|uta": "e215812272e0c9ff0ee3320d",
+  "ossan|t0|2024": "d8fea393e3af9f1d4ca02fd4",
+  "ossan|t0|7": "4f2c99b0327348a78f7c6e76",
+  "ossan|t1|2024": "1d81bf6625bbf6b6478fa8c8",
+  "ossan|t1|7": "c4d55928405e34ca66f8d0cd",
+  "ossan|uta": "71513583550c335e69bc85ac",
+  "robot|t0|2024": "0ddc651fc278a1e537211ad5",
+  "robot|t0|7": "800292b2336ed3b908aeab40",
   "robot|t1|2024": "1e5c831b45897aca2590be0e",
   "robot|t1|7": "9e6b9158ec48b48927f7e426",
   "robot|uta": "d37e9f58af7bcf4483551aae"
 };
-const OLD = { combG: null, rawAirMul: 1.0 }, SOROE2 = { combG: 0.985, rawAirMul: 0.6 };
+const DEF_EXPLICIT = { combG: null, rawAirMul: 1.0 }, SOROE2 = { combG: 0.985, rawAirMul: 0.6 };
 const TEXTS = ["わたし、にほんご、ちょっとしゃべれます", "ヤマノウエニ、アオイソラガミエル?"];
 const h = (s) => crypto.createHash("sha256").update(encodeWav(s)).digest("hex").slice(0, 24);
 const n = { a: [0, 0], b: [0, 0], c: [0, 0] };
@@ -61,18 +59,20 @@ for (const [pn, p] of Object.entries(PRESETS)) {
   for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7]) cases.push([`${pn}|t${k}|${seed}`, t, { ...p, seed }]);
   cases.push([`${pn}|uta`, "ア", { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 }]);
   for (const [key, t, o] of cases) {
-    const old = makeHitofude(t, { ...o, ...OLD }).samples, def = makeHitofude(t, o).samples;
-    check("a", h(old) === GOLDEN_7f09d18[key], `${key}: 旧い既定の明示が 7f09d18 とバイト一致せん`);
-    check("b", h(def) === h(makeHitofude(t, { ...o, ...SOROE2 }).samples), `${key}: 新しい既定が soroe2 明示とバイト一致せん`);
+    const def = makeHitofude(t, o).samples;
+    const exp = makeHitofude(t, { ...o, ...DEF_EXPLICIT }).samples;
+    const sor = makeHitofude(t, { ...o, ...SOROE2 }).samples;
+    check("a", h(def) === GOLDEN_V10[key], `${key}: 既定が GOLDEN_V10 とバイト一致せん`);
+    check("b", h(def) === h(exp), `${key}: {combG:null, rawAirMul:1.0} 明示が既定とバイト一致せん`);
     let fin = true, pk = 0, diff = 0;
-    for (let i = 0; i < def.length; i++) { if (!Number.isFinite(def[i])) fin = false; pk = Math.max(pk, Math.abs(def[i])); if (i < old.length) diff = Math.max(diff, Math.abs(def[i] - old[i])); }
+    for (let i = 0; i < sor.length; i++) { if (!Number.isFinite(sor[i])) fin = false; pk = Math.max(pk, Math.abs(sor[i])); if (i < def.length) diff = Math.max(diff, Math.abs(sor[i] - def[i])); }
     const changed = p.shin > 0.0 ? diff > 1e-4 : diff === 0;
-    check("c", fin && def.length === old.length && pk <= 1.0 && changed, `${key}: 有限 ${fin} 長さ ${def.length}/${old.length} ピーク ${pk.toFixed(3)} 旧い音との差 ${diff.toExponential(2)}`);
+    check("c", fin && sor.length === def.length && pk <= 1.0 && changed, `${key}: 有限 ${fin} 長さ ${sor.length}/${def.length} ピーク ${pk.toFixed(3)} 既定との差 ${diff.toExponential(2)}`);
   }
 }
-console.log(`(a) 旧い既定 {combG:null, rawAirMul:1.0} = 7f09d18 バイト一致: ${n.a[0]}/${n.a[1]}`);
-console.log(`(b) 新しい既定 = soroe2 明示 バイト一致: ${n.b[0]}/${n.b[1]}`);
-console.log(`(c) 新しい既定は旧い音から変わる（robot は不変）・壊れん: ${n.c[0]}/${n.c[1]}`);
+console.log(`(a) v10 既定 = GOLDEN_V10 バイト一致: ${n.a[0]}/${n.a[1]}`);
+console.log(`(b) v10 既定 = {combG:null, rawAirMul:1.0} 明示 バイト一致: ${n.b[0]}/${n.b[1]}`);
+console.log(`(c) soroe2 オプション {combG:0.985, rawAirMul:0.6} 動作・有限・robot不変: ${n.c[0]}/${n.c[1]}`);
 const ng = n.a[1] - n.a[0] + n.b[1] - n.b[0] + n.c[1] - n.c[0];
 console.log(ng ? `NG ${ng}` : "ALL OK");
 process.exit(ng ? 1 : 0);

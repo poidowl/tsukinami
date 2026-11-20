@@ -16,33 +16,33 @@ export const KNOB_KEYS = ["seed", "hz", "fscale", "rate", "g_vo", "tilt_w", "sig
 export const PRESETS = {
   hitofude: {
     label: "澄み",
-    description: "澄み（標準：非対称ベルヌーイ2唇扉×5極声道で彫る透明女声 350Hz）",
-    seed: 2024, hz: 350.0, fscale: 1.17, rate: 1.26,
-    g_vo: 0.89, damp: 0.08, shin: 1.0, tilt_w: 5, sigh: 0.0, jitter: 0.0026, wander_st: 0.18,
+    description: "澄み（標準：フランジャー臭を断った折れ角ゼロ粘膜扉×実寸声道の明瞭キュート女声 326Hz）",
+    seed: 2024, hz: 326.0, fscale: 1.12, rate: 1.20,
+    g_vo: 0.895, damp: 0.30, shin: 1.0, tilt_w: 5, sigh: 0.0, jitter: 0.0022, wander_st: 0.16,
   },
   toiki: {
     label: "吐息",
-    description: "吐息（非対称ベルヌーイ扉を句末で緩め、元の1本線の吐息へほどける女声 312Hz）",
-    seed: 2024, hz: 312.0, fscale: 1.15, rate: 1.30,
-    g_vo: 0.86, damp: 0.12, shin: 1.0, tilt_w: 6, sigh: 0.78, jitter: 0.0030, wander_st: 0.18,
+    description: "吐息（本命v9：母音・子音・ハ行の明瞭度と句末吐息を両立した自然女声 292Hz）",
+    seed: 2024, hz: 292.0, fscale: 1.07, rate: 1.22,
+    g_vo: 0.885, damp: 0.32, shin: 1.0, tilt_w: 5, sigh: 0.42, jitter: 0.0024, wander_st: 0.16,
   },
   alto: {
     label: "アルト",
     description: "大人アルト（落ち着いた中低域 220Hz・句末吐息つきのハスキー女声）",
-    seed: 2024, hz: 220.0, fscale: 1.08, rate: 1.30,
-    g_vo: 0.87, damp: 0.14, shin: 1.0, tilt_w: 5, sigh: 0.65, jitter: 0.0036, wander_st: 0.18,
+    seed: 2024, hz: 220.0, fscale: 1.02, rate: 1.26,
+    g_vo: 0.875, damp: 0.30, shin: 1.0, tilt_w: 5, sigh: 0.55, jitter: 0.0028, wander_st: 0.16,
   },
   sasayaki: {
     label: "囁き",
-    description: "半有声囁き（浅い扉くびれG=0.64で倍音の谷に元のノイズの風を残す耳元ささやき）",
-    seed: 2024, hz: 305.0, fscale: 1.15, rate: 1.30,
-    g_vo: 0.64, damp: 0.16, shin: 1.0, tilt_w: 6, sigh: 0.85, jitter: 0.0036, wander_st: 0.16,
+    description: "半有声囁き（浅い扉くびれG=0.68で倍音の谷に元のノイズの風を残す耳元ささやき）",
+    seed: 2024, hz: 295.0, fscale: 1.08, rate: 1.26,
+    g_vo: 0.68, damp: 0.34, shin: 1.0, tilt_w: 6, sigh: 0.78, jitter: 0.0030, wander_st: 0.16,
   },
   chibi: {
     label: "ちびっ子",
-    description: "ちびっ子（短い声道 fscale=1.32・高ピッチ 400Hz・明るい粗削り tilt_w=4）",
-    seed: 2024, hz: 400.0, fscale: 1.32, rate: 1.20,
-    g_vo: 0.89, damp: 0.08, shin: 1.0, tilt_w: 4, sigh: 0.0, jitter: 0.0026, wander_st: 0.20,
+    description: "ちびっ子（短め声道 fscale=1.20・高ピッチ 375Hz・明るい粗削り tilt_w=4）",
+    seed: 2024, hz: 375.0, fscale: 1.20, rate: 1.18,
+    g_vo: 0.895, damp: 0.28, shin: 1.0, tilt_w: 4, sigh: 0.0, jitter: 0.0024, wander_st: 0.18,
   },
   ossan: {
     label: "おっさん",
@@ -105,7 +105,7 @@ const VOICED_OBS = new Set(["g", "d", "b", "z", "j"]);
 // 日本語母音・子音の教科書テーブルと一筆彫り用の確定値
 const KOTOBA_PRM = {
   alpha: 1.15, alpha3: 1.3, T: 30, Tvc: 30, Tvv: 40, Tpal: 40, undershoot: 80, f1on: 280, f1drop: true,
-  smooth: 30, smooth_j: [30, 30, 30], ou_long: true,
+  smooth: 30, smooth_j: [30, 30, 30], ou_long: true, ei_long: true,
   vdl: -4.0, vbg: 4.0, rdl: -4.0,
   VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [380, 1300, 2650], e: [520, 2350, 3000], o: [650, 1050, 2850] },
   LE: { lab: [0.75, 280], alv: [0.40, 1250], pal: [0.30, 1850], velF: [0.95, 300], velB: [1.05, 350] },
@@ -121,7 +121,7 @@ const KOTOBA_PRM = {
   VL: { a: 0.0, e: -0.5, i: -0.8, o: -0.3, u: -0.3 },
   CL: {
     k: [-12, -5], t: [-12, -5], p: [-12, -5], ch: [-12, -4], ts: [-12, -4], g: [-4, -2], d: [-4, -2], b: [-4, -2],
-    s: [-3, -3], sh: [-3, -3], z: [-3, -2], j: [-3, -2], h: [-5, -4], f: [-5, -4], m: [-1.5, -1.5], n: [-1.5, -1.5],
+    s: [-3, -3], sh: [-3, -3], z: [-3, -2], j: [-3, -2], h: [-2.4, -1.6], f: [-2.4, -1.6], m: [-1.5, -1.5], n: [-1.5, -1.5],
     r: [-1.0, -1.0], w: [-0.5, -0.5], y: [-0.5, -0.5],
   },
   TAILT: { "stop-vl": -6.0, Q: -6.0, "fric-vl": -1.0, "h-vl": -1.0, stop: -2.0 },
@@ -499,7 +499,9 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     }
     if (c === "h" || c === "f") {
       setslice(G[0], i0, ib, 0.4); setslice(G[1], i0, ib, 0.9); setslice(G[2], i0, ib, 0.9);
-      if (v === "i" && c === "h") rawBands.push([i0, ib, 3500, 700, 1.0 + 3500 / 2500.0]);
+      if (v === "i" && c === "h") rawBands.push([i0, ib, 3400, 700, 2.0]);
+      else if (c === "f") rawBands.push([i0, ib, 1750, 900, 1.08]);
+      else rawBands.push([i0, ib, Math.round(vt(s)[1]), 700, 1.25]);
     }
     if (["k", "g", "t", "d", "p", "b", "ch", "ts"].includes(c)) {
       const ce = i0 + ((c === "ch" || c === "ts") ? Math.floor(nc / 2) : Math.max(1, nc - P.asp));
@@ -1083,15 +1085,15 @@ function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gat
 export function makeHitofude(text, opts = {}) {
   const {
     seed = 2024,
-    hz = 350.0,       // 基準ピッチ高さ (Hz)。女声 300〜360、アルト 220、子ども 400、男声 105〜155
-    fscale = 1.17,    // 声道長逆スケール（フォルマント倍率）。1.15〜1.22=女声、1.08=アルト、0.85=太い男声
-    rate = 1.26,      // 話速倍率（小さいほど速い、1.25〜1.32=自然な会話）
-    g_vo = 0.89,      // 有声くびれ深さ G (0.0〜0.97)。扉の締まり・倍音の谷深さを決める
+    hz = 326.0,       // 基準ピッチ高さ (Hz)。女声 290〜340、アルト 220、ちびっ子 375、男声 105〜155
+    fscale = 1.12,    // 声道長逆スケール（フォルマント倍率）。1.07〜1.12=女声、1.02=アルト、0.85=太い男声
+    rate = 1.20,      // 話速倍率（小さいほど速い、1.20〜1.26=自然な会話）
+    g_vo = 0.895,     // 有声くびれ深さ G (0.0〜0.97)。扉の締まり・倍音の谷深さを決める
     tilt_w = 5,       // 高域粗削り幅 w (整数 >=1)。4〜5=標準、6=柔らかい吐息、>=8=こもった暗声
     sigh = 0.0,       // 句末の息抜き量 (0.0〜1.0)。句末母音後半で扉を緩め、声を元の吐息へ戻す
-    jitter = 0.0026,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
-    wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
-    damp = 0.08,      // 声帯波帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
+    jitter = 0.0022,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
+    wander_st = 0.16, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
+    damp = 0.30,      // 声帯波帰還路の高域減衰 (0.0..0.95、高域コムのフランジャー櫛を消し素の息を残す)
     shin = 1.0,       // 声門2唇粘膜扉×5極声道の再帰結合度 (1.0=既定、0.0=冷凍ロボ用の片道コム)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
@@ -1100,8 +1102,8 @@ export function makeHitofude(text, opts = {}) {
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
-    combG = 0.985,    // サラサラ化 (11-20 既定 soroe2): 有声のあいだ粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 7f09d18 までの旧い音
-    rawAirMul = 0.6,  // サラサラ化 (11-20 既定 soroe2): 扉を通る生ノイズ rawAir の倍率。1.0 で旧い音（旧い音 = {combG: null, rawAirMul: 1.0}）
+    combG = null,     // サラサラ化オプション: 有声中の粘膜コム帰還固定値 (例: 0.985、上限 0.9995)。null で g_vo に従う既定動作
+    rawAirMul = 1.0,  // 扉を通る生ノイズ rawAir の倍率オプション (既定 1.0)
   } = opts;
 
   let accentKw = null, targetText = text, phraseCuts = null;
@@ -1116,7 +1118,7 @@ export function makeHitofude(text, opts = {}) {
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
-  if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; }
+  if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; prm.ei_long = false; }
   const r = tracksFromKana(targetText, pre, post, prm);
   const n = r.n;
   const N = Math.trunc(n * fpz * SR);
@@ -1161,7 +1163,7 @@ export function makeHitofude(text, opts = {}) {
       }
     }
   } else {
-    const acc = sigh >= 0.25
+    const acc = (sigh >= 0.25 || hz < 200.0)
       ? Object.assign({}, ACCENT_NORMAL, { rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, decl: 1.4, fin: 2.6 })
       : ACCENT_CUTE;
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
@@ -1255,11 +1257,13 @@ export function makeHitofude(text, opts = {}) {
   let x1 = null, x2 = null;
 
   if (shin > 0.0) {
-    // === Step 1–3 (統合粘膜再帰系): 非対称ベルヌーイ2唇扉 × 5極粘膜声道の1サンプル再帰ループ ===
-    // 上唇は丸くめくれて開き、下唇は気流のベルヌーイ吸い寄せでスパッと閉じて全倍音のタイミングを揃える
+    // === Step 1–3 (統合粘膜再帰系): 折れ角ゼロ粘膜クッション扉 × 5極粘膜声道の1サンプル再帰ループ ===
+    // 声帯波は damp で高域コム櫛（フランジャー源）をほどき、子音帯は減衰前の xClean でくっきり鳴らす
     const hiMix = Math.min(1.0, Math.max(0.0, (hRef - 125.0) / 85.0));
-    x = karuku(x, hRef >= 200.0 ? 115 : 220);
+    x = karuku(x, 320);
     const xClean = arakezuriT(x.slice(), tw, 2, perSample(cons_sharp, N));
+    const xSeed = hiMix > 0.4 ? arakezuri(xClean, 5, 1) : xClean;
+    const softPos = (v) => { const z = v * 12.0; return z > 20.0 ? v : (z < -20.0 ? 0.0 : Math.log1p(Math.exp(z)) / 12.0); };
     const pLungWalk = furafura(x, 0.38, 0.14 - 0.10 * hiMix, 0.045 + 0.175 * hiMix);
     const F5 = F4.map((v) => (fs < 0.92 ? Math.min(4850.0, v * 1.26) : Math.min(8800.0, v + 1100.0 * fs)));
     const F1S = perSample(F1, N), F2S = perSample(F2, N), F3S = perSample(F3, N), F4S = perSample(F4, N), F5S = perSample(F5, N);
@@ -1267,9 +1271,9 @@ export function makeHitofude(text, opts = {}) {
     const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
     const ret = 0.45 * shin;
     const qSoft = 1.45 - 0.30 * hiMix;
-    const rawAir = rawAirMul === 1.0 ? 0.02 + 0.12 * hiMix : (0.02 + 0.12 * hiMix) * rawAirMul;
+    const rawAir = rawAirMul === 1.0 ? 0.02 + 0.03 * hiMix : (0.02 + 0.03 * hiMix) * rawAirMul;
     const combGx = combG === null || combG === undefined ? null : Math.min(+combG, 0.9995);
-    const radK = 0.42 + 0.54 * hiMix;
+    const radK = 0.42 + 0.48 * hiMix;
     const bern = 0.55 * hiMix;
     const loGain = 1.805 - 0.155 * hiMix;
     const upGain = 3.10 - 0.10 * hiMix;
@@ -1288,14 +1292,17 @@ export function makeHitofude(text, opts = {}) {
       const pRet = Math.tanh((0.70 * (y1_1 - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
       p1Prev = y1_1;
       const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
-      gBuf[i] = Math.tanh((cIn * xClean[i] + gT * (gLp1 + ret * 0.24 * doorPrev * pRet)) * 0.85) / 0.85;
+      gBuf[i] = Math.tanh((cIn * xSeed[i] + gT * (gLp1 + ret * 0.24 * doorPrev * pRet)) * 0.85) / 0.85;
       const fb2 = readDelay(gBuf2, i, p); gLp2 = (1.0 - damp) * fb2 + damp * gLp2;
       const gVal = Math.tanh((cIn * gBuf[i] + gT * (gLp2 + ret * 0.16 * doorPrev * pRet)) * 0.85) / 0.85;
       gBuf2[i] = gVal;
       doorLp1 = (1.0 - aClose) * gVal + aClose * doorLp1;
       doorLp2 = (1.0 - aOpen) * doorLp1 + aOpen * doorLp2;
-      const neck = Math.min(doorLp2 * upGain, doorLp1 * loGain - bern * uFlow);
-      const door = (vo > 0.01 && neck > 0.0) ? ((1.0 - hiMix + hiMix * vo) * (neck / (neck + knee))) : 0.0;
+      const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain - bern * uFlow;
+      const neck = hiMix > 0.4
+        ? softPos(0.5 * (uUp + uLo - Math.sqrt((uUp - uLo) * (uUp - uLo) + 0.010)))
+        : Math.max(0.0, Math.min(uUp, uLo));
+      const door = vo > 0.01 ? ((1.0 - hiMix + hiMix * vo) * (neck / (neck + knee))) : 0.0;
       doorPrev = door;
       if (door > 0.0) {
         const pLoad = Math.tanh((0.70 * y1_1 + 0.30 * ycPrev) * 3.0);
@@ -1324,8 +1331,8 @@ export function makeHitofude(text, opts = {}) {
       yc[i] = o5; ycPrev = o5;
     }
     if (captureSteps) { x1 = gBuf2.slice(); x2 = uOut.slice(); }
-    const ycAc = karuku(yc, hRef >= 200.0 ? 115 : 220);
-    x = uOut;
+    const ycAc = karuku(yc, hRef >= 200.0 ? 260 : 220);
+    x = xClean;
     for (let i = 1; i < N; i++) ycRad[i] = ycAc[i] - radK * ycAc[i - 1];
   } else {
     // === Step 1–3 (冷凍ロボ用 片道系 shin=0): 2段直列コム → 粗削り → F1–F4 カスケード ===
@@ -1346,7 +1353,14 @@ export function makeHitofude(text, opts = {}) {
     yc = resonator2Pole(yc, perSample(F4, N), 220.0, 14.0);
     for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
   }
-  const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
+  let vScale;
+  if (shin > 0.0) {
+    let vInSq = 0.0, vOutSq = 0.0, vCnt = 0;
+    for (let i = 1; i < N; i++) if (GS[i] > 0.25) { vInSq += x[i] * x[i]; vOutSq += ycRad[i] * ycRad[i]; vCnt++; }
+    vScale = 0.45 * ((vCnt > 0 ? Math.sqrt(vInSq / vCnt) : rmsActive(x)) / ((vCnt > 0 ? Math.sqrt(vOutSq / vCnt) : rmsActive(ycRad)) || 1.0));
+  } else {
+    vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
+  }
   const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
   const G1S = perSample(r.G1, N);
   const FCW = perSample(smooth1(f_cons_w, 6), N);

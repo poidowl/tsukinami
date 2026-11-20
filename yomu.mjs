@@ -31,7 +31,7 @@ export function synth(text, prm, utaHz = null) {
     sigh: Number(prm.sigh),
     jitter: Number(prm.jitter),
     wander_st: Number(prm.wander_st),
-    damp: prm.damp === undefined ? 0.08 : Number(prm.damp),
+    damp: prm.damp === undefined ? 0.30 : Number(prm.damp),
     shin: prm.shin === undefined ? 1.0 : Number(prm.shin),
     uta_hz: utaHz,
   });
