@@ -177,3 +177,19 @@ node yomu.mjs --preset hibiki_yorisoi --closeness 0 --measure "おかえり、�
 ### 自動テスト
 
 `.github/workflows/hibiki-tests.yml` を追加。`hibiki` への push / PR / 手動実行時に Node.js 22 で構文・回帰テストと短いWAV生成を確認する。ワークフローの追加と実際の実行成功は別なので、Actionsでジョブ完了を確認すること。
+
+## 響 v5 — 「懐」(natsuku)：音素の連なりに声の指紋を刻む
+
+新プリセット `hibiki_natsuku` は、既存の固定母音色とは別に **前の母音／今の母音／次の母音** に反応する
+決定論的な F2/F3 移動（`--signature 0..1`）を導入。発音の中央だけを動かし、子音の判別を守る。
+パターンは固定で、声が毎回別人にならないことを優先。単一ノイズ・録音なし・追加パッケージなし。
+`signature=0` では旧音声と完全互換になる設計。
+
+```bash
+node yomu.mjs --preset hibiki_natsuku --measure "おかえり、きょうはどんなひだった"
+node yomu.mjs --preset hibiki_natsuku --signature 0 --measure "おかえり、きょうはどんなひだった"
+node tools/hibiki_listen.mjs
+node --test tests/hibiki.test.mjs
+```
+
+匿名試聴は 6声 × 3文 = 18 WAV。声の新しさと「聞き続けたい」は別なので、嗜好の改善は未検証。
