@@ -52,6 +52,8 @@ jobs:
           node b3_yomu.mjs --seed 42 --profile soroe1 --out "$RUNNER_TEMP/b3_soroe1.wav"
           node b3_yomu.mjs --seed 42 --profile candidate --out "$RUNNER_TEMP/b3_candidate.wav"
           node b3_yomu.mjs --seed 42 --profile soroe2 --out "$RUNNER_TEMP/b3_soroe2.wav"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
           ffmpeg -loglevel error -y -i samples/reference/infant_2months_stephan.ogg -ar 44100 -ac 1 "$RUNNER_TEMP/infant.wav"
           node tools/b3_measure.mjs "$RUNNER_TEMP/infant.wav" "$RUNNER_TEMP/b3_soroe1.wav" "$RUNNER_TEMP/b3_candidate.wav" "$RUNNER_TEMP/b3_soroe2.wav"
       - name: CLI smoke render
