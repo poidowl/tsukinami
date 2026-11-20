@@ -103,3 +103,17 @@ test("B1 baby articulation is isolated from legacy V audio", async () => {
   const old = PRESETS.hibiki_ibuki;
   assert.equal(hashish(render(old)), hashish(render({ ...old, baby: 0 })));
 });
+
+test("B2 couples breath and vocal fold; legacy audio stays bit-identical", async () => {
+  const { renderB2 } = await import("../b2_akambo.mjs");
+  const opts = { seed: 44, text: "あー、うー、まま、ばぶ" };
+  const wet = renderB2(opts), dry = renderB2({ ...opts, body: 0 });
+  assert.ok(wet.samples.every(Number.isFinite));
+  assert.ok(wet.samples.some(x => Math.abs(x) > 0.005));
+  assert.notEqual(hashish(wet.samples), hashish(dry.samples));
+  assert.equal(hashish(wet.samples), hashish(renderB2(opts).samples));
+  const b1 = renderB2({ ...opts, body: 0 });
+  assert.equal(hashish(dry.samples), hashish(b1.samples));
+  const v = PRESETS.hibiki_ibuki;
+  assert.equal(hashish(render(v)), hashish(render({ ...v, b2_body: 0 })));
+});
