@@ -25,7 +25,7 @@ for(const hz of [300,320,340,351]){
       Math.pow((m.shimmer-target.shimmer)/3,2)+Math.pow((m.hnr-target.hnr)/4,2)+
       Math.pow((m.corr-target.corr)/0.025,2);
     rows.push({hz,jitter,combG:combo.combG,rawAirMul:combo.rawAirMul,
-      ...Object.fromEntries(Object.entries(m).map(([k,v])=>[k,+v.toFixed(k==="corr"?4:2)])),
+      ...Object.fromEntries(Object.entries(m).map(([k,v])=>["measured_"+k,+v.toFixed(k==="corr"?4:2)])),
       score:+score.toFixed(3)});
   }
  }
