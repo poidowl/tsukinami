@@ -52,9 +52,10 @@ async function worker() {
     }
     const f = M.features(samples, sr, job.feat);
     const winS = Math.round(22050 * 0.025) / 22050 / 2;
-    const lab = M.frameLabels(moraTimes(H, job.kana, prm), f.frames.map((x) => x.t + winS), job.ctx);
+    const lab = M.frameLabels(moraTimes(H, job.kana, prm), f.frames.map((x) => x.t + winS), job.ctx, job.nctx);
     const mt = moraTimes(H, job.kana, prm);
-    const units = mt.map((m) => unitOf(m, job.ctx));
+    let pv = "";
+    const units = mt.map((m) => { const u = unitOf(m, job.ctx); if (m.kind === "pau") pv = ""; else if (m.kind === "N") { if (job.nctx && pv) { u.key = "N+" + pv; u.states = ["N+" + pv]; } } else if (m.kind !== "Q") pv = m.v || pv; return u; });
     // モーラ 1 つぶんの母音の長さ（フレーム）。続く同じ母音とまとめずに数える（長さで母音を足すとき用）
     const hop = Math.round(22050 * 0.01) / 22050;
     const vd = mt.filter((m) => m.kind === "CV").map((m) => [m.v, (m.e - m.b) / hop]);
@@ -110,7 +111,7 @@ async function main() {
   const seeds = (A.seeds || "2024,7,99").split(",").map(Number);
   const K = Number(A.K || 16), MAX = Number(A.max || 12000), nW = Number(A.workers || Math.max(1, Math.min(6, os.cpus().length - 1)));
   const jobs = [];
-  for (const sc of corpus.scripts) if (sc.split === "tune" && !(A.nodev && isDev(sc.id))) sc.lines.forEach((ln, li) => { for (const preset of presets) for (const seed of seeds) jobs.push({ id: jobs.length, kana: ln.kana, preset, seed, ctx: !A.noctx, feat: A.feat || "v1", wav: A.wavdir ? path.join(A.wavdir, `${sc.id}_L${String(li + 1).padStart(2, "0")}_${preset}_s${seed}.wav`) : null }); });
+  for (const sc of corpus.scripts) if (sc.split === "tune" && !(A.nodev && isDev(sc.id))) sc.lines.forEach((ln, li) => { for (const preset of presets) for (const seed of seeds) jobs.push({ id: jobs.length, kana: ln.kana, preset, seed, ctx: !A.noctx, nctx: !!A.nctx, feat: A.feat || "v1", wav: A.wavdir ? path.join(A.wavdir, `${sc.id}_L${String(li + 1).padStart(2, "0")}_${preset}_s${seed}.wav`) : null }); });
   const r = rng(20261120);
   const vds = {};
   const pool = {}, seen = {}, runs = {}, unitsSeen = {}, big = {};
@@ -173,7 +174,7 @@ async function main() {
   const cnt = Array.from({ length: U + 1 }, () => new Float64Array(U));
   for (const [k, n] of Object.entries(big)) { const [a, b] = k.split(">"); if (ix[b] === undefined) continue; if (ix[a] !== undefined) cnt[ix[a]][ix[b]] += n; if (a === "sil") cnt[U][ix[b]] += n; }
   for (let a = 0; a <= U; a++) { const tot = cnt[a].reduce((x, y) => x + y, 0) + 0.5 * U; lm.push(Array.from(cnt[a], (c) => Math.round(Math.log((c + 0.5) / tot) * 100) / 100)); }
-  const table = { kind: "mimi-table v1", from: { corpus: corpus.source, split: A.nodev ? "tune-dev" : "tune", presets, seeds, utterances: jobs.length, engine: "hitofude@" + crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, "hitofude.mjs"))).digest("hex").slice(0, 12) }, K, feat: A.feat || "v1", ctx: !A.noctx, minf: Number(A.minf || 0.6), max: MAX, norm: { mean: Array.from(mean, (x) => +x.toFixed(4)), sd: Array.from(sd, (x) => +x.toFixed(4)) }, dur, vdur: Object.fromEntries(Object.entries(vds).map(([v, q]) => [v, +(q[0] / q[1]).toFixed(2)])), gmm, units: units.map(({ n, ...u }) => u), lm, dec: { ac: 1.0, lmw: Number(A.lmw || 10), pen: Number(A.pen || -10), nobi: Number(A.nobi ?? 1.7), nobiKu: Number(A.nobiKu ?? 1.5) } };
+  const table = { kind: "mimi-table v1", from: { corpus: corpus.source, split: A.nodev ? "tune-dev" : "tune", presets, seeds, utterances: jobs.length, engine: "hitofude@" + crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, "hitofude.mjs"))).digest("hex").slice(0, 12) }, K, feat: A.feat || "v1", ctx: !A.noctx, nctx: !!A.nctx, minf: Number(A.minf || 0.6), max: MAX, norm: { mean: Array.from(mean, (x) => +x.toFixed(4)), sd: Array.from(sd, (x) => +x.toFixed(4)) }, dur, vdur: Object.fromEntries(Object.entries(vds).map(([v, q]) => [v, +(q[0] / q[1]).toFixed(2)])), gmm, units: units.map(({ n, ...u }) => u), lm, dec: { ac: 1.0, lmw: Number(A.lmw || 10), pen: Number(A.pen || -10), nobi: Number(A.nobi ?? 1.7), nobiKu: Number(A.nobiKu ?? 1.5) } };
   const out = A.out || path.join(ROOT, "mimi_table.json");
   fs.writeFileSync(out, JSON.stringify(table));
   console.error(`表: ${out} 状態 ${Object.keys(gmm).length} 単位 ${U} ${(fs.statSync(out).size / 1024).toFixed(0)} KB`);
