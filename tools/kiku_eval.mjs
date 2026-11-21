@@ -116,7 +116,7 @@ async function main() {
   const maxLines = A.lines ? Number(A.lines) : Infinity;
   const ear = A.ear || "hand";
   const table = ear === "mimi" ? path.resolve(A.table || path.join(ROOT, "mimi_table.json")) : null;
-  const dec = {}; if (A.lmw) dec.lmw = Number(A.lmw); if (A.pen) dec.pen = Number(A.pen); if (A.nobi) dec.nobi = Number(A.nobi); if (A.nobiKu) dec.nobiKu = Number(A.nobiKu);
+  const dec = {}; if (A.lmw) dec.lmw = Number(A.lmw); if (A.pen) dec.pen = Number(A.pen); if (A.nobi) dec.nobi = Number(A.nobi); if (A.nobiKu) dec.nobiKu = Number(A.nobiKu); for (const k of ["penQ", "penN", "penR"]) if (A[k] != null) dec[k] = Number(A[k]);
   const engine = { kusanagi: A.kusanagi || "hitofude@" + short(path.join(ROOT, "hitofude.mjs")), kiku: A.kiku || "kiku@" + short(path.join(ROOT, "kiku.mjs")), mimi: ear === "mimi" ? (A.mimi || "mimi@" + short(path.join(ROOT, "mimi.mjs")) + "+table@" + short(table)) : "" };
   const label = A.label || engine.kiku;
   const jobs = [];
