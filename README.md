@@ -1,7 +1,7 @@
 # tsukinami (`kusanagi` branch — Pure JavaScript Edition)
 
 > **70KBのピュアJavaScript（`.py` ゼロ）で、たった1本のホワイトノイズから日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
-> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,575行（70.0 KB）。
+> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,608行（72.2 KB）。
 
 **[ブラウザで声を聴く](https://poidowl.github.io/tsukinami/kusanagi.html)** — 「▶ 彫って鳴らす」を押すと、吐息の声で「わたし、にほんご、ちょっとしゃべれます」と読み上げます。
 
@@ -9,7 +9,7 @@
 
 ## 1. コンテキスト投入コマンド ＆ Raw URL（全コード一括）
 
-本体の実装は以下の2ファイルだけで完結しています（`README.md` 込み合計 約79 KB）：
+本体の実装は以下の2ファイルだけで完結しています（`README.md` 込み合計 約82 KB）：
 
 ```bash
 cat README.md hitofude.mjs yomu.mjs
@@ -22,7 +22,7 @@ Web取得型LLMには、以下の **Raw プレーンテキスト URL 3本**を�
 
 | ファイル | 行数 | 役割 |
 | :--- | ---: | :--- |
-| [`hitofude.mjs`](hitofude.mjs) | 1,322行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、単一因果ループによる非対称ベルヌーイ粘膜扉×5極声道合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
+| [`hitofude.mjs`](hitofude.mjs) | 1,355行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、単一因果ループによる非対称ベルヌーイ粘膜扉×5極声道合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
 | [`yomu.mjs`](yomu.mjs) | 253行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱、引数バリデーション（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
 | [`tools/build_x_player.mjs`](tools/build_x_player.mjs) | 補助 | [`hitofude.mjs`](hitofude.mjs) から X Player Card / GitHub Pages 用の単一HTML（`kusanagi.html` + `kusanagi_player.html`）を直接生成（公開URL: https://poidowl.github.io/tsukinami/kusanagi.html ） |
 
@@ -65,6 +65,8 @@ x = rng.uniform(-1, +1) × N   # [-1, +1] の一様ホワイトノイズ（乱�
 | `wander_st` (`--wander`) | `0.16` | ピッチの緩やかな自然漂い幅（半音）。`0.0` で完全固定ピッチ |
 | `combG` (opts のみ) | `0.985` | **サラサラ化**既定（soroe2）。有声のあいだ粘膜コム帰還を `combG × 有声度` に固定し、周期ごとの新規ノイズによるシマーを減らす（上限 `0.9995`）。`null` で `g_vo` 連動の非固定動作 |
 | `rawAirMul` (opts のみ) | `0.6` | **サラサラ化**既定（soroe2）。扉を通る生ノイズ `rawAir` の倍率。`1.0` で非減衰 |
+| `pau_iki` (opts・レシピのみ) | `-30` | **v11.0 読点の息の床**（dB、有声部 RMS 比）。読点の間を完全無音にせず、同じ原石ノイズの無声吐息（5極声道＋唇放射後）をうっすら残す。ReazonSpeech が読点を文末と取り違える後半落ちを防ぐ。`null` で v10.8 (`b9b5eb8`) とバイト一致。`chibi` はプリセットで `null` |
+| `pau_s` (opts・レシピのみ) | `0.35` | 読点の間の長さ（秒）。`null` で 0.35。詰めると ReazonSpeech の後半落ちが増える（0.20 秒で悪化）ので非推奨 |
 
 ---
 
@@ -91,3 +93,8 @@ node tools/build_x_player.mjs
 1. **帯域別 AGC を足さない**：各フォルマント帯域に個別正規化を入れると、`tilt_w` や声道の傾きが打ち消されて再度多段補正が必要になる。
 2. **別系統の息ノイズ・固定波形を足さない**：息や揺らぎは別乱数や固定波形を加算するのではなく、Step 0 の1本のノイズ `x` とくびれ・扉の開閉だけで表現する。
 3. **`hitofude.mjs` に Node 専用 `import` を入れない**：[`hitofude.mjs`](hitofude.mjs) はブラウザでもそのまま動く純粋 ES Module として保ち、ファイル入出力は [`yomu.mjs`](yomu.mjs) 側に置く。
+
+## 改変履歴（抜粋）
+
+- **v11.0**: 読点の息の床 `pau_iki: -30` を既定化（ReazonSpeech k2 の後半落ち 大人6声×3 seed で 6/18 → 2/18）、間の長さノブ `pau_s` 追加。`{pau_iki: null}` で v10.8 とバイト一致（`node tools/test_pause.mjs`）。`chibi` は従来の無音のまま。
+- **v10.8** (`b9b5eb8`): ノイズ削りコードの断捨離＆単一因果ループ統合。
