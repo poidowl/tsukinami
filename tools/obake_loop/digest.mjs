@@ -4,9 +4,10 @@ import { moras, alignMoras } from "./repo_cd293c8/tools/kiku_eval.mjs";
 const [ledger, outdir] = process.argv.slice(2);
 const rows = fs.readFileSync(ledger, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => (r.run || "").startsWith("loop-"));
 if (!rows.length) process.exit(1);
-// 声(kusanagi)の版が変わったら混ぜて数えん: いちばん新しい行と同じ tts_commit の行だけ
+// 声(kusanagi)や耳の版が変わったら混ぜて数えん: いちばん新しい行と同じ tts_commit・ear_commit の行だけ
 const TTS = rows.at(-1).tts_commit || "cd293c8";
-rows.splice(0, rows.length, ...rows.filter((r) => (r.tts_commit || "cd293c8") === TTS));
+const EARC = rows.at(-1).ear_commit || "cd293c8";
+rows.splice(0, rows.length, ...rows.filter((r) => (r.tts_commit || "cd293c8") === TTS && (r.ear_commit || "cd293c8") === EARC));
 fs.mkdirSync(outdir, { recursive: true });
 const prev = fs.readdirSync(outdir).filter((f) => /^digest_loop_\d+\.json$/.test(f)).sort();
 const num = String(prev.length + 1).padStart(3, "0");
@@ -31,7 +32,7 @@ for (const r of recent) {
 const top = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n);
 const worst = [...recent].sort((a, b) => b.I_kana_cer - a.I_kana_cer).slice(0, 6).map((r) => ({ preset: r.preset, cer: r.I_kana_cer, ref: r.seikai, hyp: r.kiku }));
 const D = {
-  task: "关亡婆が書いた新しい台本（耳を育てるのに使ってない＝初見）を kusanagi が読み、mimi r2（kiku-ear cd293c8、混合ガウス＋HMM、純JS、旧 kusanagi cd293c8 の声だけで育てた耳）が書き取った結果。tts_commit が声の版。正解＝kusanagi が実際に読んだかな。",
+  task: "关亡婆が書いた新しい台本（耳を育てるのに使ってない＝初見）を kusanagi が読み、耳 mimi（混合ガウス＋HMM、純JS。ear_commit が耳の版、tts_commit が声の版）が書き取った結果。正解＝kusanagi が実際に読んだかな。",
   ear: rows.at(-1).H_commit, tts_commit: TTS, ear_commit: rows.at(-1).ear_commit || "cd293c8", window: { from: recent[0]?.A_jikoku, to: recent.at(-1)?.A_jikoku, scripts: new Set(recent.map((r) => r.daihon_id)).size },
   score_recent: score(recent), score_all_loop: score(rows), prev_digest: prev.at(-1) || null,
   confusion_consonant: top(conf.cons, 10), confusion_vowel: top(conf.vow, 8), deletions: top(conf.del, 10), deletion_context_prevVowel_plus_mora: top(conf.delctx, 10), insertions: top(conf.ins, 6),

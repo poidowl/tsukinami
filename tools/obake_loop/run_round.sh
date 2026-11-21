@@ -2,9 +2,10 @@
 # オバケ台帳ループ 1 周: 关亡婆(8090)が台本 → kusanagi が読む → 耳(mimi, kiku-ear) が書き取る → 台帳に足す → N 周ごとに关亡婆が要約と提案。
 # launchd (jp.nukumi.obake_daicho) が 20 分おきに呼ぶ。耳の表(mimi_table.json)は一切書き換えん。提案だけ。
 L=$HOME/itako_mimi/loop
-# 耳（kiku/mimi/mimi_table/tools）は kiku-ear cd293c8 のまま。声（hitofude.mjs）だけ kusanagi の新しい版に差し替えた混ぜ dir。
-EAR_COMMIT=cd293c8; TTS_COMMIT=${TTS_COMMIT:-b205f58}
-EAR=$L/ear_${EAR_COMMIT}_tts_${TTS_COMMIT}
+# 耳と声の版は ear_commit.txt / tts_commit.txt に書く（r3 から: 耳 = kiku-ear-r3 の中身、声 = その中の hitofude.mjs = kusanagi b205f58）。
+# 耳を差し替えるときは、新しい中身を $L/ear_<版> に置いて ear_commit.txt を書き換えるだけ（周の合間に stop.sh → start.sh）。
+EAR_COMMIT=${EAR_COMMIT:-$(cat $L/ear_commit.txt)}; TTS_COMMIT=${TTS_COMMIT:-$(cat $L/tts_commit.txt)}
+EAR=$L/ear_${EAR_COMMIT}
 NODE=$HOME/itako_kusanagi/node/bin/node
 PY=$L/venv/bin/python
 DAICHO=$HOME/itako_mimi/obake_daichou.jsonl
@@ -28,8 +29,8 @@ SID=$($PY -c "import json,sys;print(json.load(open('$C'))['scripts'][0]['id'])")
 SEED2=$(( RANDOM % 9000 + 1000 ))
 cd $EAR
 nice -n 15 $NODE tools/kiku_eval.mjs --corpus $C --split loop --ear mimi --workers 2 --seeds 2024,$SEED2 \
-  --wavdir $L/wav/$SID --ledger $L/out/$SID.ledger.jsonl --out $L/out/$SID.json --round $SID --label loop-mimi-r2 \
-  --kusanagi hitofude@kusanagi-$TTS_COMMIT --kiku kiku@$EAR_COMMIT --mimi mimi-r2@$EAR_COMMIT > $L/out/$SID.txt 2>>$L/logs/loop.err
+  --wavdir $L/wav/$SID --ledger $L/out/$SID.ledger.jsonl --out $L/out/$SID.json --round $SID --label loop-mimi-$(cat $L/ear_round.txt 2>/dev/null || echo r3) \
+  --kusanagi hitofude@kusanagi-$TTS_COMMIT --kiku kiku@$EAR_COMMIT --mimi mimi-$(cat $L/ear_round.txt 2>/dev/null || echo r3)@$EAR_COMMIT > $L/out/$SID.txt 2>>$L/logs/loop.err
 rc=$?
 # 台帳へ: 声の版(tts_commit)と耳の版(ear_commit)を別の列で足す
 [ -f $L/out/$SID.ledger.jsonl ] && $PY -c "
