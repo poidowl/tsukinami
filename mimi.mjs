@@ -103,6 +103,9 @@ export function decodeMimi(samples, sr, table, opt = {}) {
     lastOf[u] = sub.length - 1;
   }
   const S = sub.length;
+  // r3（关亡婆 teian_loop_001 の P3 / P2）: 単位に入るときの追加の罰。penQ/penN は余分な っ/ん を抑え、penR（負なら得）はら行の切れ目を拾いやすくする
+  const penQ = opt.penQ ?? table.dec.penQ ?? 0, penN = opt.penN ?? table.dec.penN ?? 0, penR = opt.penR ?? table.dec.penR ?? 0;
+  const upen = units.map((x) => (x.tok === "Q" ? penQ : x.tok === "N" ? penN : x.states[0] && x.states[0].startsWith("c:r") ? penR : 0));
   const lm = table.lm; // lm[from][to] 対数（from/to は単位番号、U は文頭）
   let dp = new Float64Array(S).fill(-Infinity);
   const bp = new Array(T); // 単位をまたいで入ったときの前の単位 (+1)、0 は中で進んだ
@@ -125,7 +128,7 @@ export function decodeMimi(samples, sr, table, opt = {}) {
       else {
         // 別の単位から入る
         const row = r.u;
-        for (let u = 0; u < U; u++) { const v = exitScore[u] + lm[u][row] * lmw + pen; if (v > best) { best = v; from = lastOf[u]; cross = u; } }
+        for (let u = 0; u < U; u++) { const v = exitScore[u] + lm[u][row] * lmw + pen + upen[row]; if (v > best) { best = v; from = lastOf[u]; cross = u; } }
       }
       nd[s] = best + E[t][r.si]; b[s] = from; bpv[s] = cross;
     }
