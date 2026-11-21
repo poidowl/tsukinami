@@ -10,7 +10,7 @@
 import {makeHitofude, PRESETS, SR} from "./hitofude.mjs";
 const version='b205f58ae2620fffec764d1bde3f858fcf294ac8', key='idol-koe-v1';
 const lines=['おはよう','おかえり','ありがとう','またあした','ほんと？','ちょっとまって'];
-const knobs=[['hz',205,410,25],['fscale',.90,1.25,.065],['rate',.88,1.48,.13],['sigh',0,.85,.21],['tilt_w',3,8,1]];
+const knobs=[['hz',205,410,60],['fscale',.90,1.25,.14],['rate',.88,1.48,.28],['sigh',0,.85,.40],['tilt_w',3,8,2]];
 const $=id=>document.getElementById(id);
 function pair(parent,voice,depth){
  const [k,lo,hi,step]=knobs[depth%knobs.length];
@@ -23,28 +23,46 @@ function fresh(){const voice={...PRESETS.hitofude};return {version,voice,log:[],
 let state=fresh(), storageOK=true;
 try{const saved=JSON.parse(localStorage.getItem(key));if(saved?.version===version&&Array.isArray(saved.log)&&saved.next?.voices?.length===2)state=saved}catch{}
 function save(){try{localStorage.setItem(key,JSON.stringify(state));storageOK=true}catch{storageOK=false}}
-let ctx,source,heard=new Set(),token=0;
-function stop(){token++;if(source){source.onended=null;source.stop();source=null}}
-async function play(text,voice,done){
- stop();const turn=token;
- try{ctx??=new AudioContext();await ctx.resume();if(turn!==token)return;
- const {samples}=makeHitofude(text,voice);const buf=ctx.createBuffer(1,samples.length,SR);buf.copyToChannel(samples,0);
- source=ctx.createBufferSource();source.buffer=buf;source.connect(ctx.destination);
- source.onended=()=>{if(turn===token){source=null;done?.()}};source.start()
- }catch{$('msg').textContent='再生できませんでした。もう一度お試しください。'}
+let ctx, busy=false;
+const heard=new Set();
+async function play(text,voice,done,label='試聴'){
+ if(busy)return;
+ busy=true;
+ const controls=[...document.querySelectorAll('#takes button, #skip, #try, #history button')].filter(b=>!b.disabled);
+ controls.forEach(b=>b.disabled=true);
+ const status=$('msg'),previous=status.textContent;
+ status.textContent=label+'を再生中…';
+ let source;
+ function finish(ok){
+   if(source){source.onended=null;source.disconnect()}
+   controls.forEach(b=>b.disabled=false);
+   busy=false;
+   status.textContent=ok?previous:'再生できませんでした。もう一度お試しください。';
+   if(ok)done?.();
+ }
+ try{
+   ctx??=new AudioContext();
+   await ctx.resume();
+   const {samples}=makeHitofude(text,voice);
+   const buf=ctx.createBuffer(1,samples.length,SR);
+   buf.copyToChannel(samples,0);
+   source=ctx.createBufferSource();source.buffer=buf;source.connect(ctx.destination);
+   source.onended=()=>finish(true);
+   source.start();
+ }catch{finish(false)}
 }
 function button(label,fn,cls){const b=document.createElement('button');b.textContent=label;b.onclick=fn;if(cls)b.className=cls;return b}
 function advance(choice){const p=state.next,id=state.log.length;
  state.log.push({...p,id,choice});if(choice!==null)state.voice=p.voices[choice];
  state.next=pair(id,state.voice,p.depth+1);save();render();}
 function fork(p,i){state.voice=p.voices[i];state.next={...pair(p.id,state.voice,p.depth+1),parentTake:i};save();render()}
-function render(){stop();heard.clear();const p=state.next;
+function render(){heard.clear();const p=state.next;
  $('phrase').textContent='「'+p.text+'」';$('count').textContent='第 '+(p.depth+1)+' 刀';$('takes').replaceChildren();
  $('msg').textContent=storageOK?'':'自動保存できません。レシピを保存してください。';
  $('skip').disabled=true;
  for(const [i,label] of ['A','B'].entries()){const box=document.createElement('div');
  const choose=button(label+' を採用',()=>advance(i),'choose');choose.disabled=true;
- box.append(button('▶ テイク '+label,()=>play(p.text,p.voices[i],()=>{heard.add(i);if(heard.size===2){document.querySelectorAll('.choose').forEach(b=>b.disabled=false);$('skip').disabled=false}}),'take'),choose);$('takes').append(box)}
+ box.append(button('▶ テイク '+label,()=>play(p.text,p.voices[i],()=>{heard.add(i);if(heard.size===2){document.querySelectorAll('.choose').forEach(b=>b.disabled=false);$('skip').disabled=false}},'テイク '+label),'take'),choose);$('takes').append(box)}
  $('history').replaceChildren();for(const item of [...state.log].reverse()){const a=document.createElement('article');
  a.append('#'+(item.id+1)+'　'+item.text+'　'+(item.choice===null?'差なし':'採用 '+['A','B'][item.choice])+'　← '+(item.parent===null?'初期声':'#'+(item.parent+1)),document.createElement('br'));
  for(const [i,l] of ['A','B'].entries())a.append(button('▶ '+l,()=>play(item.text,item.voices[i])),button(l+' から分岐',()=>fork(item,i)));$('history').append(a)}
