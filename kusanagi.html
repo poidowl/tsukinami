@@ -7,7 +7,7 @@
 <meta name="twitter:title" content="草薙 kusanagi — Pythonゼロ・純JSで1本の乱数から声を彫る">
 <meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。1本のホワイトノイズと非対称ベルヌーイ2唇扉×5極声道の再帰だけで女声・大人アルト・低音おっさん・歌まで彫る純JSシンセ（0原石→④完成をその場で聴き比べ）">
 <meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
-<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=10.8">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_player.html?v=11.0">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="480">
 <meta property="og:type" content="website">
@@ -138,7 +138,7 @@
   </header>
 
   <div class="frame-shell">
-    <iframe src="./kusanagi_player.html?v=10.8" title="草薙 kusanagi インタラクティブシンセ"
+    <iframe src="./kusanagi_player.html?v=11.0" title="草薙 kusanagi インタラクティブシンセ"
       sandbox="allow-popups allow-same-origin allow-scripts allow-presentation"></iframe>
   </div>
 
@@ -155,13 +155,14 @@
       <button id="copyUrlBtn" class="btn primary" type="button">X投稿用URLをコピー</button>
       <a class="btn" href="./kusanagi_choir.html">🎶 1→128人ライブ大合唱へ</a>
       <a class="btn" href="./index.html">🎛️ 月並みTTS オモチャ箱へ</a>
-      <a class="btn" href="https://github.com/poidowl/tsukinami/tree/kusanagi" target="_blank" rel="noopener noreferrer">純JSソース (59KB・kusanagi branch) ↗</a>
+      <a class="btn" href="https://github.com/poidowl/tsukinami/tree/kusanagi" target="_blank" rel="noopener noreferrer">純JSソース (61KB・kusanagi branch) ↗</a>
     </div>
   </section>
 
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
+      <li><strong>v11.0 (<a href="https://github.com/poidowl/tsukinami/commit/b205f58" target="_blank" rel="noopener noreferrer"><code>b205f58</code></a>)：</strong><strong>読点の息の床（<code>pau_iki: -30</code> 既定）</strong> — 読点「、」の 0.35 秒を完全無音に彫り切らず、同じ原石ノイズが無声のまま5極声道＋唇放射を通った吐息を、有声部 RMS 比 −30 dB でうっすら残す（両端は余弦窓）。ReazonSpeech k2 が読点を文末と取り違えて「ちょっとしゃべれます」を落とす本数が、大人6声×3 seed で 6/18 → 2/18。<code>{pau_iki: null}</code> で v10.8 (<code>b9b5eb8</code>) とバイト一致。ちびっ子は崩れが出たため従来の無音のまま。間の長さノブ <code>pau_s</code>（既定 0.35 秒）も追加。</li>
       <li><strong>v10.8 (<a href="https://github.com/poidowl/tsukinami/commit/b9b5eb8" target="_blank" rel="noopener noreferrer"><code>b9b5eb8</code></a>)：</strong><strong>ノイズ削りコード自体の断捨離＆単一因果ループ統合（計 -306行 / -8.9KB）</strong> — 旧並列時代の非因果往復コム <code>yamaBp/ffbb/combHalf</code> をピーク利得一定の因果2極ゼロDCバンドパスへ置換して全段を完全因果1パス化し、重複していた <code>xSeed</code>・後段 <code>karuku</code>・ロボ専用別エンジン <code>combPeriod/resonator2Pole</code>・死蔵 <code>G2/G3</code> 軌道を全撤去して全7プリセット＋歌を単一ループへ統合。</li>
       <li><strong>v10.1 (<a href="https://github.com/poidowl/tsukinami/commit/a084abe" target="_blank" rel="noopener noreferrer"><code>a084abe</code></a>)：</strong>v10 の子音・ハ行明瞭度×粘膜ソフトクッションに、<strong>v9 サラサラ化（<code>combG: 0.985, rawAirMul: 0.6</code> / soroe2）を既定合流</strong>（持続母音シマー <code>5.5% → 1.8%</code>、<code>{combG: null, rawAirMul: 1.0}</code> で <code>90f0c44</code> の音とバイト一致）。</li>
       <li><strong>v10 (<a href="https://github.com/poidowl/tsukinami/commit/90f0c44" target="_blank" rel="noopener noreferrer"><code>90f0c44</code></a>)：</strong>聴き取りと自然さの二軸両立アップデート — <strong>子音明瞭度（<code>/s/, /t/, /k/</code>）とハ行気息（後続母音 F2 同調 <code>h</code> / 両唇 <code>f</code>）の完全復元</strong>、<code>ei</code> 長音同化、および<strong>高域コム減衰＋粘膜ソフトクッション＋等身大声道倍率</strong>による女声・歌唱時のエフェクター（フランジャー・ワウ）感の解消。</li>
