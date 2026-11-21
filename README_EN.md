@@ -4,12 +4,13 @@
 
 **[🇯🇵 日本語 (Japanese README)](README.md) | [🌐 English](README_EN.md)**
 
-> **No neural net. No training. A voice that imitates nobody.**  
-> **Japanese kana, read by formulas only: a lip “door” and five resonances.**
+> **No neural net. No training. No recorded voice.**  
+> **One stream of noise, carved into a voice that reads Japanese kana, using only formulas: a lip “door” and five resonances.**
 
 ### Listen now (no install)
-- 🗡️ **[kusanagi — physical model](https://poidowl.github.io/tsukinami/kusanagi.html)** — Hit **▶** and it speaks *“Watashi, nihongo, chotto shaberemasu.”* No pretrained weights, no recorded voice.
-- 🎛️ Also on `main`: the [Toybox](https://poidowl.github.io/tsukinami/toybox.html) and a [free-kana synth](https://poidowl.github.io/tsukinami/demo.html).
+- 🗡️ **[kusanagi — physical model](https://poidowl.github.io/tsukinami/kusanagi.html)** — Press **▶** and a breathy voice says *“Watashi, nihongo, chotto shaberemasu”* (“I can speak a little Japanese”). No pretrained weights, no recordings.
+- 🎶 **[kusanagi 128-voice choir](https://poidowl.github.io/tsukinami/kusanagi_choir.html)** — the same voice stacked from 1 to 128 singers.
+- 🎛️ From `main`: the [Toybox](https://poidowl.github.io/tsukinami/toybox.html) and a [free-kana synth](https://poidowl.github.io/tsukinami/demo.html).
 
 ### One command (kusanagi / pure JS, Node 18+)
 
@@ -20,9 +21,9 @@ node yomu.mjs --preset toiki "わたし、にほんご、ちょっとしゃべ�
 # → out/yomu_NNN_toiki.wav
 ```
 
-### Two lines of work in this repo
-- **`kusanagi` branch** — the hook: no neural net; an asymmetric Bernoulli lip door plus F1–F5 resonances, formulas only. ~72 KB of pure JavaScript. Details: [branch README](https://github.com/poidowl/tsukinami/blob/kusanagi/README.md).
-- **`main` (Tsukinami)** — a ~120 KB pure-Python synthesizer that stamps a carved noise grain (`python yomu.py`, stdlib only). MIT. Generated WAVs have no license restrictions.
+### Two engines in this repo
+- **`kusanagi` branch** — start here. No neural net: a lip “door” that opens and closes by formula (asymmetric Bernoulli), feeding five resonances (F1–F5). ~72 KB of pure JavaScript. Details: [branch README](https://github.com/poidowl/tsukinami/blob/kusanagi/README.md).
+- **`main` (Tsukinami)** — a ~120 KB pure-Python synthesizer that builds speech by repeating carved grains of noise (`python yomu.py`, standard library only). MIT license. Use the generated WAVs however you like.
 
 ---
 

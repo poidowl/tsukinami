@@ -4,12 +4,13 @@
 
 **[🇯🇵 日本語](README.md) | [🌐 English (README_EN.md)](README_EN.md)**
 
-> **ニューラルなし。学習なし。誰の声もまねない。**  
-> **唇の「扉」と、5つの共鳴の数式だけで、かなを読む。**
+> **ニューラルなし。学習なし。録音した声もなし。**  
+> **1本のノイズから、唇の「扉」と5つの共鳴の数式だけで、日本語のかなを読む声を彫る。**
 
 ### 今すぐ聴く（インストール不要）
-- 🗡️ **[草薙 kusanagi（物理モデル）](https://poidowl.github.io/tsukinami/kusanagi.html)** — 「▶ 彫って鳴らす」で、吐息の声が「わたし、にほんご、ちょっとしゃべれます」と読む。学習済みモデルも録音データも使わない。
-- 🎛️ ほかに、main 系統のオモチャ箱: [toybox.html](https://poidowl.github.io/tsukinami/toybox.html) ／ [自由かな入力](https://poidowl.github.io/tsukinami/demo.html)
+- 🗡️ **[草薙 kusanagi（物理モデル）](https://poidowl.github.io/tsukinami/kusanagi.html)** — 「▶ 彫って鳴らす」を押すと、吐息まじりの声が「わたし、にほんご、ちょっとしゃべれます」と読む。学習済みモデルも録音データも使っていない。
+- 🎶 **[草薙 128人合唱](https://poidowl.github.io/tsukinami/kusanagi_choir.html)** — 同じ声を1人から128人まで重ねる。
+- 🎛️ main 系統のオモチャ箱: [toybox.html](https://poidowl.github.io/tsukinami/toybox.html) ／ [自由かな入力](https://poidowl.github.io/tsukinami/demo.html)
 
 ### 1コマンドで鳴らす（草薙 / 純JS・Node 18+）
 
@@ -21,8 +22,8 @@ node yomu.mjs --preset toiki "わたし、にほんご、ちょっとしゃべ�
 ```
 
 ### このリポジトリの2系統
-- **草薙（枝 `kusanagi`）** — 売りはここ。ニューラル不使用。非対称ベルヌーイの唇扉と、F1〜F5 の共鳴（数式だけ）。純JavaScript 約72KB。仕組みは枝の [README](https://github.com/poidowl/tsukinami/blob/kusanagi/README.md)。
-- **main（月並み）** — 乱数粒を周期配置する純Python 約120KB（標準ライブラリのみ、`python yomu.py`）。MIT。生成したWAVの権利制限なし。
+- **草薙（枝 `kusanagi`）** — まずはこちら。ニューラル不使用。唇を「扉」として数式で開け閉めし（非対称ベルヌーイ）、F1〜F5 の5つの共鳴を通す。純JavaScript 約72KB。仕組みは枝の [README](https://github.com/poidowl/tsukinami/blob/kusanagi/README.md)。
+- **main（月並み）** — ノイズの粒を形に彫って並べ、声にする純Python 約120KB（標準ライブラリだけ、`python yomu.py`）。MITライセンス。生成したWAVは自由に使える。
 
 ---
 
