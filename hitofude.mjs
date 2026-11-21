@@ -43,6 +43,7 @@ export const PRESETS = {
     description: "ちびっ子（短め声道 fscale=1.20・高ピッチ 375Hz・明るい粗削り tilt_w=4）",
     seed: 2024, hz: 375.0, fscale: 1.20, rate: 1.18,
     g_vo: 0.895, damp: 0.28, shin: 1.0, tilt_w: 4, sigh: 0.0, jitter: 0.0024, wander_st: 0.18,
+    pau_iki: null, // v11.0: 子ども声は読点の息で ReazonSpeech の崩れ（seed 7 が「大」1字に）が出たため v10.8 の完全無音のまま
   },
   ossan: {
     label: "おっさん",
@@ -914,6 +915,8 @@ export function makeHitofude(text, opts = {}) {
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
     rawAirMul = 0.6,  // サラサラ化既定 (soroe2): 扉を通る生ノイズ rawAir の倍率 (1.0 で非減衰; {combG: null, rawAirMul: 1.0} で 90f0c44 音)
+    pau_s = null,     // 読点「、」の間の長さ (秒)。null で従来の 0.35 秒（詰めると ReazonSpeech の後半落ちが増えるので非推奨）
+    pau_iki = -30,    // v11.0 既定: 読点の間に残す息の床 (dB, 有声部 RMS 比)。null で v10.8 (b9b5eb8) どおり完全無音＝バイト一致
   } = opts;
 
   let accentKw = null, targetText = text, phraseCuts = null;
@@ -927,6 +930,7 @@ export function makeHitofude(text, opts = {}) {
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
+  if (pau_s != null) prm.pau = Math.max(0.0, +pau_s);
   if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; prm.ei_long = false; }
   const r = tracksFromKana(targetText, pre, post, prm);
   const n = r.n, N = Math.trunc(n * fpz * SR);
@@ -1167,6 +1171,35 @@ export function makeHitofude(text, opts = {}) {
     y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.55, 1.0 + 0.24 * wander[i] * wNorm) : 1.0);
     const av = Math.abs(y[i]);
     if (av > pk) pk = av;
+  }
+  // 読点の息の床 pau_iki：完全無音を彫り切らず、同じ原石ノイズが無声のまま声道 (5極) と放射を通った吐息 ycRad を、
+  // 間の区間だけ有声部 RMS の pau_iki dB にうっすら残す（両端は上げ下げの余弦窓）。null なら一切触らない
+  if (pau_iki != null && Number.isFinite(+pau_iki)) {
+    const pauz = r.moras.filter((m_) => m_.kind === "pau" && m_.e > m_.a);
+    if (pauz.length) {
+      let vSq = 0.0, vCnt = 0;
+      for (let t = 0; t < n; t++) {
+        if (!r.voiced[t]) continue;
+        const a_ = Math.trunc(t * fpz * SR), b_ = Math.min(N, Math.trunc((t + 1) * fpz * SR));
+        for (let i = a_; i < b_; i++) { vSq += y[i] * y[i]; vCnt++; }
+      }
+      const vRms = Math.sqrt(vSq / (vCnt || 1));
+      let bSq = 0.0, bCnt = 0;
+      for (const m_ of pauz) {
+        for (let i = Math.max(0, Math.trunc(m_.a * SR)); i < Math.min(N, Math.trunc(m_.e * SR)); i++) { bSq += ycRad[i] * ycRad[i]; bCnt++; }
+      }
+      const bRms = Math.sqrt(bSq / (bCnt || 1)) || 1.0, gIki = vRms * Math.pow(10.0, +pau_iki / 20.0) / bRms;
+      for (const m_ of pauz) {
+        const ia = Math.max(0, Math.trunc(m_.a * SR)), ie = Math.min(N, Math.trunc(m_.e * SR));
+        const ramp = Math.max(1, Math.min(Math.trunc(0.06 * SR), Math.trunc((ie - ia) / 3)));
+        for (let i = ia; i < ie; i++) {
+          const k = Math.min(i - ia, ie - 1 - i), w = k >= ramp ? 1.0 : Math.pow(Math.sin((0.5 * Math.PI * k) / ramp), 2);
+          y[i] += gIki * w * ycRad[i];
+        }
+      }
+      pk = 0.0;
+      for (let i = 0; i < N; i++) { const av = Math.abs(y[i]); if (av > pk) pk = av; }
+    }
   }
   const out = new Float32Array(N), scale = 0.891 / (pk || 1.0);
   for (let i = 0; i < N; i++) out[i] = y[i] * scale;

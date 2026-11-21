@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * tools/test_sarasara.mjs — v10.8 単一因果ループ統合＆サラサラ既定（soroe2 = {combG: 0.985, rawAirMul: 0.6}）回帰テスト
+ * tools/test_sarasara.mjs — v10.8 単一因果ループ統合＆サラサラ既定（v11.0 以降は {pau_iki: null} で読点の息を外して検証）（soroe2 = {combG: 0.985, rawAirMul: 0.6}）回帰テスト
  *
  *   node tools/test_sarasara.mjs
  *
  * (a) {combG: null, rawAirMul: 1.0}（非サラサラ明示）が GOLDEN_V10_8_NOSARA と全プリセット × 2文 × seed 2 つ ＋ 歌モードでバイト一致すること。
- * (b) 既定（オプションなし）が、soroe2 {combG: 0.985, rawAirMul: 0.6} を明示した音とバイト一致すること。
+ * (b) 既定（{pau_iki: null} 以外オプションなし）が、soroe2 {combG: 0.985, rawAirMul: 0.6} を明示した音とバイト一致すること。
  * (c) 既定は非サラサラ音から有効に変化し（robot は shin=0 で扉バイパスのため不変）、有限・長さ同一・ピーク 1 以下であること。
  */
 import crypto from "node:crypto";
@@ -48,7 +48,9 @@ const GOLDEN_V10_8_NOSARA = {
   "robot|t1|7": "68c0f982d5f63f22cd826c74",
   "robot|uta": "87689dc897ea1d373f1fde97"
 };
-const NOSARA = { combG: null, rawAirMul: 1.0 }, SOROE2 = { combG: 0.985, rawAirMul: 0.6 };
+// v11.0 で読点の息の床 pau_iki=-30 が既定になったので、ここでは {pau_iki: null}（v10.8 の完全無音）に揃えてサラサラ化だけを検証する
+const NOIKI = { pau_iki: null };
+const NOSARA = { combG: null, rawAirMul: 1.0, ...NOIKI }, SOROE2 = { combG: 0.985, rawAirMul: 0.6, ...NOIKI };
 const TEXTS = ["わたし、にほんご、ちょっとしゃべれます", "ヤマノウエニ、アオイソラガミエル?"];
 const h = (s) => crypto.createHash("sha256").update(encodeWav(s)).digest("hex").slice(0, 24);
 const n = { a: [0, 0], b: [0, 0], c: [0, 0] };
@@ -56,8 +58,8 @@ const check = (k, c, m) => { n[k][1]++; if (c) n[k][0]++; else console.log("NG  
 
 for (const [pn, p] of Object.entries(PRESETS)) {
   const cases = [];
-  for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7]) cases.push([`${pn}|t${k}|${seed}`, t, { ...p, seed }]);
-  cases.push([`${pn}|uta`, "ア", { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 }]);
+  for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7]) cases.push([`${pn}|t${k}|${seed}`, t, { ...p, seed, ...NOIKI }]);
+  cases.push([`${pn}|uta`, "ア", { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0, ...NOIKI }]);
   for (const [key, t, o] of cases) {
     const old = makeHitofude(t, { ...o, ...NOSARA }).samples;
     const def = makeHitofude(t, o).samples;
