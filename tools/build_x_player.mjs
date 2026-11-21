@@ -500,22 +500,12 @@ let rafId = 0;
 
 function getOpts() {
   const base = PRESETS[curPreset] || PRESETS.toiki;
-  const hz = Number(slHz.value);
-  const g_vo = Number(slGvo.value);
-  const sigh = Number(slSigh.value);
   return {
+    ...base,
     seed: curSeed,
-    hz,
-    fscale: base.fscale,
-    rate: base.rate,
-    g_vo,
-    tilt_w: base.tilt_w,
-    sigh: isUta ? 0.0 : sigh,
-    jitter: base.jitter,
-    wander_st: base.wander_st,
-    damp: base.damp ?? 0.30,
-    shin: base.shin ?? 1.0,
-    ...("pau_iki" in base ? { pau_iki: base.pau_iki } : {}),
+    hz: Number(slHz.value),
+    g_vo: Number(slGvo.value),
+    sigh: isUta ? 0.0 : Number(slSigh.value),
     uta_hz: isUta ? UTA_MELODY : null,
     captureSteps: true,
   };
@@ -967,7 +957,7 @@ requestAnimationFrame(() => {
 </html>
 `;
 
-const PLAYER_VER = "10.8";
+const PLAYER_VER = "11.0";
 const ENGINE_KB = Math.round(Buffer.byteLength(engineSrc, "utf8") / 1000);
 
 const shareHtml = `<!DOCTYPE html>

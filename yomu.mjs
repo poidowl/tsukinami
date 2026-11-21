@@ -22,17 +22,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function synth(text, prm, utaHz = null) {
   return makeHitofude(text, {
+    ...prm,
     seed: Math.trunc(Number(prm.seed)),
-    hz: Number(prm.hz),
-    fscale: Number(prm.fscale),
-    rate: Number(prm.rate),
-    g_vo: Number(prm.g_vo),
     tilt_w: Math.round(Number(prm.tilt_w)),
-    sigh: Number(prm.sigh),
-    jitter: Number(prm.jitter),
-    wander_st: Number(prm.wander_st),
-    damp: prm.damp === undefined ? 0.30 : Number(prm.damp),
-    shin: prm.shin === undefined ? 1.0 : Number(prm.shin),
     uta_hz: utaHz,
   });
 }

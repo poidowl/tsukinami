@@ -1,7 +1,7 @@
 # tsukinami (`kusanagi` branch — Pure JavaScript Edition)
 
-> **70KBのピュアJavaScript（`.py` ゼロ）で、たった1本のホワイトノイズから日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
-> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,608行（72.2 KB）。
+> **約72KBのピュアJavaScript（`.py` ゼロ）で、たった1本のホワイトノイズから日本語かな・歌を彫る。ブラウザでも Node.js でもそのまま鳴り、LLMの1コンテキストで丸ごと読める。**  
+> 外部パッケージ不要・外部データファイル不要・Python互換ギプスなし・本体2ファイル計 1,600行（71.9 KB）。
 
 **[ブラウザで声を聴く](https://poidowl.github.io/tsukinami/kusanagi.html)** — 「▶ 彫って鳴らす」を押すと、吐息の声で「わたし、にほんご、ちょっとしゃべれます」と読み上げます。
 
@@ -23,7 +23,7 @@ Web取得型LLMには、以下の **Raw プレーンテキスト URL 3本**を�
 | ファイル | 行数 | 役割 |
 | :--- | ---: | :--- |
 | [`hitofude.mjs`](hitofude.mjs) | 1,355行 | **純JS音源・声道・調音・韻律エンジン（`import` ゼロ）**：かな→5ms軌道 `tracksFromKana`、東京式アクセント `f0Rule`、単一因果ループによる非対称ベルヌーイ粘膜扉×5極声道合成 `makeHitofude`、WAV出力 `encodeWav`、FFT音響計測 `hakaru`（ブラウザ `<script type="module">` と Node.js 両対応） |
-| [`yomu.mjs`](yomu.mjs) | 253行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱、引数バリデーション（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
+| [`yomu.mjs`](yomu.mjs) | 245行 | **Node.js CLI & レシピドライバ**：プリセット合成、`--measure` 自己計測、`--compare` 音響指標差分、`--uta` 歌唱、引数バリデーション（既定出力は上書きしない連番 `out/yomu_NNN_<preset>.wav`） |
 | [`tools/build_x_player.mjs`](tools/build_x_player.mjs) | 補助 | [`hitofude.mjs`](hitofude.mjs) から X Player Card / GitHub Pages 用の単一HTML（`kusanagi.html` + `kusanagi_player.html`）を直接生成（公開URL: https://poidowl.github.io/tsukinami/kusanagi.html ） |
 
 ---
