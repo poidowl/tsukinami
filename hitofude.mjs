@@ -4,7 +4,7 @@
 // 【LLM向け設計原則】
 //   音になる信号線は最初から最後まで「たった1本のホワイトノイズ x」のみを4段階で削って声と吐息にする。
 //   - 正弦波オシレータ (sin/cos 音源)・固定波形の粒スタンプ (grain)・40段オールパス位相散らし 不要
-//   - 有声/無声・子音帯・吐息はすべて同じ1本のノイズ線 x から彫る（ピッチ漂い・ジッタ・ビブラートの制御揺らぎのみ別シード乱数）
+//   - 有声/無声・子音帯・吐息はもちろん、呼気圧の漂い・ジッタ・ビブラートもすべて同じ1本のノイズ線 x からダシをとって彫る
 //   - 帯域ごとの自動利得制御 (AGC) なし → 各ノブは他の段で打ち消されずほぼ直交に効く
 //   - STFT 往復なし → 時間領域の1パス直列処理のみ
 
@@ -16,39 +16,47 @@ export const KNOB_KEYS = ["seed", "hz", "fscale", "rate", "g_vo", "tilt_w", "sig
 export const PRESETS = {
   hitofude: {
     label: "澄み",
-    description: "澄み（標準：1本のホワイトノイズから4手で彫る透明女声）",
-    seed: 2024, hz: 350.0, fscale: 1.17, rate: 1.26,
-    g_vo: 0.92, tilt_w: 5, sigh: 0.0, jitter: 0.0013, wander_st: 0.18,
+    description: "澄み（標準：フランジャー臭を断った折れ角ゼロ粘膜扉×実寸声道の明瞭キュート女声 326Hz）",
+    seed: 2024, hz: 326.0, fscale: 1.12, rate: 1.20,
+    g_vo: 0.895, damp: 0.30, shin: 1.0, tilt_w: 5, sigh: 0.0, jitter: 0.0022, wander_st: 0.16,
   },
   toiki: {
     label: "吐息",
-    description: "吐息（句末でくびれGを緩め、声が同じ1本のノイズ線の吐息へほどけて戻る女声）",
-    seed: 2024, hz: 312.0, fscale: 1.15, rate: 1.30,
-    g_vo: 0.895, tilt_w: 6, sigh: 0.78, jitter: 0.0013, wander_st: 0.18,
+    description: "吐息（本命v9：母音・子音・ハ行の明瞭度と句末吐息を両立した自然女声 292Hz）",
+    seed: 2024, hz: 292.0, fscale: 1.07, rate: 1.22,
+    g_vo: 0.885, damp: 0.32, shin: 1.0, tilt_w: 5, sigh: 0.42, jitter: 0.0024, wander_st: 0.16,
+  },
+  alto: {
+    label: "アルト",
+    description: "大人アルト（落ち着いた中低域 220Hz・句末吐息つきのハスキー女声）",
+    seed: 2024, hz: 220.0, fscale: 1.02, rate: 1.26,
+    g_vo: 0.875, damp: 0.30, shin: 1.0, tilt_w: 5, sigh: 0.55, jitter: 0.0028, wander_st: 0.16,
   },
   sasayaki: {
     label: "囁き",
-    description: "半有声囁き（浅いくびれG=0.58で倍音の谷に元のノイズの風を残す耳元ささやき）",
-    seed: 2024, hz: 305.0, fscale: 1.15, rate: 1.30,
-    g_vo: 0.58, tilt_w: 6, sigh: 0.85, jitter: 0.0018, wander_st: 0.15,
+    description: "半有声囁き（浅い扉くびれG=0.68で倍音の谷に元のノイズの風を残す耳元ささやき）",
+    seed: 2024, hz: 295.0, fscale: 1.08, rate: 1.26,
+    g_vo: 0.68, damp: 0.34, shin: 1.0, tilt_w: 6, sigh: 0.78, jitter: 0.0030, wander_st: 0.16,
   },
   chibi: {
     label: "ちびっ子",
-    description: "ちびっ子（短い声道 fscale=1.32・高ピッチ 400Hz・明るい粗削り tilt_w=4）",
-    seed: 2024, hz: 400.0, fscale: 1.32, rate: 1.20,
-    g_vo: 0.92, tilt_w: 4, sigh: 0.0, jitter: 0.0015, wander_st: 0.22,
+    description: "ちびっ子（短め声道 fscale=1.20・高ピッチ 375Hz・明るい粗削り tilt_w=4）",
+    seed: 2024, hz: 375.0, fscale: 1.20, rate: 1.18,
+    g_vo: 0.895, damp: 0.28, shin: 1.0, tilt_w: 4, sigh: 0.0, jitter: 0.0024, wander_st: 0.18,
+    pau_iki: null, // v11.0: 子ども声は読点の息で ReazonSpeech の崩れ（seed 7 が「大」1字に）が出たため v10.8 の完全無音のまま
   },
   ossan: {
     label: "おっさん",
-    description: "おっさん（長い声道 fscale=0.88・低音 148Hz）",
-    seed: 2024, hz: 148.0, fscale: 0.88, rate: 1.22,
-    g_vo: 0.93, tilt_w: 5, sigh: 0.0, jitter: 0.0016, wander_st: 0.14,
+    description: "おっさん（声門2唇粘膜扉×5極声道の再帰結合・低音 115Hz）",
+    seed: 2024, hz: 115.0, fscale: 0.85, rate: 1.32,
+    g_vo: 0.77, damp: 0.22, shin: 1.0,
+    tilt_w: 5, sigh: 0.18, jitter: 0.0060, wander_st: 0.22,
   },
   robot: {
     label: "ロボ",
-    description: "冷凍ロボット（周期ジッタ0・漂い0・強いくびれG=0.96）",
+    description: "冷凍ロボット（片道コム shin=0・周期ジッタ0・漂い0・強いくびれG=0.96）",
     seed: 2024, hz: 220.0, fscale: 1.06, rate: 1.15,
-    g_vo: 0.96, tilt_w: 4, sigh: 0.0, jitter: 0.0, wander_st: 0.0,
+    g_vo: 0.96, damp: 0.0, shin: 0.0, tilt_w: 4, sigh: 0.0, jitter: 0.0, wander_st: 0.0,
   },
 };
 
@@ -98,24 +106,21 @@ const VOICED_OBS = new Set(["g", "d", "b", "z", "j"]);
 // 日本語母音・子音の教科書テーブルと一筆彫り用の確定値
 const KOTOBA_PRM = {
   alpha: 1.15, alpha3: 1.3, T: 30, Tvc: 30, Tvv: 40, Tpal: 40, undershoot: 80, f1on: 280, f1drop: true,
-  smooth: 30, smooth_j: [30, 30, 30], fric_hold: 20, vl_hold: true, ou_long: true,
-  vdl: -4.0, vbg: 4.0, rdl: -4.0,
+  smooth: 30, ou_long: true, ei_long: true, vdl: -4.0, rdl: -4.0,
   VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [380, 1300, 2650], e: [520, 2350, 3000], o: [650, 1050, 2850] },
   LE: { lab: [0.75, 280], alv: [0.40, 1250], pal: [0.30, 1850], velF: [0.95, 300], velB: [1.05, 350] },
   gl: { y: [300, 2700, 3300], w: [360, 800, 2600] },
-  fricT: { s: [2600, 4600, 6400], z: [2600, 4600, 6400], ts: [2600, 4600, 6400], sh: [1500, 3000, 4000], j: [1500, 3000, 4000], ch: [1500, 3000, 4000] },
   nasT: { m: [280, 1100, 2500], n: [280, 1600, 2700], N: [300, 1300, 2600] },
-  vl_f1: 1000, vl_on: 0.85, vbar: 350, alvF2: 2350, alvF3: 3000,
-  cues: ["fric", "stop", "nas", "h", "r"], sc: 6000, ssd: 1300, shc: 3600, shsd: 900, fg: 2.2, fvg: 0.15, ng2: 0.15, ndl: -1.2, asp: 3, bg: 3.0,
-  r3: 2000, rtrack: true, cue_dl: true,
+  alvF2: 2350, alvF3: 3000,
+  sc: 6000, shc: 3600, fg: 2.2, fvg: 0.15, ndl: -1.2, asp: 3, bg: 3.0, r3: 2000, rtrack: true,
   rate: 1.0, fin: 1.5, pau: 0.35, qn: 0.10,
-  sil: -30.0, qlev: -18.0, decl: 1.5, f0: 220.0, devmax: 0.045, Nlev: -1.0, fend: -6.0, fend_at: 0.16,
+  sil: -30.0, qlev: -18.0, decl: 1.5, devmax: 0.045, Nlev: -1.0, fend: -6.0, fend_at: 0.16,
   CDUR: { "": 0, k: 70, g: 50, s: 100, z: 70, sh: 100, j: 70, t: 60, d: 40, ch: 80, ts: 80, n: 50, h: 70, f: 70, m: 50, y: 60, r: 25, w: 55, b: 40, p: 70 },
   VDUR: { a: 90, e: 90, i: 80, o: 90, u: 85 },
   VL: { a: 0.0, e: -0.5, i: -0.8, o: -0.3, u: -0.3 },
   CL: {
     k: [-12, -5], t: [-12, -5], p: [-12, -5], ch: [-12, -4], ts: [-12, -4], g: [-4, -2], d: [-4, -2], b: [-4, -2],
-    s: [-3, -3], sh: [-3, -3], z: [-3, -2], j: [-3, -2], h: [-5, -4], f: [-5, -4], m: [-1.5, -1.5], n: [-1.5, -1.5],
+    s: [-3, -3], sh: [-3, -3], z: [-3, -2], j: [-3, -2], h: [-2.4, -1.6], f: [-2.4, -1.6], m: [-1.5, -1.5], n: [-1.5, -1.5],
     r: [-1.0, -1.0], w: [-0.5, -0.5], y: [-0.5, -0.5],
   },
   TAILT: { "stop-vl": -6.0, Q: -6.0, "fric-vl": -1.0, "h-vl": -1.0, stop: -2.0 },
@@ -188,18 +193,16 @@ function fi(s) { return Math.round((s * 1000) / FP); }
 function linspace(a, b, k) {
   if (k <= 0) return [];
   if (k === 1) return [a];
-  const st = (b - a) / (k - 1);
-  const out = new Array(k);
+  const st = (b - a) / (k - 1), out = new Array(k);
   for (let i = 0; i < k; i++) out[i] = a + i * st;
   out[k - 1] = b;
   return out;
 }
 
 function clampSlice(n, a, b) {
-  let s = a == null ? 0 : (a < 0 ? Math.max(0, n + a) : Math.min(n, a));
-  let e = b == null ? n : (b < 0 ? Math.max(0, n + b) : Math.min(n, b));
-  if (e < s) e = s;
-  return [s, e];
+  const s = a == null ? 0 : (a < 0 ? Math.max(0, n + a) : Math.min(n, a));
+  const e = b == null ? n : (b < 0 ? Math.max(0, n + b) : Math.min(n, b));
+  return [s, e < s ? s : e];
 }
 
 function setslice(L, a, b, vals) {
@@ -211,43 +214,28 @@ function setslice(L, a, b, vals) {
   }
 }
 
-function bisectRight(xp, v) {
-  let lo = 0, hi = xp.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (v < xp[mid]) hi = mid; else lo = mid + 1;
-  }
-  return lo;
-}
-
 function interp(x, xp, fp) {
   const n = x.length;
   if (!xp.length) return new Array(n).fill(0.0);
-  const out = new Array(n);
-  const last = xp.length - 1;
+  const out = new Array(n), last = xp.length - 1;
+  let j = 0;
   for (let i = 0; i < n; i++) {
     const v = x[i];
     if (v < xp[0]) { out[i] = fp[0]; continue; }
     if (v >= xp[last]) { out[i] = fp[last]; continue; }
-    const j = bisectRight(xp, v) - 1;
-    if (v === xp[j]) { out[i] = fp[j]; continue; }
-    out[i] = fp[j] + ((fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j])) * (v - xp[j]);
+    while (j + 1 <= last && xp[j + 1] <= v) j++;
+    out[i] = v === xp[j] ? fp[j] : fp[j] + ((fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j])) * (v - xp[j]);
   }
   return out;
 }
 
 export function smooth1(x, ms) {
-  const k = Math.max(1, Math.trunc(ms / FP));
-  const n = x.length;
+  const k = Math.max(1, Math.trunc(ms / FP)), n = x.length;
   if (k <= 1 || n === 0) return Array.from(x);
-  const N = n + 2 * k;
-  const a = new Float64Array(N);
-  for (let i = 0; i < k; i++) a[i] = x[0];
+  const N = n + 2 * k, a = new Float64Array(N);
+  for (let i = 0; i < k; i++) { a[i] = x[0]; a[k + n + i] = x[n - 1]; }
   for (let i = 0; i < n; i++) a[k + i] = x[i];
-  for (let i = 0; i < k; i++) a[k + n + i] = x[n - 1];
-  const off = Math.floor((k - 1) / 2);
-  const out = new Array(n);
-  const inv = 1.0 / k;
+  const off = Math.floor((k - 1) / 2), out = new Array(n), inv = 1.0 / k;
   for (let i = 0; i < n; i++) {
     const j = i + k + off;
     let s = 0.0;
@@ -263,7 +251,7 @@ export function smooth1(x, ms) {
 export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   const P = Object.assign({}, KOTOBA_PRM, params || {});
   const { ms, cuts } = tokenizeKana(text, P.phraseCuts || null);
-  // 読点「、」および空白・スラッシュ句切れごとにチャンク分けし、句末助詞「は→ワ」と「おう→おー」を適用
+  // 読点「、」および空白・スラッシュ句切れごとにチャンク分けし、句末助詞「は→ワ」と「おう→おー」「えい→えー」を適用
   const chunks = [];
   let curChunk = [], mOrd = 0;
   for (let j = 0; j < ms.length; j++) {
@@ -271,10 +259,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       if (curChunk.length) { chunks.push(curChunk); curChunk = []; }
       continue;
     }
-    if (cuts.has(mOrd) && curChunk.length) {
-      chunks.push(curChunk);
-      curChunk = [];
-    }
+    if (cuts.has(mOrd) && curChunk.length) { chunks.push(curChunk); curChunk = []; }
     curChunk.push(j);
     mOrd++;
   }
@@ -291,11 +276,9 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     if (P.ou_long) {
       let pv = null;
       for (let k = 0; k < idxs.length; k++) {
-        const idx = idxs[k];
-        const t = ms[idx];
+        const idx = idxs[k], t = ms[idx];
         if (t === "ウ" && pv === "o") {
-          const prev = k > 0 ? ms[idxs[k - 1]] : "";
-          const prev2 = k > 1 ? ms[idxs[k - 2]] : "";
+          const prev = k > 0 ? ms[idxs[k - 1]] : "", prev2 = k > 1 ? ms[idxs[k - 2]] : "";
           const tail = idxs.slice(k).map((i) => ms[i]).join("");
           const blocked = prev === "ヲ" || (k >= 2 && (
             (prev === "ノ" && (NO_TO_MO_U_RE.test(tail) || NO_ONLY_U_RE.test(tail))) ||
@@ -313,36 +296,32 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   const ml = [];
   let pv = "a";
   for (let j = 0; j < ms.length; j++) {
-    const t = ms[j];
-    const fin = (j + 1 === ms.length) || (ms[j + 1] === "、");
-    const q = { t, cd: 0.0, vd: 0.0, p: 0.0, final: fin, dev: false };
+    const t = ms[j], fin = (j + 1 === ms.length) || (ms[j + 1] === "、");
     if (t === "、" || t === "ッ" || t === "ン") {
-      Object.assign(q, { kind: t === "、" ? "pau" : (t === "ッ" ? "Q" : "N"), c: "", v: null, pal: false });
+      ml.push({ t, cd: 0.0, vd: 0.0, final: fin, dev: false, kind: t === "、" ? "pau" : (t === "ッ" ? "Q" : "N"), c: "", v: null, pal: false });
     } else {
       const [c, v, pal] = parseKana(t, pv);
       pv = v;
-      Object.assign(q, { kind: "CV", c, v, pal });
+      ml.push({ t, cd: 0.0, vd: 0.0, final: fin, dev: false, kind: "CV", c, v, pal });
     }
-    ml.push(q);
   }
   for (let j = 0; j < ml.length; j++) {
     const q = ml[j];
     if (q.kind !== "CV") continue;
     const nx = j + 1 < ml.length ? ml[j + 1] : null;
     const nvl = nx !== null && ((nx.kind === "CV" && VOICELESS.has(nx.c)) || nx.kind === "Q");
-    q.dev = (q.v === "i" || q.v === "u") && VOICELESS.has(q.c) && (nvl || (q.final && q.c === "s"));
+    q.dev = !P.no_dev && (q.v === "i" || q.v === "u") && VOICELESS.has(q.c) && (nvl || (q.final && q.c === "s"));
   }
   // 拍ごとの子音長 cd / 母音長 vd
-  const cd_s = P.cd_s !== undefined ? P.cd_s : 1.0;
-  const vd_s = P.vd_s !== undefined ? P.vd_s : 1.0;
+  const cd_s = P.cd_s ?? 1.0, vd_s = P.vd_s ?? 1.0;
   for (const q of ml) {
     if (q.kind === "pau") { q.cd = 0.0; q.vd = P.pau; continue; }
     if (q.kind === "Q" || q.kind === "N") { q.cd = 0.0; q.vd = P.qn * ((q.final && q.kind === "Q") ? 1.3 : 1.0); continue; }
-    let c = (P.CDUR[q.c] / 1000) * P.rate * cd_s;
     let v = (P.VDUR[q.v] / 1000) * P.rate * vd_s;
     if (q.dev) v = Math.min(v, P.devmax);
     if (q.final) v *= P.fin;
-    q.cd = c; q.vd = v;
+    q.cd = (P.CDUR[q.c] / 1000) * P.rate * cd_s;
+    q.vd = v;
   }
   if (P.vd_ms) {
     let k = 0;
@@ -358,8 +337,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   for (const q of ml) {
     const a = tt, b = a + q.cd, e = b + q.vd;
     tt = e;
-    const s = Object.assign({}, q, { a, b: q.kind === "Q" ? e : ((q.kind === "N" || q.kind === "pau") ? a : b), e });
-    seq.push(s);
+    seq.push(Object.assign({}, q, { a, b: q.kind === "Q" ? e : ((q.kind === "N" || q.kind === "pau") ? a : b), e }));
   }
   const n = fi(tt + post) + 1;
 
@@ -378,9 +356,8 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     }
     let f1 = V[0];
     if (P.f1drop) {
-      if (["p", "t", "k", "ch", "ts"].includes(c)) f1 = P.vl_on * V[0];
-      else if (["stop", "nas", "tap"].includes(mn)) f1 = Math.min(V[0], P.f1on * al);
-      else if (mn === "fric") f1 = Math.min(V[0], (P.f1on + 100) * al);
+      if (["stop", "nas", "tap", "affr"].includes(mn)) f1 = Math.min(V[0], P.f1on * al);
+      else if (mn === "fric") f1 = Math.min(V[0], (P.f1on + 80) * al);
     }
     let f3 = V[2];
     if (pl === "lab") f3 = V[2] - 250 * al3;
@@ -396,12 +373,11 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
   };
   const body = (c, V, v, O) => {
     const mn = MANNER[c];
-    if (P.fricT[c]) return P.fricT[c].slice();
-    if (c === "f") return O;
+    if (mn === "fric" || mn === "affr") return c === "f" ? O : [Math.min(V[0], 300 * al), O[1], O[2]];
     if (mn === "stop") {
       const B = O.slice();
       if (PLACE[c] === "alv") { B[1] = P.alvF2 * al; B[2] = Math.max(O[2], P.alvF3 * al3); }
-      B[0] = (c === "p" || c === "t" || c === "k") ? P.vl_f1 * al : P.vbar * al;
+      B[0] = Math.min(V[0], 260 * al);
       return B;
     }
     if (mn === "nas") {
@@ -409,7 +385,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       if (c === "n" && v === "i") B[1] = 2200 * al;
       return B;
     }
-    if (mn === "h") return [Math.max(V[0], 1100 * al), V[1], V[2]];
+    if (mn === "h") return V.slice();
     if (c === "r" && P.rtrack) return [350.0 * al, 1500.0 * al, P.r3];
     return O;
   };
@@ -445,27 +421,17 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     }
     if (c) {
       const O = onset(c, V, v, s.pal), B = body(c, V, v, O);
-      const fh = Boolean(P.fric_hold) && (Boolean(P.fricT[c]) || (Boolean(P.vl_hold) && VOICELESS.has(c)));
-      if (!first && s.b > s.a && !fh) kp.push([s.a, ...B]);
-      kp.push([s.a + (fh ? Math.min(P.fric_hold / 1000 + 0.01, (s.b - s.a) * 0.4) : Math.min(P.Tvc / 1000, (s.b - s.a) * 0.5)), ...B]);
-      if (fh) {
-        kp.push([Math.max(s.b - P.fric_hold / 1000 - 0.01, s.a), ...B]);
-        kp.push([Math.max(s.b - P.fric_hold / 1000, s.a), ...V]);
-      } else {
-        kp.push([Math.max(s.b - 0.005, s.a), ...B]);
-        kp.push([s.b, ...O]);
-        const Tt = (P.T + ((s.pal || MANNER[c] === "glide") ? P.Tpal : 0)) / 1000;
-        kp.push([Math.min(s.b + Tt, s.e), ...V]);
-      }
+      if (!first && s.b > s.a) kp.push([s.a, ...B]);
+      kp.push([s.a + Math.min(P.Tvc / 1000, (s.b - s.a) * 0.5), ...B]);
+      kp.push([Math.max(s.b - 0.005, s.a), ...B]);
+      kp.push([s.b, ...O]);
+      const Tt = (P.T + ((s.pal || MANNER[c] === "glide") ? P.Tpal : 0)) / 1000;
+      kp.push([Math.min(s.b + Tt, s.e), ...V]);
     } else {
       kp.push([s.a + P.Tvv / 2000, ...V]);
     }
     const nxc = (j + 1 < seq.length && seq[j + 1].kind === "CV" && seq[j + 1].c) ? seq[j + 1].c : "";
-    if (P.fric_hold && nxc && (P.fricT[nxc] || (P.vl_hold && VOICELESS.has(nxc)))) {
-      kp.push([s.e + P.fric_hold / 1000, ...V]);
-    } else {
-      kp.push([s.e - (nxc ? P.Tvc / 1000 : P.Tvv / 2000), ...V]);
-    }
+    kp.push([s.e - (nxc ? P.Tvc / 1000 : P.Tvv / 2000), ...V]);
     cur = V.slice();
     first = false;
   }
@@ -477,62 +443,54 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     const tfr = new Array(n);
     for (let i = 0; i < n; i++) tfr[i] = (i * FP) / 1000;
     const xp = kp.map((q) => q[0]);
-    const smj = P.smooth_j || [P.smooth, P.smooth, P.smooth];
-    Tr = [0, 1, 2].map((j) => smooth1(interp(tfr, xp, kp.map((q) => q[j + 1])), smj[j]));
+    Tr = [0, 1, 2].map((j) => smooth1(interp(tfr, xp, kp.map((q) => q[j + 1])), P.smooth));
   }
 
-  // 子音ノイズ帯域 bands とフォルマント減衰 G1..G3 / 閉鎖減衰 dl
-  const G = [new Array(n).fill(1.0), new Array(n).fill(1.0), new Array(n).fill(1.0)];
+  // 子音ノイズ帯域 bands と声道ゲート G1 / 閉鎖減衰 dl
+  const G1 = new Array(n).fill(1.0);
   const dl = new Array(n).fill(0.0);
   const rawBands = [];
-  const gset = (a, b, vals) => { for (let j = 0; j < 3; j++) setslice(G[j], a, b, vals[j]); };
-  const gmul = (a, b, f) => {
-    const [s0, e0] = clampSlice(n, a, b);
-    for (let j = 0; j < 3; j++) for (let i = s0; i < e0; i++) G[j][i] *= f;
-  };
   for (const s of seq) {
     const i0 = fi(s.a), ib = fi(s.b), ie = fi(s.e);
     if (s.kind === "Q") { setslice(dl, i0, ie, -6); continue; }
-    if (s.kind === "N") { gset(i0, ie, [0.87, P.ng2, 0.5]); setslice(dl, i0, ie, P.ndl); continue; }
+    if (s.kind === "N") { setslice(G1, i0, ie, 0.87); setslice(dl, i0, ie, P.ndl); continue; }
     if (s.kind !== "CV" || ib <= i0) continue;
     const c = s.c, v = s.v, nc = ib - i0;
-    if (c === "m" || c === "n") { gset(i0, ib, [0.87, P.ng2, 0.5]); setslice(dl, i0, ib, P.ndl); }
+    if (c === "m" || c === "n") { setslice(G1, i0, ib, 0.87); setslice(dl, i0, ib, P.ndl); }
     const fp_ = ["s", "z", "sh", "j"].includes(c) ? [i0, ib] : ((c === "ch" || c === "ts") ? [i0 + Math.floor(nc / 2), ib] : null);
     if (fp_) {
-      const [cen, sd] = ["s", "z", "ts"].includes(c) ? [P.sc, P.ssd] : [P.shc, P.shsd];
-      rawBands.push([fp_[0], fp_[1], cen, sd, P.fg + cen / 2500.0]);
-      gmul(fp_[0], fp_[1], VOICED_OBS.has(c) ? 0.45 : P.fvg);
+      const cen = ["s", "z", "ts"].includes(c) ? P.sc : P.shc;
+      rawBands.push([fp_[0], fp_[1], cen, P.fg + cen / 2500.0]);
+      const [s0, e0] = clampSlice(n, fp_[0], fp_[1]), gm = VOICED_OBS.has(c) ? 0.45 : P.fvg;
+      for (let i = s0; i < e0; i++) G1[i] *= gm;
     }
     if (c === "h" || c === "f") {
-      setslice(G[0], i0, ib, 0.4); setslice(G[1], i0, ib, 0.9); setslice(G[2], i0, ib, 0.9);
-      if (v === "i" && c === "h") rawBands.push([i0, ib, 3500, 700, 1.0 + 3500 / 2500.0]);
+      setslice(G1, i0, ib, 0.4);
+      if (v === "i" && c === "h") rawBands.push([i0, ib, 3400, 2.0]);
+      else if (c === "f") rawBands.push([i0, ib, 1750, 1.08]);
+      else rawBands.push([i0, ib, Math.round(vt(s)[1]), 1.25]);
     }
     if (["k", "g", "t", "d", "p", "b", "ch", "ts"].includes(c)) {
       const ce = i0 + ((c === "ch" || c === "ts") ? Math.floor(nc / 2) : Math.max(1, nc - P.asp));
-      if (VOICED_OBS.has(c)) { gset(i0, ce, [0.8, 0.05, 0.05]); setslice(dl, i0, ce, P.vdl); }
+      if (VOICED_OBS.has(c)) { setslice(G1, i0, ce, 0.8); setslice(dl, i0, ce, P.vdl); }
       else setslice(dl, i0, ce, -6);
-      const [cen, sd] = (c === "k" || c === "g") ? [((v === "i" || v === "e") ? 3000 : 1900), 500]
-        : (["t", "d", "ch", "ts"].includes(c) ? [4500, 1000] : [1200, 900]);
-      const bg = VOICED_OBS.has(c) ? P.vbg : P.bg;
-      rawBands.push([ce, Math.min(ce + 2, ib + 1), cen, sd, bg + cen / 2500.0]);
-      if (c !== "ch" && c !== "ts") gset(ce, ib, VOICED_OBS.has(c) ? [1, 1, 1] : [0.4, 1, 1]);
+      const cen = (c === "k" || c === "g") ? ((v === "i" || v === "e") ? 3000 : 1900)
+        : (["t", "d", "ch", "ts"].includes(c) ? 4500 : 1200);
+      if (!VOICED_OBS.has(c)) rawBands.push([ce, Math.min(ce + 2, ib + 1), cen, P.bg + cen / 2500.0]);
+      if (c !== "ch" && c !== "ts") setslice(G1, ce, ib, VOICED_OBS.has(c) ? 1 : 0.4);
     }
     if (c === "r") setslice(dl, i0, ib, P.rdl);
   }
-  const Gs = G.map((g) => smooth1(g, 10));
-  const dls = smooth1(dl, 10);
 
   // 音量対数曲線 loud と有声フラグ voiced
   const nxcls = (nx) => {
     if (!nx || nx.kind === "pau") return "end";
     if (nx.kind !== "CV") return nx.kind;
-    if (!nx.c) return "V";
-    return MANNER[nx.c] + (VOICELESS.has(nx.c) ? "-vl" : "");
+    return nx.c ? MANNER[nx.c] + (VOICELESS.has(nx.c) ? "-vl" : "") : "V";
   };
   let L = new Array(n).fill(P.sil);
   for (let j = 0; j < seq.length; j++) {
-    const s = seq[j];
-    const ia = fi(s.a), ib = fi(s.a + s.cd), ie = fi(s.e);
+    const s = seq[j], ia = fi(s.a), ib = fi(s.a + s.cd), ie = fi(s.e);
     const nx = j + 1 < seq.length ? seq[j + 1] : null;
     if (s.kind === "pau") continue;
     if (s.kind === "Q") { setslice(L, ia, ie, P.qlev); continue; }
@@ -540,8 +498,7 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       setslice(L, ia, ie, P.Nlev);
     } else {
       if (P.CL[s.c] && ib > ia) {
-        const [c1, c2] = P.CL[s.c];
-        const im = ia + Math.trunc(0.7 * (ib - ia));
+        const [c1, c2] = P.CL[s.c], im = ia + Math.trunc(0.7 * (ib - ia));
         setslice(L, ia, im, c1);
         setslice(L, im, ib, c2);
       }
@@ -552,20 +509,15 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
         setslice(L, ib, ib + k, linspace(lv + P.HEAD0[s.c], lv, k));
       } else {
         const k = Math.min(3, ie - ib);
-        if (k > 0) {
-          const st = ib > 0 ? L[ib - 1] : P.sil;
-          setslice(L, ib, ib + k, linspace(Math.min(st, lv - 3), lv, k));
-        }
+        if (k > 0) setslice(L, ib, ib + k, linspace(Math.min(ib > 0 ? L[ib - 1] : P.sil, lv - 3), lv, k));
       }
     }
     const cls = nxcls(nx);
     if (cls === "end") {
-      const k = s.kind === "CV" ? (ie - ib) : (ie - ia);
-      const h = Math.trunc(k * P.fend_at);
+      const k = s.kind === "CV" ? (ie - ib) : (ie - ia), h = Math.trunc(k * P.fend_at);
       if (k - h > 0) setslice(L, ie - k + h, ie, linspace(L[ie - k + h], P.fend, k - h));
     } else if (P.TAILT[cls] !== undefined) {
-      const lv = L[ie - 1];
-      const k = Math.min(12, ie - ib);
+      const lv = L[ie - 1], k = Math.min(12, ie - ib);
       setslice(L, ie - k, ie, linspace(lv, lv + P.TAILT[cls] * 1.5, k));
     }
   }
@@ -578,18 +530,16 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
 
   const vo = new Array(n).fill(false);
   for (const s of seq) {
-    const a = s.a, b = s.a + s.cd, e = s.e;
     if (s.kind === "pau" || s.kind === "Q") continue;
-    if (s.kind === "N" || !VOICELESS.has(s.c)) setslice(vo, fi(a), fi(b), true);
-    if (!s.dev) setslice(vo, fi(b), fi(e), true);
+    if (s.kind === "N" || !VOICELESS.has(s.c)) setslice(vo, fi(s.a), fi(s.a + s.cd), true);
+    if (!s.dev) setslice(vo, fi(s.a + s.cd), fi(s.e), true);
   }
 
   return {
     fp_ms: FP, n,
     F1: Tr[0], F2: Tr[1], F3: Tr[2],
-    G1: Gs[0], G2: Gs[1], G3: Gs[2],
-    dl: dls, loud, voiced: vo,
-    bands: rawBands.map(([a, b, c, d, g]) => [(a * FP) / 1000, (b * FP) / 1000, c, d, g]),
+    G1: smooth1(G1, 10), dl: smooth1(dl, 10), loud, voiced: vo,
+    bands: rawBands.map(([a, b, c, g]) => [(a * FP) / 1000, (b * FP) / 1000, c, g]),
     moras: seq.map((s) => ({ t: s.t, kind: s.kind, c: s.c, v: s.v, a: s.a, b: s.b, e: s.e })),
   };
 }
@@ -599,10 +549,9 @@ export function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
 // ============================================================================
 const SPECIAL = new Set(["ン", "ッ", "ー"]);
 const PART = new Set(Array.from("モニガヲデヘテ"));
-const SMALL_SET = new Set(Array.from("ャュョァィゥェォ"));
 const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
 
-export const ACCENT_NORMAL = { reg: 340.0, rng: 8.0, jump: 4.0, fall: 5.0, sag: 1.0, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.5, reset: 0.6, decl: 1.2, fin: 3.0, qrise: 5.0, sm: 35.0 };
+export const ACCENT_NORMAL = { reg: 340.0, rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.5, reset: 0.6, decl: 1.4, fin: 2.6, qrise: 5.0, sm: 35.0 };
 export const ACCENT_CUTE = { reg: 410.0, rng: 10.0, jump: 5.6, fall: 6.0, sag: 1.2, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.4, reset: 0.7, decl: 1.0, fin: 2.0, qrise: 6.0, sm: 30.0 };
 
 function splitMarked(text) {
@@ -617,7 +566,7 @@ function splitMarked(text) {
     } else if (PAUSE.has(ch)) {
       if (out.length && out[out.length - 1] === "/") out[out.length - 1] = "、";
       else if (out.length && out[out.length - 1] !== "、" && out[out.length - 1] !== "?") out.push("、");
-    } else if (SMALL_SET.has(ch) && out.length && !["、", "ッ", "ン", "ー", "'", "/"].includes(out[out.length - 1])) {
+    } else if (SMALL[ch] && out.length && !["、", "ッ", "ン", "ー", "'", "/"].includes(out[out.length - 1])) {
       out[out.length - 1] += ch;
     } else {
       out.push(ch);
@@ -649,12 +598,12 @@ export function annotate(text) {
   return [clean.join(""), phr];
 }
 
-function guessPhrases(moras, accent = "ante", split = false, minlen = 3) {
-  let ts = typeof moras === "string" ? splitMarked(moras) : moras.map((m) => (typeof m === "object" ? m.t : m));
-  ts = ts.filter((t) => t !== "'" && t !== "/");
+function guessPhrases(moras) {
   const chunks = [], qs = [];
   let cur = [];
-  for (const t of ts) {
+  for (const m of moras) {
+    const t = typeof m === "object" ? m.t : m;
+    if (t === "'" || t === "/") continue;
     if (t === "、" || t === "?") {
       if (cur.length) { chunks.push(cur); qs.push(t === "?"); cur = []; }
       else if (t === "?" && qs.length) qs[qs.length - 1] = true;
@@ -664,40 +613,18 @@ function guessPhrases(moras, accent = "ante", split = false, minlen = 3) {
   const phr = [];
   let k = 0;
   for (let ci = 0; ci < chunks.length; ci++) {
-    const ch = chunks[ci], isq = qs[ci];
-    const cuts = [];
-    let s = 0;
-    if (split) {
-      for (let j = 0; j < ch.length; j++) {
-        if (PART.has(ch[j]) && (j + 1 - s) >= minlen && (ch.length - (j + 1)) >= minlen && (j + 1 >= ch.length || !SPECIAL.has(ch[j + 1]))) {
-          cuts.push(j + 1); s = j + 1;
-        }
-      }
-    }
-    const bounds = [0, ...cuts, ch.length];
-    for (let bi = 0; bi < bounds.length - 1; bi++) {
-      const a = bounds[bi], b = bounds[bi + 1];
-      const L = b - a, seg = ch.slice(a, b);
-      const endedByPart = cuts.includes(b) || (PART.has(seg[seg.length - 1]) && L > 2);
-      let acc = 0;
-      if (accent === "ante") {
-        const W = L - (endedByPart ? 1 : 0);
-        acc = W >= 3 ? Math.max(1, W - 2) : 1;
-        while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
-      } else if (accent === "mixed") {
-        acc = L <= 2 ? 1 : 0;
-      }
-      phr.push([k + a, L, acc, (isq && b === ch.length) ? 1 : 0]);
-    }
-    k += ch.length;
+    const seg = chunks[ci], L = seg.length;
+    const W = L - ((PART.has(seg[L - 1]) && L > 2) ? 1 : 0);
+    let acc = W >= 3 ? Math.max(1, W - 2) : 1;
+    while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
+    phr.push([k, L, acc, qs[ci] ? 1 : 0]);
+    k += L;
   }
   return phr;
 }
 
 function heavy(m1, m2) {
-  if (SPECIAL.has(m2.t)) return true;
-  const v = m1.v;
-  return v != null && (LONGV[v] || "").includes(m2.t);
+  return SPECIAL.has(m2.t) || (m1.v != null && (LONGV[m1.v] || "").includes(m2.t));
 }
 
 function smoothTri(x, k) {
@@ -705,13 +632,11 @@ function smoothTri(x, k) {
   let cur = x.slice();
   for (let p = 0; p < 2; p++) {
     const hl = p === 0 ? Math.floor(k / 2) : (k - 1 - Math.floor(k / 2));
-    const hr = k - 1 - hl;
-    const n = cur.length;
-    const pad = new Float64Array(hl + n + hr);
+    const hr = k - 1 - hl, n = cur.length;
+    const pad = new Float64Array(hl + n + hr), c = new Float64Array(pad.length + 1);
     for (let i = 0; i < hl; i++) pad[i] = cur[0];
     for (let i = 0; i < n; i++) pad[hl + i] = cur[i];
     for (let i = 0; i < hr; i++) pad[hl + n + i] = cur[n - 1];
-    const c = new Float64Array(pad.length + 1);
     for (let i = 0; i < pad.length; i++) c[i + 1] = c[i] + pad[i];
     const nx = new Array(n);
     for (let i = 0; i < n; i++) nx[i] = (c[i + k] - c[i]) / k;
@@ -722,21 +647,17 @@ function smoothTri(x, k) {
 
 export function f0Rule(moras, n, opts = {}) {
   const {
-    phrases: inPhr = null, accent = "ante", question = false, reg = 340.0, rng = 8.0, jump = 4.0, fall = 5.0,
+    phrases: inPhr = null, question = false, reg = 340.0, rng = 8.0, jump = 4.0, fall = 5.0,
     sag = 1.0, lag = 1.0, rlag = 0.5, ds = 2.0, ds_h = 0.5, reset = 0.6, decl = 1.2, fin = 2.5, qrise = 5.0,
     sm = 35.0, fp_ms = 5.0, fit_range = true,
   } = opts;
   const ml = moras.slice();
   let phrases;
   if (!inPhr) {
-    phrases = guessPhrases(ml, accent);
+    phrases = guessPhrases(ml);
   } else {
     const nonPau = ml.filter((m) => m.kind !== "pau").map((m) => m.t);
-    phrases = inPhr.map((p) => {
-      if (p[2] !== null && p[2] !== undefined) return p.slice();
-      const g = guessPhrases(nonPau.slice(p[0], p[0] + p[1]), accent, false)[0][2];
-      return [p[0], p[1], g, ...p.slice(3)];
-    });
+    phrases = inPhr.map((p) => (p[2] != null ? p.slice() : [p[0], p[1], guessPhrases(nonPau.slice(p[0], p[0] + p[1]))[0][2], ...p.slice(3)]));
   }
   const idx = [];
   for (let j = 0; j < ml.length; j++) if (ml[j].kind !== "pau") idx.push(j);
@@ -878,14 +799,15 @@ function karuku(x, w) {
   return out;
 }
 
-// ピッチのゆっくりした自然な漂い（平滑化ランダムウォーク）
-function furafura(n, rng, d0, haba, osoi) {
+// 原石ホワイトノイズからダシをとるゆっくりした自然な漂い（平滑化ランダムウォーク）
+function furafura(src, d0, haba, osoi) {
+  const n = src.length;
   const out = new Float64Array(n);
   if (haba === 0.0) { out.fill(d0); return out; }
   let v = 0.0;
   const walk = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    v = (v + rng.uniform(-1.0, 1.0)) * 0.9995;
+    v = (v + src[i]) * 0.9995;
     walk[i] = v;
   }
   const sm = arakezuri(walk, Math.max(1, Math.trunc(osoi * SR)), 2);
@@ -904,184 +826,65 @@ function furafura(n, rng, d0, haba, osoi) {
   return out;
 }
 
-// 注意: ensureScratch の作業配列 (_cs, _tmp, _D, _wHi) は heikin/ffbb/yamaBp 内で共有するため入れ子呼び出し禁止
-let _cs = new Float64Array(0), _tmp = new Float64Array(0), _D = new Float64Array(0), _wHi = new Float64Array(0);
-function ensureScratch(n) {
-  if (_cs.length < n + 1) {
-    _cs = new Float64Array(n + 1);
-    _tmp = new Float64Array(n);
-    _D = new Float64Array(n);
-    _wHi = new Float64Array(n);
-  }
-}
+let _cs = new Float64Array(0);
 
 // 前後に位相ずれのない中心移動平均（累積和で O(N)）
 function heikin(x, W, out = null) {
-  const n = x.length;
-  ensureScratch(n);
-  const cs = _cs;
+  const n = x.length, h = Math.max(1, Math.trunc(W / 2));
+  if (_cs.length < n + 1) _cs = new Float64Array(n + 1);
+  const cs = _cs, y = out || new Float64Array(n);
   cs[0] = 0.0;
   for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + x[i];
-  const y = out || new Float64Array(n);
-  if (typeof W === "number") {
-    const h = Math.max(1, Math.trunc(W / 2));
-    for (let i = 0; i < n; i++) {
-      const a = i - h > 0 ? i - h : 0;
-      const b = i + h + 1 < n ? i + h + 1 : n;
-      y[i] = (cs[b] - cs[a]) / (b - a);
-    }
-  } else {
-    for (let i = 0; i < n; i++) {
-      const h = Math.max(1, Math.trunc(W[i] / 2));
-      const a = i - h > 0 ? i - h : 0;
-      const b = i + h + 1 < n ? i + h + 1 : n;
-      y[i] = (cs[b] - cs[a]) / (b - a);
-    }
+  for (let i = 0; i < n; i++) {
+    const a = i - h > 0 ? i - h : 0, b = i + h + 1 < n ? i + h + 1 : n;
+    y[i] = (cs[b] - cs[a]) / (b - a);
   }
   return y;
 }
 
-// 半周期 D 前の自分を反転フィードバックして奇数倍音 (SR / 2D) を立てる
-function combHalf(x, D, g, out = null) {
-  const n = x.length;
-  const y = out || new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    const d = D[i];
-    const k = Math.trunc(d);
-    const fr = d - k;
-    const a = i - k, b = a - 1;
-    y[i] = x[i] - g * (b >= 0 ? (y[a] * (1.0 - fr) + y[b] * fr) : 0.0);
+// 3次ラグランジュ補間による非整数サンプル遅延読み出し
+function readDelay(buf, i, p) {
+  const k = Math.trunc(p), u = p - k, i0 = i - k;
+  if (i0 - 2 >= 0 && i0 + 1 < i) {
+    return (
+      (-u * (u - 1.0) * (u - 2.0) / 6.0) * buf[i0 + 1]
+      + ((u + 1.0) * (u - 1.0) * (u - 2.0) / 2.0) * buf[i0]
+      - ((u + 1.0) * u * (u - 2.0) / 2.0) * buf[i0 - 1]
+      + ((u + 1.0) * u * (u - 1.0) / 6.0) * buf[i0 - 2]
+    );
   }
-  return y;
-}
-
-// 前後双方向コムフィルタ（ゼロ位相共振）
-function ffbb(x, D, g) {
-  const n = x.length;
-  ensureScratch(n);
-  const y1 = combHalf(x, D, g, _tmp);
-  const out = new Float64Array(n);
-  for (let j = n - 1; j >= 0; j--) {
-    const d = D[j];
-    const k = Math.trunc(d);
-    const fr = d - k;
-    const a = j + k, b = a + 1;
-    out[j] = y1[j] - g * (b < n ? (out[a] * (1.0 - fr) + out[b] * fr) : 0.0);
-  }
-  return out;
-}
-
-// 受動フォルマント帯域通過：周波数 F[i] Hz の山1つだけを残し、上下の裾を引き算で削る
-function yamaBp(x, F, g = 0.7, pLow = 3, pHigh = 2) {
-  const n = x.length;
-  ensureScratch(n);
-  const D = _D, wHi = _wHi;
-  for (let i = 0; i < n; i++) {
-    const fc = F[i] / 0.95;
-    D[i] = SR / (2.0 * fc);
-    wHi[i] = (2.0 * SR) / fc;
-  }
-  const bp = ffbb(x, D, g);
-  let norm = (1.0 - g) * (1.0 - g);
-  for (let p = 0; p < pLow; p++) {
-    heikin(bp, D, bp);
-    norm /= 0.6366;
-  }
-  for (let p = 0; p < pHigh; p++) {
-    heikin(bp, wHi, _tmp);
-    for (let i = 0; i < n; i++) bp[i] -= _tmp[i];
-  }
-  for (let i = 0; i < n; i++) bp[i] *= norm;
-  return bp;
-}
-
-// 因果2極声道共振器（直列カスケード用、DCゲイン=1、高域は Q <= qMax で自然に帯域幅を広げる）
-function resonator2Pole(x, F, bwMin, qMax = 12.0) {
-  const n = x.length;
-  const y = new Float64Array(n);
-  const k = (2.0 * Math.PI) / SR;
-  const piOverSR = Math.PI / SR;
-  let y1 = 0.0, y2 = 0.0;
-  for (let i = 0; i < n; i++) {
-    const f = F[i];
-    const bw = Math.max(bwMin, f / qMax);
-    const r = Math.exp(-piOverSR * bw);
-    const c = -r * r;
-    const b = 2.0 * r * Math.cos(k * f);
-    const a = 1.0 - b - c;
-    const yi = a * x[i] + b * y1 + c * y2;
-    y[i] = yi;
-    y2 = y1;
-    y1 = yi;
-  }
-  return y;
-}
-
-// 引き算①（音源くびれ）：周期 PER[i] と食い違う倍音間の谷を3次ラグランジュ補間コムで削る
-// 入力に sqrt(1 - g^2) を掛けるためエネルギーが発散せず、G[i]=0 では同じノイズ線を素通しする
-// damp > 0 のときはフィードバック帰還路に1極ローパス平滑を混ぜ、高域ほど自然に元のノイズの息を残す
-export function combPeriod(x, PER, G, damp = 0.0) {
-  const n = x.length;
-  const y = new Float64Array(n);
-  let lp = 0.0;
-  for (let i = 0; i < n; i++) {
-    const g = G[i];
-    if (g <= 1e-4) { y[i] = x[i]; lp = x[i]; continue; }
-    const cIn = Math.sqrt(1.0 - g * g);
-    const p = PER[i];
-    const k = Math.trunc(p);
-    const u = p - k;
-    const i0 = i - k;
-    let fb;
-    if (i0 - 2 >= 0 && i0 + 1 < i) {
-      const ym1 = y[i0 + 1], y0 = y[i0], y1 = y[i0 - 1], y2 = y[i0 - 2];
-      fb = (
-        (-u * (u - 1.0) * (u - 2.0) / 6.0) * ym1
-        + ((u + 1.0) * (u - 1.0) * (u - 2.0) / 2.0) * y0
-        - ((u + 1.0) * u * (u - 2.0) / 2.0) * y1
-        + ((u + 1.0) * u * (u - 1.0) / 6.0) * y2
-      );
-    } else if (i0 - 1 >= 0) {
-      fb = y[i0] * (1.0 - u) + y[i0 - 1] * u;
-    } else {
-      fb = 0.0;
-    }
-    if (damp > 0.0) {
-      lp = (1.0 - damp) * fb + damp * lp;
-      fb = lp;
-    }
-    y[i] = cIn * x[i] + g * fb;
-  }
-  return y;
+  return i0 - 1 >= 0 ? (buf[i0] * (1.0 - u) + buf[i0 - 1] * u) : 0.0;
 }
 
 function rmsActive(x) {
   let s = 0.0, c = 0;
-  for (let i = 0; i < x.length; i++) {
-    const v = x[i];
-    if (v !== 0.0) { s += v * v; c++; }
-  }
+  for (let i = 0; i < x.length; i++) if (x[i] !== 0.0) { s += x[i] * x[i]; c++; }
   return Math.sqrt(s / (c || 1));
 }
 
+function voicedRms(samples, voiced, fpz) {
+  const N = samples.length;
+  let vSq = 0.0, vCnt = 0;
+  for (let t = 0; t < voiced.length; t++) {
+    if (voiced[t]) {
+      const a = Math.trunc(t * fpz * SR), b = Math.min(N, Math.trunc((t + 1) * fpz * SR));
+      for (let i = a; i < b; i++) vSq += samples[i] * samples[i];
+      vCnt += Math.max(0, b - a);
+    }
+  }
+  return { vSq, vCnt };
+}
+
 function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gateEnd = x.length) {
-  const n = x.length;
-  const out = new Float32Array(n);
+  const out = new Float32Array(x.length);
   let s = 0.0, c = 0;
   for (let i = gateStart; i < gateEnd; i++) { s += x[i] * x[i]; c++; }
-  const cur = Math.sqrt(s / (c || 1)) || 1.0;
-  let gain = targetRms / cur;
-  let pk = 0.0;
-  for (let i = gateStart; i < gateEnd; i++) {
-    const av = Math.abs(x[i]) * gain;
-    if (av > pk) pk = av;
-  }
+  let gain = targetRms / (Math.sqrt(s / (c || 1)) || 1.0), pk = 0.0;
+  for (let i = gateStart; i < gateEnd; i++) { const av = Math.abs(x[i]) * gain; if (av > pk) pk = av; }
   if (pk > ceiling) gain *= ceiling / pk;
   const fade = Math.min(882, Math.floor((gateEnd - gateStart) / 4));
   for (let i = gateStart; i < gateEnd; i++) {
-    let w = 1.0;
-    if (i - gateStart < fade) w = (i - gateStart) / fade;
-    else if (gateEnd - 1 - i < fade) w = (gateEnd - 1 - i) / fade;
+    const w = i - gateStart < fade ? (i - gateStart) / fade : (gateEnd - 1 - i < fade ? (gateEnd - 1 - i) / fade : 1.0);
     out[i] = x[i] * gain * w;
   }
   return out;
@@ -1093,28 +896,31 @@ function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gat
 export function makeHitofude(text, opts = {}) {
   const {
     seed = 2024,
-    hz = 350.0,       // 基準ピッチ高さ (Hz)。女声 300〜360、子ども 400、男声 135〜165
-    fscale = 1.17,    // 声道長逆スケール（フォルマント倍率）。1.15〜1.22=女声、0.88=太い男声
-    rate = 1.26,      // 話速倍率（小さいほど速い、1.25〜1.30=自然な会話）
-    g_vo = 0.92,      // 有声くびれ深さ G (0.0〜0.97)。2段直列の谷深さ ≒ 40*log10((1+G)/(1-G)) dB
-    tilt_w = 5,       // 高域粗削り幅 w (整数 >=1)。4〜5=明るい女声、6=柔らかい吐息、>=8=こもった暗声
-    sigh = 0.0,       // 句末の息抜き量 (0.0〜1.0)。句末母音後半で G を緩め、声を元の吐息へ戻す
-    jitter = 0.0013,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
-    wander_st = 0.18, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
-    damp = 0.0,       // コム帰還路の高域減衰 (0.0..0.95、高域ほど自然に元のノイズの息を残す)
-    shin = 0.0,       // 周期内の純粋乗算時間くびれ (0.0..1.0、パルス加算なしで声の芯を整える)
+    hz = 326.0,       // 基準ピッチ高さ (Hz)。女声 290〜340、アルト 220、ちびっ子 375、男声 105〜155
+    fscale = 1.12,    // 声道長逆スケール（フォルマント倍率）。1.07〜1.12=女声、1.02=アルト、0.85=太い男声
+    rate = 1.20,      // 話速倍率（小さいほど速い、1.20〜1.26=自然な会話）
+    g_vo = 0.895,     // 有声くびれ深さ G (0.0〜0.97)。扉の締まり・倍音の谷深さを決める
+    tilt_w = 5,       // 高域粗削り幅 w (整数 >=1)。4〜5=標準、6=柔らかい吐息、>=8=こもった暗声
+    sigh = 0.0,       // 句末の息抜き量 (0.0〜1.0)。句末母音後半で扉を緩め、声を元の吐息へ戻す
+    jitter = 0.0022,  // 1周期ごとの微細周期揺らぎ率 (0.0=完全周期ロボ)
+    wander_st = 0.16, // ピッチの緩やかな自然漂い幅 (半音、0.0=冷凍固定)
+    damp = 0.30,      // 声帯波帰還路の高域減衰 (0.0..0.95、高域コムのフランジャー櫛を消し素の息を残す)
+    shin = 1.0,       // 声門2唇粘膜扉×5極声道の再帰結合度 (1.0=既定、0.0=冷凍ロボ用の片道コム)
     level_k = 0.65,   // 母音定常部の1スカラー整音強度 (0.0〜1.0、瞬間スペクトル傾斜変化 0.00 dB)
     pre = 0.6,        // 発話前の無音長 (秒)
     post = 0.1,       // 発話後の無音長 (秒)
     uta_hz = null,    // 歌モード：モーラごとの目標周波数配列 [Hz, ...]
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
-    captureSteps = false, // true のとき [原石0, ①倍音谷, ②粗削り, ③声道, ④完成] の5波形を返す
+    captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
+    combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
+    rawAirMul = 0.6,  // サラサラ化既定 (soroe2): 扉を通る生ノイズ rawAir の倍率 (1.0 で非減衰; {combG: null, rawAirMul: 1.0} で 90f0c44 音)
+    pau_s = null,     // 読点「、」の間の長さ (秒)。null で従来の 0.35 秒（詰めると ReazonSpeech の後半落ちが増えるので非推奨）
+    pau_iki = -30,    // v11.0 既定: 読点の間に残す息の床 (dB, 有声部 RMS 比)。null で v10.8 (b9b5eb8) どおり完全無音＝バイト一致
   } = opts;
 
   let accentKw = null, targetText = text, phraseCuts = null;
-  const hasMarks = /['’0/| 　?？]/.test(text);
-  if (hasMarks && !uta_hz) {
+  if (/['’0/| 　?？]/.test(text) && !uta_hz) {
     const [clean, phrases] = annotate(text);
     accentKw = { phrases, question: /[?？]$/.test(text.trim()) };
     targetText = clean;
@@ -1124,16 +930,23 @@ export function makeHitofude(text, opts = {}) {
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
+  if (pau_s != null) prm.pau = Math.max(0.0, +pau_s);
+  if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; prm.ei_long = false; }
   const r = tracksFromKana(targetText, pre, post, prm);
-  const n = r.n;
-  const N = Math.trunc(n * fpz * SR);
+  const n = r.n, N = Math.trunc(n * fpz * SR);
   if (!r.voiced.some(Boolean) && r.bands.length === 0) {
     const z = new Float32Array(N);
     return { samples: z, steps: captureSteps ? [z, z, z, z, z] : null, r: Object.assign({}, r, { f0_tr: new Array(n).fill(0.0) }), moras: r.moras };
   }
 
+  // === Step 0: 原石ホワイトノイズ（声・息・漂い・ジッタ・ビブラートのすべてをこの1本から彫る） ===
+  const rng = makeRng(seed);
+  let x = new Float64Array(N);
+  for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
+  const x0 = captureSteps ? x.slice() : null;
+
   // ピッチ軌道 f0_fr (Hz, 5ms フレーム)
-  let f0_fr;
+  let f0_fr, vibWave = null;
   if (uta_hz && uta_hz.length) {
     f0_fr = new Array(n).fill(uta_hz[0]);
     let k_ = 0;
@@ -1145,55 +958,40 @@ export function makeHitofude(text, opts = {}) {
     }
     f0_fr = smooth1(f0_fr, 34);
     if (vib_c > 0.0) {
-      const wv = Math.max(3, Math.round(1000.0 / FP / 5.2 / 2.0));
-      const lenV = n + 30 * wv;
-      const rngV = makeRng(seed + 33);
-      const vn = new Float64Array(lenV);
-      for (let i = 0; i < lenV; i++) vn[i] = rngV.uniform(-1.0, 1.0);
-      const dWv = new Float64Array(lenV).fill(wv);
-      const vwFull = arakezuri(combHalf(vn, dWv, 0.94), Math.max(2, Math.floor(wv / 2)), 2);
-      const vw = vwFull.subarray(30 * wv, 30 * wv + n);
+      const vHz = 4.2 + 1.8 * (x[0] * 0.5 + 0.5), wv = Math.max(3, Math.round(1000.0 / FP / vHz / 2.0));
+      const lenV = n + 30 * wv, vn = new Float64Array(lenV);
+      for (let i = 0; i < lenV; i++) vn[i] = x[(i * 220) % N];
+      for (let i = wv; i < lenV; i++) vn[i] -= 0.92 * vn[i - wv];
+      const vw = arakezuri(vn, Math.max(2, Math.floor(wv / 2)), 2).subarray(30 * wv, 30 * wv + n);
       let vSq = 0.0;
       for (let i = 0; i < n; i++) vSq += vw[i] * vw[i];
-      const vrm = Math.sqrt(vSq / n) || 1.0;
-      let t0_s = 0.0, cur_h = null;
-      k_ = 0;
-      for (const m_ of r.moras) {
-        if (m_.kind === "pau") { cur_h = null; continue; }
-        const h_ = uta_hz[Math.min(k_, uta_hz.length - 1)];
-        k_++;
-        if (h_ !== cur_h) { cur_h = h_; t0_s = m_.b; }
-        const tEnd = Math.min(n, Math.trunc(m_.e / fpz));
-        for (let t_ = Math.max(0, Math.trunc(m_.b / fpz)); t_ < tEnd; t_++) {
-          const el = t_ * fpz - t0_s - 0.28;
-          if (el > 0.0) {
-            f0_fr[t_] *= Math.pow(2.0, (vib_c * Math.min(1.0, el / 0.26) * (vw[t_] / vrm / 1.414)) / 1200.0);
-          }
-        }
+      const invV = 1.0 / ((Math.sqrt(vSq / n) || 1.0) * 1.414);
+      vibWave = new Float64Array(n);
+      for (let t_ = 0; t_ < n; t_++) {
+        vibWave[t_] = vw[t_] * invV;
+        f0_fr[t_] *= Math.pow(2.0, (vib_c * 0.72 * vibWave[t_]) / 1200.0);
       }
     }
   } else {
-    const acc = sigh >= 0.25
-      ? Object.assign({}, ACCENT_NORMAL, { rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, decl: 1.4, fin: 2.6 })
-      : ACCENT_CUTE;
+    const acc = (sigh >= 0.25 || hz < 200.0) ? ACCENT_NORMAL : ACCENT_CUTE;
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
   }
 
   // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
   const sigh_fr = new Array(n).fill(0.0);
   if (sigh > 0.0) {
+    const hasVoIn = (m_) => {
+      const a = Math.max(0, Math.trunc(m_.b / fpz)), b = Math.min(n, Math.trunc(m_.e / fpz));
+      for (let t_ = a; t_ < b; t_++) if (r.voiced[t_]) return true;
+      return false;
+    };
     for (let idx_m = 0; idx_m < r.moras.length; idx_m++) {
       const m_ = r.moras[idx_m];
       const ib = Math.max(0, Math.trunc(m_.b / fpz)), ie = Math.min(n, Math.trunc(m_.e / fpz));
-      let hasVo = false;
-      for (let t_ = ib; t_ < ie; t_++) if (r.voiced[t_]) { hasVo = true; break; }
-      if (m_.kind !== "CV" || (ie - ib) < 7 || !hasVo) continue;
+      if (m_.kind !== "CV" || (ie - ib) < 7 || !hasVoIn(m_)) continue;
       let remVo = false;
-      for (let k2 = idx_m + 1; k2 < r.moras.length; k2++) {
-        const m2 = r.moras[k2];
-        if (m2.kind === "pau") break;
-        const b2 = Math.max(0, Math.trunc(m2.b / fpz)), e2 = Math.min(n, Math.trunc(m2.e / fpz));
-        for (let t_ = b2; t_ < e2; t_++) if (r.voiced[t_]) { remVo = true; break; }
+      for (let k2 = idx_m + 1; k2 < r.moras.length && r.moras[k2].kind !== "pau"; k2++) {
+        if (hasVoIn(r.moras[k2])) { remVo = true; break; }
       }
       if (!remVo) {
         const sp_ = Math.max(1, ie - ib);
@@ -1219,11 +1017,8 @@ export function makeHitofude(text, opts = {}) {
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
   }
 
-  const f_cons_cen = new Array(n).fill(2500.0);
-  const f_cons_w = new Array(n).fill(0.0);
-  const cons_sharp = new Array(n).fill(0.0);
-  const sortedBands = r.bands.slice().sort((a, b) => a[0] - b[0]);
-  for (const [t0, t1, cen, , lev] of sortedBands) {
+  const f_cons_cen = new Array(n).fill(2500.0), f_cons_w = new Array(n).fill(0.0), cons_sharp = new Array(n).fill(0.0);
+  for (const [t0, t1, cen, lev] of r.bands.slice().sort((a, b) => a[0] - b[0])) {
     const ia = Math.max(0, Math.round(t0 / fpz)), ib = Math.min(n, Math.round(t1 / fpz) + 1);
     for (let t_ = Math.max(0, ia - 2); t_ < Math.min(n, ib + 2); t_++) f_cons_cen[t_] = cen;
     for (let t_ = ia; t_ < ib; t_++) {
@@ -1240,130 +1035,178 @@ export function makeHitofude(text, opts = {}) {
   const g_fr = new Array(n);
   for (let t = 0; t < n; t++) g_fr[t] = vo_sm[t] * g_vo * (1.0 - 0.88 * sigh_sm[t]);
 
-  // サンプル単位の基本周期 PER[i] (自然漂い wander + 周期ごとの微細ジッタ)
+  // サンプル単位の基本周期 PER[i] (原石ノイズ x からダシをとった自然漂い wander + 周期ごとの微細ジッタ)
   const f0S = perSample(f0_fr, N);
-  const wander = furafura(N, makeRng(seed + 1), 0.0, wander_st, 0.09);
+  const wander = furafura(x, 0.0, wander_st, 0.09);
   const PER = new Float64Array(N);
   for (let i = 0; i < N; i++) PER[i] = SR / Math.max(60.0, f0S[i] * Math.pow(2.0, wander[i] / 12.0));
+  const hRef = Math.max(85.0, hz);
   if (jitter > 0.0) {
-    const rngJ = makeRng(seed + 7);
-    let idxP = 0;
-    while (idxP < N) {
-      const pl = Math.max(2, Math.trunc(PER[idxP]));
-      const jf = 1.0 + rngJ.uniform(-jitter, jitter);
-      const end = Math.min(N, idxP + pl);
+    for (let idxP = 0; idxP < N;) {
+      const pl = Math.max(2, Math.trunc(PER[idxP])), jf = 1.0 + jitter * x[idxP], end = Math.min(N, idxP + pl);
       for (let k = idxP; k < end; k++) PER[k] *= jf;
       idxP += pl;
     }
+    if (shin > 0.0) heikin(PER, Math.max(10, Math.round(SR / (hRef * 6.0))), PER);
   }
 
-  // === Step 0: 原石ホワイトノイズ（音になる信号線はこの1本だけ） ===
-  const rng = makeRng(seed);
-  let x = new Float64Array(N);
-  for (let i = 0; i < N; i++) x[i] = rng.uniform(-1.0, 1.0);
-  const x0 = captureSteps ? x.slice() : null;
-
-  // === Step 1: 【引き算①】倍音の隙間の谷を引く（2段直列、必要なら高域減衰 damp と乗算時間くびれ shin） ===
-  const GS = perSample(g_fr, N);
-  x = combPeriod(x, PER, GS, damp);
-  if (shin > 0.0) {
-    let ph = 0.0;
-    const p = 1.0 + 3.0 * shin;
-    for (let i = 0; i < N; i++) {
-      ph += 1.0 / PER[i];
-      if (ph >= 1.0) ph -= 1.0;
-      const w = Math.pow(Math.max(0.0, 1.0 - Math.abs(ph - 0.5) * 2.0), p);
-      const s = shin * GS[i];
-      x[i] *= (1.0 - s) + s * (0.30 + 1.85 * w);
-    }
-  }
-  x = combPeriod(x, PER, GS, damp);
-  const x1 = captureSteps ? x.slice() : null;
-
-  // === Step 2: 【引き算②】低域濁りと高域の角を引く ===
-  x = karuku(x, hz >= 200.0 ? 115 : 220);
+  const GS = perSample(g_fr, N), SIGH_S = perSample(sigh_sm, N);
+  const wNorm = wander_st > 0.0 ? (1.0 / wander_st) : 0.0;
+  if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
   const tw = Math.max(1, Math.round(tilt_w));
-  x = arakezuriT(x, tw, 2, perSample(cons_sharp, N));
-  if (sigh > 0.0) {
-    const sighKeep = new Array(n);
-    for (let t = 0; t < n; t++) sighKeep[t] = 1.0 - 0.85 * sigh_sm[t];
-    x = arakezuriT(x, tw + 3, 2, perSample(sighKeep, N));
-  }
-  const x2 = captureSteps ? x.slice() : null;
-
-  // === Step 3: 【引き算③】受動声道共鳴（F1→F2→F3→F4 因果直列カスケード ＋ 子音帯域 bpc） ===
-  let yc = resonator2Pole(x, perSample(F1, N), 80.0, 8.0);
-  yc = resonator2Pole(yc, perSample(F2, N), 110.0, 11.0);
-  yc = resonator2Pole(yc, perSample(F3, N), 150.0, 13.0);
-  yc = resonator2Pole(yc, perSample(F4, N), 220.0, 14.0);
   const ycRad = new Float64Array(N);
-  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - 0.70 * yc[i - 1];
-  const vScale = 0.43 * (rmsActive(x) / (rmsActive(ycRad) || 1.0));
-  const bpc = yamaBp(x, perSample(f_cons_cen, N), 0.50, 1, 2);
-  const FCW = perSample(smooth1(f_cons_w, 6), N);
+  let x1 = null, x2 = null;
+
+  // === Step 1–3: 単一因果ループ統合（shin>0: 非対称2唇粘膜扉×5極声道再帰 / shin=0: 扉バイパス冷凍ロボ） ===
+  const coupled = shin > 0.0;
+  const hiMix = Math.min(1.0, Math.max(0.0, (hRef - 125.0) / 85.0));
+  x = karuku(x, coupled ? 320 : (hz >= 200.0 ? 115 : 220));
+  const xClean = arakezuriT(x.slice(), tw, 2, perSample(cons_sharp, N));
+  const softPos = (v) => { const z = v * 12.0; return z > 20.0 ? v : (z < -20.0 ? 0.0 : Math.log1p(Math.exp(z)) / 12.0); };
+  const pLungWalk = coupled ? furafura(x, 0.38, 0.14 - 0.10 * hiMix, 0.045 + 0.175 * hiMix) : null;
+  const F5 = F4.map((v) => (fs < 0.92 ? Math.min(4850.0, v * 1.26) : Math.min(8800.0, v + 1100.0 * fs)));
+  const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
+  const nPoles = coupled ? 5 : 4;
+  const gBuf = new Float64Array(N), gBuf2 = new Float64Array(N), uOut = new Float64Array(N), yc = new Float64Array(N);
+  const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR, ret = 0.45 * shin, qSoft = coupled ? (1.45 - 0.30 * hiMix) : 1.0;
+  const rawAir = (0.02 + 0.03 * hiMix) * rawAirMul;
+  const combGx = (coupled && combG != null) ? Math.min(+combG, 0.9995) : null;
+  const radK = coupled ? (0.42 + 0.48 * hiMix) : 0.70, bern = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
+  const knee = 0.22 - 0.04 * hiMix, closeMul = 8.20 + 13.80 * hiMix, closedDecay = 0.50 - 0.38 * hiMix;
+  const seedFloor = (jitter > 0.0 ? 0.58 : 0.0) * hiMix;
+  const bwMinP = [80.0, 110.0 * qSoft, 150.0 * qSoft, 220.0 * qSoft, 260.0 * qSoft];
+  const qDivP = [8.0, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
+  const dMulP = [150.0 - 60.0 * hiMix, 50.0 - 20.0 * hiMix, 30.0 - 15.0 * hiMix, 0.0, 0.0];
+  const y1 = new Float64Array(5), y2 = new Float64Array(5);
+  let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
+  for (let i = 0; i < N; i++) {
+    const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
+    const gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
+    const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
+    const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
+    let sig;
+    if (coupled) {
+      const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
+      p1Prev = y1[0];
+      gBuf[i] = Math.tanh((cIn * xClean[i] + gT * (gLp1 + ret * 0.24 * doorPrev * pRet)) * 0.85) / 0.85;
+      const fb2 = readDelay(gBuf2, i, p); gLp2 = (1.0 - damp) * fb2 + damp * gLp2;
+      const gVal = Math.tanh((cIn * gBuf[i] + gT * (gLp2 + ret * 0.16 * doorPrev * pRet)) * 0.85) / 0.85;
+      gBuf2[i] = gVal;
+      const aOpen = Math.exp(-8.20 / p), aClose = Math.exp(-closeMul / p);
+      doorLp1 = (1.0 - aClose) * gVal + aClose * doorLp1;
+      doorLp2 = (1.0 - aOpen) * doorLp1 + aOpen * doorLp2;
+      const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain - bern * uFlow;
+      const neck = hiMix > 0.4
+        ? softPos(0.5 * (uUp + uLo - Math.sqrt((uUp - uLo) * (uUp - uLo) + 0.010)))
+        : Math.max(0.0, Math.min(uUp, uLo));
+      const door = vo > 0.01 ? ((1.0 - hiMix + hiMix * vo) * (neck / (neck + knee))) : 0.0;
+      doorPrev = door;
+      if (door > 0.0) {
+        const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
+        const aFl = 0.88 + ((door > uFlow ? 0.35 : 0.08) - 0.88) * hiMix;
+        uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
+      } else uFlow *= closedDecay;
+      sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
+    } else {
+      gBuf[i] = g > 1e-4 ? (cIn * xClean[i] + gT * gLp1) : xClean[i];
+      const fb2 = readDelay(gBuf2, i, p); gLp2 = (1.0 - damp) * fb2 + damp * gLp2;
+      sig = g > 1e-4 ? (cIn * gBuf[i] + gT * gLp2) : gBuf[i];
+      gBuf2[i] = sig;
+    }
+    uOut[i] = sig;
+    for (let k = 0; k < nPoles; k++) {
+      const fk = FS[k][i], rk = Math.exp(-piSR * (Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev));
+      const ck = -rk * rk, bk = 2.0 * rk * Math.cos(twoPiSR * fk);
+      sig = (1.0 - bk - ck) * sig + bk * y1[k] + ck * y2[k];
+      y2[k] = y1[k]; y1[k] = sig;
+    }
+    yc[i] = sig; ycPrev = sig;
+  }
+  if (captureSteps) { x1 = gBuf2.slice(); x2 = uOut.slice(); }
+  x = xClean;
+  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - radK * yc[i - 1];
+  let vInSq = 0.0, vOutSq = 0.0, vCnt = 0;
+  for (let i = 1; i < N; i++) if (GS[i] > 0.25) { vInSq += x[i] * x[i]; vOutSq += ycRad[i] * ycRad[i]; vCnt++; }
+  const vScale = (coupled ? 0.45 : 0.43) * ((vCnt > 0 ? Math.sqrt(vInSq / vCnt) : rmsActive(x)) / ((vCnt > 0 ? Math.sqrt(vOutSq / vCnt) : rmsActive(ycRad)) || 1.0));
+
+  // 子音・ハ行気息帯域 bpc：ピーク利得一定の因果2極ゼロDCバンドパス H(z) = 0.5*(1-r^2)*(1-z^-2) / (1 - 2r cos w0 z^-1 + r^2 z^-2)
+  const FCEN = perSample(f_cons_cen, N), bpc = new Float64Array(N);
+  let bp1 = 0.0, bp2 = 0.0;
+  for (let i = 0; i < N; i++) {
+    const f = FCEN[i], r0 = Math.exp(-piSR * Math.max(420.0, f * 0.38));
+    const o = 0.5 * (1.0 - r0 * r0) * (x[i] - (i > 1 ? x[i - 2] : 0.0)) + 2.0 * r0 * Math.cos(twoPiSR * f) * bp1 - r0 * r0 * bp2;
+    bpc[i] = o; bp2 = bp1; bp1 = o;
+  }
+  const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 6), N);
 
   const y = new Float64Array(N);
-  for (let i = 0; i < N; i++) {
-    y[i] = vScale * ycRad[i] + 0.90 * FCW[i] * bpc[i];
-  }
+  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i];
   const x3 = captureSteps ? y.slice() : null;
 
   // === Step 4: 【引き算④】1スカラー整音 ＋ 時間包絡 ===
   if (level_k > 0.0) {
-    const wSc = Math.trunc(0.028 * SR);
     const sq = new Float64Array(N);
     for (let i = 0; i < N; i++) sq[i] = y[i] * y[i];
-    const pLoc = heikin(sq, wSc);
+    const pLoc = heikin(sq, Math.trunc(0.028 * SR));
     const vPows = [];
     for (let t = 0; t < n; t++) {
-      if (r.voiced[t] && sigh_sm[t] < 0.1 && cons_sharp[t] < 0.1) {
-        vPows.push(pLoc[Math.trunc((t + 0.5) * fpz * SR)]);
-      }
+      if (r.voiced[t] && sigh_sm[t] < 0.1 && cons_sharp[t] < 0.1) vPows.push(pLoc[Math.trunc((t + 0.5) * fpz * SR)]);
     }
-    let refRms;
-    if (vPows.length) {
-      vPows.sort((a, b) => a - b);
-      refRms = Math.sqrt(vPows[Math.floor(vPows.length / 2)]);
-    } else {
-      refRms = rmsActive(y) || 1.0;
-    }
+    vPows.sort((a, b) => a - b);
+    const refRms = vPows.length ? Math.sqrt(vPows[Math.floor(vPows.length / 2)]) : (rmsActive(y) || 1.0);
     const eps = Math.pow(0.12 * refRms, 2) + 1e-24;
     const wLvFr = new Array(n);
     for (let t = 0; t < n; t++) wLvFr[t] = level_k * vo_sm[t] * (1.0 - sigh_sm[t]) * (1.0 - cons_sharp[t]);
-    const wLv = perSample(smooth1(wLvFr, 14), N);
-    const rawGlv = new Float64Array(N);
-    for (let i = 0; i < N; i++) {
-      const ratio = Math.min(2.2, Math.max(0.45, refRms / Math.sqrt(pLoc[i] + eps)));
-      rawGlv[i] = 1.0 + wLv[i] * (ratio - 1.0);
-    }
+    const wLv = perSample(smooth1(wLvFr, 14), N), rawGlv = new Float64Array(N);
+    for (let i = 0; i < N; i++) rawGlv[i] = 1.0 + wLv[i] * (Math.min(2.2, Math.max(0.45, refRms / Math.sqrt(pLoc[i] + eps))) - 1.0);
     const gLv = heikin(rawGlv, Math.trunc(0.018 * SR));
     for (let i = 0; i < N; i++) y[i] *= gLv[i];
   }
 
   const loExp = new Array(n);
-  for (let t = 0; t < n; t++) loExp[t] = Math.exp((r.loud[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0);
+  for (let t = 0; t < n; t++) loExp[t] = Math.exp((r.loud[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
   const env = perSample(loExp, N);
   let pk = 0.0;
   for (let i = 0; i < N; i++) {
-    y[i] *= env[i];
+    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.55, 1.0 + 0.24 * wander[i] * wNorm) : 1.0);
     const av = Math.abs(y[i]);
     if (av > pk) pk = av;
   }
-  if (pk === 0.0) pk = 1.0;
-  const out = new Float32Array(N);
-  const scale = 0.891 / pk;
+  // 読点の息の床 pau_iki：完全無音を彫り切らず、同じ原石ノイズが無声のまま声道 (5極) と放射を通った吐息 ycRad を、
+  // 間の区間だけ有声部 RMS の pau_iki dB にうっすら残す（両端は上げ下げの余弦窓）。null なら一切触らない
+  if (pau_iki != null && Number.isFinite(+pau_iki)) {
+    const pauz = r.moras.filter((m_) => m_.kind === "pau" && m_.e > m_.a);
+    if (pauz.length) {
+      let vSq = 0.0, vCnt = 0;
+      for (let t = 0; t < n; t++) {
+        if (!r.voiced[t]) continue;
+        const a_ = Math.trunc(t * fpz * SR), b_ = Math.min(N, Math.trunc((t + 1) * fpz * SR));
+        for (let i = a_; i < b_; i++) { vSq += y[i] * y[i]; vCnt++; }
+      }
+      const vRms = Math.sqrt(vSq / (vCnt || 1));
+      let bSq = 0.0, bCnt = 0;
+      for (const m_ of pauz) {
+        for (let i = Math.max(0, Math.trunc(m_.a * SR)); i < Math.min(N, Math.trunc(m_.e * SR)); i++) { bSq += ycRad[i] * ycRad[i]; bCnt++; }
+      }
+      const bRms = Math.sqrt(bSq / (bCnt || 1)) || 1.0, gIki = vRms * Math.pow(10.0, +pau_iki / 20.0) / bRms;
+      for (const m_ of pauz) {
+        const ia = Math.max(0, Math.trunc(m_.a * SR)), ie = Math.min(N, Math.trunc(m_.e * SR));
+        const ramp = Math.max(1, Math.min(Math.trunc(0.06 * SR), Math.trunc((ie - ia) / 3)));
+        for (let i = ia; i < ie; i++) {
+          const k = Math.min(i - ia, ie - 1 - i), w = k >= ramp ? 1.0 : Math.pow(Math.sin((0.5 * Math.PI * k) / ramp), 2);
+          y[i] += gIki * w * ycRad[i];
+        }
+      }
+      pk = 0.0;
+      for (let i = 0; i < N; i++) { const av = Math.abs(y[i]); if (av > pk) pk = av; }
+    }
+  }
+  const out = new Float32Array(N), scale = 0.891 / (pk || 1.0);
   for (let i = 0; i < N; i++) out[i] = y[i] * scale;
 
   let steps = null;
   if (captureSteps) {
-    let vSq = 0.0, vCnt = 0;
-    for (let t = 0; t < n; t++) {
-      if (r.voiced[t]) {
-        const a = Math.trunc(t * fpz * SR), b = Math.min(N, Math.trunc((t + 1) * fpz * SR));
-        for (let i = a; i < b; i++) vSq += out[i] * out[i];
-        vCnt += Math.max(0, b - a);
-      }
-    }
+    const { vSq, vCnt } = voicedRms(out, r.voiced, fpz);
     const targetRms = Math.min(0.18, Math.max(0.11, Math.sqrt(vSq / (vCnt || 1))));
     const gStart = Math.max(0, Math.trunc((r.moras[0]?.a ?? pre) * SR));
     const gEnd = Math.min(N, Math.trunc((r.moras[r.moras.length - 1]?.e ?? (N / SR - post)) * SR));
@@ -1383,9 +1226,7 @@ export function makeHitofude(text, opts = {}) {
 // 5. WAV エンコード & 音響自己計測 hakaru（ブラウザ・Node 共通、外部依存ゼロ）
 // ============================================================================
 export function encodeWav(samples, sampleRate = SR) {
-  const n = samples.length;
-  const buf = new ArrayBuffer(44 + n * 2);
-  const view = new DataView(buf);
+  const n = samples.length, buf = new ArrayBuffer(44 + n * 2), view = new DataView(buf);
   const writeAscii = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
   writeAscii(0, "RIFF");
   view.setUint32(4, 36 + n * 2, true);
@@ -1399,10 +1240,7 @@ export function encodeWav(samples, sampleRate = SR) {
   view.setUint16(34, 16, true);
   writeAscii(36, "data");
   view.setUint32(40, n * 2, true);
-  for (let i = 0; i < n; i++) {
-    const clamped = Math.max(-1.0, Math.min(1.0, samples[i]));
-    view.setInt16(44 + i * 2, Math.round(clamped * 32767.0), true);
-  }
+  for (let i = 0; i < n; i++) view.setInt16(44 + i * 2, Math.round(Math.max(-1.0, Math.min(1.0, samples[i])) * 32767.0), true);
   return new Uint8Array(buf);
 }
 
@@ -1412,8 +1250,7 @@ export function fftRadix2(reIn) {
   const n = reIn.length;
   let plan = FFT_CACHE.get(n);
   if (!plan) {
-    const bits = Math.round(Math.log2(n));
-    const bitrev = new Int32Array(n);
+    const bits = Math.round(Math.log2(n)), bitrev = new Int32Array(n);
     for (let i = 0; i < n; i++) {
       let x = i, r = 0;
       for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; }
@@ -1421,16 +1258,12 @@ export function fftRadix2(reIn) {
     }
     const twRe = [], twIm = [], steps = [];
     for (let step = 2; step <= n; step <<= 1) {
-      const half = step >> 1;
-      const cRe = new Float64Array(half), cIm = new Float64Array(half);
+      const half = step >> 1, cRe = new Float64Array(half), cIm = new Float64Array(half);
       for (let k = 0; k < half; k++) {
         const ang = (-2.0 * Math.PI * k) / step;
-        cRe[k] = Math.cos(ang);
-        cIm[k] = Math.sin(ang);
+        cRe[k] = Math.cos(ang); cIm[k] = Math.sin(ang);
       }
-      steps.push(step);
-      twRe.push(cRe);
-      twIm.push(cIm);
+      steps.push(step); twRe.push(cRe); twIm.push(cIm);
     }
     plan = { bitrev, steps, twRe, twIm };
     FFT_CACHE.set(n, plan);
@@ -1438,17 +1271,13 @@ export function fftRadix2(reIn) {
   const re = new Float64Array(n), im = new Float64Array(n);
   for (let i = 0; i < n; i++) re[i] = reIn[plan.bitrev[i]];
   for (let si = 0; si < plan.steps.length; si++) {
-    const step = plan.steps[si], half = step >> 1;
-    const cRe = plan.twRe[si], cIm = plan.twIm[si];
+    const step = plan.steps[si], half = step >> 1, cRe = plan.twRe[si], cIm = plan.twIm[si];
     for (let s = 0; s < n; s += step) {
       for (let k = 0; k < half; k++) {
         const i1 = s + k, i2 = i1 + half;
-        const vr = re[i2] * cRe[k] - im[i2] * cIm[k];
-        const vi = re[i2] * cIm[k] + im[i2] * cRe[k];
-        re[i2] = re[i1] - vr;
-        im[i2] = im[i1] - vi;
-        re[i1] += vr;
-        im[i1] += vi;
+        const vr = re[i2] * cRe[k] - im[i2] * cIm[k], vi = re[i2] * cIm[k] + im[i2] * cRe[k];
+        re[i2] = re[i1] - vr; im[i2] = im[i1] - vi;
+        re[i1] += vr; im[i1] += vi;
       }
     }
   }
@@ -1456,33 +1285,21 @@ export function fftRadix2(reIn) {
 }
 
 export function hakaru(samples, rInfo) {
-  const N = samples.length;
-  const fpz = FP / 1000.0;
-  const voiced = rInfo.voiced || [];
-  const moras = rInfo.moras || [];
-  const f0Tr = rInfo.f0_tr || [0.0];
+  const N = samples.length, fpz = FP / 1000.0;
+  const voiced = rInfo.voiced || [], moras = rInfo.moras || [], f0Tr = rInfo.f0_tr || [0.0];
   let pk = 0.0;
   for (let i = 0; i < N; i++) { const av = Math.abs(samples[i]); if (av > pk) pk = av; }
-  let vSq = 0.0, vCnt = 0;
-  for (let t = 0; t < voiced.length; t++) {
-    if (voiced[t]) {
-      const a = Math.trunc(t * fpz * SR), b = Math.min(N, Math.trunc((t + 1) * fpz * SR));
-      for (let i = a; i < b; i++) vSq += samples[i] * samples[i];
-      vCnt += Math.max(0, b - a);
-    }
-  }
+  const { vSq, vCnt } = voicedRms(samples, voiced, fpz);
   const rmsV = vCnt > 0 ? Math.sqrt(vSq / vCnt) : rmsActive(samples);
   const crestDb = (pk > 0.0 && rmsV > 0.0) ? 20.0 * Math.log10(pk / (rmsV + 1e-12)) : 0.0;
 
   const nf = 2048, hb = (nf >> 1) + 1;
-  const win = new Float64Array(nf);
+  const win = new Float64Array(nf), fq = new Float64Array(hb);
   for (let k = 0; k < nf; k++) win[k] = 0.5 - 0.5 * Math.cos((2.0 * Math.PI * k) / nf);
-  const fq = new Float64Array(hb);
   for (let k = 0; k < hb; k++) fq[k] = (k * SR) / nf;
 
   const winSpec = (s0) => {
-    const buf = new Float64Array(nf);
-    const end = Math.min(nf, Math.max(0, N - s0));
+    const buf = new Float64Array(nf), end = Math.min(nf, Math.max(0, N - s0));
     for (let k = 0; k < end; k++) buf[k] = samples[s0 + k] * win[k];
     return fftRadix2(buf);
   };
@@ -1499,21 +1316,17 @@ export function hakaru(samples, rInfo) {
       for (let k = 0; k < hb; k++) spAcc[k] += re[k] * re[k] + im[k] * im[k];
     }
   }
-  let hasSp = false;
-  for (let k = 0; k < hb; k++) if (spAcc[k] > 0.0) { hasSp = true; break; }
-  let s0b = 1e-24, s1b = 1e-24, s2b = 1e-24;
+  let hasSp = false, s0b = 1e-24, s1b = 1e-24, s2b = 1e-24;
   for (let k = 0; k < hb; k++) {
+    if (spAcc[k] > 0.0) hasSp = true;
     if (fq[k] >= 120.0 && fq[k] < 1000.0) s0b += spAcc[k];
     else if (fq[k] >= 1000.0 && fq[k] < 2600.0) s1b += spAcc[k];
     else if (fq[k] >= 2600.0 && fq[k] < 5600.0) s2b += spAcc[k];
   }
-  const b1 = hasSp ? 10.0 * Math.log10(s1b / s0b) : 0.0;
-  const b2 = hasSp ? 10.0 * Math.log10(s2b / s0b) : 0.0;
 
   const taniAt = (ts) => {
     if (N === 0) return 0.0;
-    const s0 = Math.max(0, Math.min(Math.max(0, N - nf), Math.trunc(ts * SR) - (nf >> 1)));
-    const { re, im } = winSpec(s0);
+    const { re, im } = winSpec(Math.max(0, Math.min(Math.max(0, N - nf), Math.trunc(ts * SR) - (nf >> 1))));
     const spDb = new Float64Array(hb);
     for (let k = 0; k < hb; k++) spDb[k] = 10.0 * Math.log10(re[k] * re[k] + im[k] * im[k] + 1e-24);
     const f0 = Math.max(80.0, f0Tr[Math.min(f0Tr.length - 1, Math.max(0, Math.trunc(ts / fpz)))]);
@@ -1531,14 +1344,12 @@ export function hakaru(samples, rInfo) {
 
   const cvs = moras.filter((m) => m.kind === "CV" && voiced.slice(Math.trunc(m.b / fpz), Math.trunc(m.e / fpz)).some(Boolean));
   const ml = cvs.length ? cvs[cvs.length - 1] : (moras[0] || null);
-  const tCore = (ml && hasSp) ? taniAt(ml.b + 0.18 * (ml.e - ml.b)) : 0.0;
-  const tTail = (ml && hasSp) ? taniAt(ml.b + 0.85 * (ml.e - ml.b)) : 0.0;
   return {
     dur_s: Number((N / SR).toFixed(2)),
     crest_db: Number(crestDb.toFixed(1)),
-    band_1k_2k6_db: Number(b1.toFixed(1)),
-    band_2k6_5k6_db: Number(b2.toFixed(1)),
-    tani_core_db: Number(tCore.toFixed(1)),
-    tani_tail_db: Number(tTail.toFixed(1)),
+    band_1k_2k6_db: Number((hasSp ? 10.0 * Math.log10(s1b / s0b) : 0.0).toFixed(1)),
+    band_2k6_5k6_db: Number((hasSp ? 10.0 * Math.log10(s2b / s0b) : 0.0).toFixed(1)),
+    tani_core_db: Number(((ml && hasSp) ? taniAt(ml.b + 0.18 * (ml.e - ml.b)) : 0.0).toFixed(1)),
+    tani_tail_db: Number(((ml && hasSp) ? taniAt(ml.b + 0.85 * (ml.e - ml.b)) : 0.0).toFixed(1)),
   };
 }

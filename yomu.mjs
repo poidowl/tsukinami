@@ -22,17 +22,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function synth(text, prm, utaHz = null) {
   return makeHitofude(text, {
+    ...prm,
     seed: Math.trunc(Number(prm.seed)),
-    hz: Number(prm.hz),
-    fscale: Number(prm.fscale),
-    rate: Number(prm.rate),
-    g_vo: Number(prm.g_vo),
     tilt_w: Math.round(Number(prm.tilt_w)),
-    sigh: Number(prm.sigh),
-    jitter: Number(prm.jitter),
-    wander_st: Number(prm.wander_st),
-    damp: prm.damp === undefined ? 0.0 : Number(prm.damp),
-    shin: prm.shin === undefined ? 0.0 : Number(prm.shin),
     uta_hz: utaHz,
   });
 }
@@ -138,7 +130,7 @@ Options:
   --jitter <float>         周期ジッタ率
   --wander <float>         ピッチ緩徐漂い幅 (半音)
   --damp <float>           コム帰還路の高域減衰 (0.0..0.95、高域に元の息を残す)
-  --shin <float>           周期内の純粋乗算時間くびれ (0.0..1.0、パルス加算なし)
+  --shin <float>           声門扉と声道の再帰結合度 (0.0=片道4段、0.0<..1.0=2唇粘膜扉×5極声道の再帰低音)
   -h, --help               このヘルプを表示`);
 }
 
@@ -148,6 +140,12 @@ function dieParam(msg) {
 }
 
 function main() {
+  const flagMap = {
+    seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
+    "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
+    damp: "damp", shin: "shin",
+  };
+  const numOpts = Object.fromEntries(Object.keys(flagMap).map((f) => [f, { type: "string" }]));
   const { values, positionals } = parseArgs({
     options: {
       out: { type: "string", short: "o" },
@@ -158,53 +156,28 @@ function main() {
       uta: { type: "string" },
       recipe: { type: "string" },
       "save-recipe": { type: "string" },
-      seed: { type: "string" },
-      hz: { type: "string" },
-      fscale: { type: "string" },
-      rate: { type: "string" },
-      "g-vo": { type: "string" },
-      tilt: { type: "string" },
-      sigh: { type: "string" },
-      jitter: { type: "string" },
-      wander: { type: "string" },
-      damp: { type: "string" },
-      shin: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
+      ...numOpts,
     },
     allowPositionals: true,
   });
 
-  if (values.help) {
-    printHelp();
-    return;
-  }
-
+  if (values.help) { printHelp(); return; }
   if (values["list-presets"]) {
     for (const [k, v] of Object.entries(PRESETS)) {
-      const knobs = KNOB_KEYS.map((nk) => `${nk}=${v[nk]}`).join(", ");
-      console.log(`  ${k.padEnd(9)} : ${v.description}\n              (${knobs})`);
+      console.log(`  ${k.padEnd(9)} : ${v.description}\n              (${KNOB_KEYS.map((nk) => `${nk}=${v[nk]}`).join(", ")})`);
     }
     return;
   }
-
   if (!PRESETS[values.preset]) {
     console.error(`Unknown --preset '${values.preset}'. Choose from: ${Object.keys(PRESETS).join(", ")}`);
     process.exit(2);
   }
 
-  const prm = Object.assign({}, PRESETS[values.preset]);
-  if (values.recipe) {
-    Object.assign(prm, JSON.parse(fs.readFileSync(values.recipe, "utf8")));
-  }
-  const flagMap = {
-    seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
-    "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
-    damp: "damp", shin: "shin",
-  };
+  const prm = Object.assign({}, PRESETS[values.preset], values.recipe ? JSON.parse(fs.readFileSync(values.recipe, "utf8")) : null);
   for (const [flag, key] of Object.entries(flagMap)) {
     if (values[flag] !== undefined) {
-      const raw = values[flag].trim();
-      const num = Number(raw);
+      const raw = values[flag].trim(), num = Number(raw);
       if (!raw || !Number.isFinite(num)) dieParam(`--${flag} expects a finite number, got '${values[flag]}'`);
       prm[key] = num;
     }
@@ -212,9 +185,7 @@ function main() {
   for (const key of KNOB_KEYS) {
     if (!Number.isFinite(Number(prm[key]))) dieParam(`'${key}' must be a finite number, got '${prm[key]}'`);
   }
-  if (prm.hz <= 0) dieParam(`hz must be > 0, got ${prm.hz}`);
-  if (prm.fscale <= 0) dieParam(`fscale must be > 0, got ${prm.fscale}`);
-  if (prm.rate <= 0) dieParam(`rate must be > 0, got ${prm.rate}`);
+  if (prm.hz <= 0 || prm.fscale <= 0 || prm.rate <= 0) dieParam(`hz, fscale, rate must be > 0`);
   if (prm.g_vo < 0 || prm.g_vo >= 1) dieParam(`g_vo must be in [0, 1), got ${prm.g_vo}`);
   if (Math.round(prm.tilt_w) < 1) dieParam(`tilt_w must be >= 1, got ${prm.tilt_w}`);
   if (prm.damp !== undefined && (!Number.isFinite(Number(prm.damp)) || Number(prm.damp) < 0 || Number(prm.damp) >= 1)) {
