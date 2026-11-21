@@ -893,6 +893,48 @@ function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gat
 // ============================================================================
 // 4. 本体：1本のホワイトノイズから4手で彫る音声・歌声合成
 // ============================================================================
+
+function eachNonPauMora(moras, arr, fn) {
+  if (!arr) return;
+  let k = 0;
+  for (const m of moras) {
+    if (m.kind === "pau") continue;
+    if (k < arr.length && arr[k] != null && Number.isFinite(Number(arr[k]))) fn(m, Number(arr[k]), k);
+    k++;
+  }
+}
+
+function applyLoudDb(r, loud_db, fpz) {
+  if (!loud_db) return;
+  const n = r.n, loud = r.loud.slice();
+  eachNonPauMora(r.moras, loud_db, (m, db) => {
+    // env = exp(loud/2) なので、dB を同じ倍率にするには Δloud = 2 * ln(10^(dB/20))
+    const dL = 2.0 * Math.log(Math.pow(10, db / 20.0));
+    const ib = Math.max(0, Math.trunc(m.b / fpz)), ie = Math.min(n, Math.trunc(m.e / fpz));
+    const ramp = Math.max(1, Math.min(4, Math.trunc((ie - ib) / 4))); // 約 20ms
+    for (let t = ib; t < ie; t++) {
+      const k = Math.min(t - ib, ie - 1 - t);
+      const w = k >= ramp ? 1.0 : Math.pow(Math.sin((0.5 * Math.PI * k) / ramp), 2);
+      loud[t] += dL * w;
+    }
+  });
+  r.loud = loud;
+}
+
+function applyF0St(f0_fr, r, n, fpz, f0_st) {
+  if (!f0_st) return;
+  eachNonPauMora(r.moras, f0_st, (m, st) => {
+    const mul = Math.pow(2.0, st / 12.0);
+    const ib = Math.max(0, Math.trunc(m.b / fpz)), ie = Math.min(n, Math.trunc(m.e / fpz));
+    const ramp = Math.max(1, Math.min(4, Math.trunc((ie - ib) / 4)));
+    for (let t = ib; t < ie; t++) {
+      const k = Math.min(t - ib, ie - 1 - t);
+      const w = k >= ramp ? 1.0 : Math.pow(Math.sin((0.5 * Math.PI * k) / ramp), 2);
+      f0_fr[t] *= Math.pow(mul, w);
+    }
+  });
+}
+
 export function makeHitofude(text, opts = {}) {
   const {
     seed = 2024,
@@ -911,6 +953,8 @@ export function makeHitofude(text, opts = {}) {
     post = 0.1,       // 発話後の無音長 (秒)
     uta_hz = null,    // 歌モード：モーラごとの目標周波数配列 [Hz, ...]
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
+    f0_st = null,     // 任意: ポーズ以外のモーラごとの F0 加減 [半音]（null 要素は変更しない）
+    loud_db = null,   // 任意: ポーズ以外のモーラごとの母音ゲイン [dB]（null 要素は変更しない）
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -933,6 +977,7 @@ export function makeHitofude(text, opts = {}) {
   if (pau_s != null) prm.pau = Math.max(0.0, +pau_s);
   if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; prm.ei_long = false; }
   const r = tracksFromKana(targetText, pre, post, prm);
+  applyLoudDb(r, loud_db, fpz);
   const n = r.n, N = Math.trunc(n * fpz * SR);
   if (!r.voiced.some(Boolean) && r.bands.length === 0) {
     const z = new Float32Array(N);
@@ -976,6 +1021,8 @@ export function makeHitofude(text, opts = {}) {
     const acc = (sigh >= 0.25 || hz < 200.0) ? ACCENT_NORMAL : ACCENT_CUTE;
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
   }
+
+  applyF0St(f0_fr, r, n, fpz, f0_st);
 
   // 句末の息抜き軌道 sigh_fr：有声句の最後の母音後半 (u > 0.30) でくびれ G をほどく
   const sigh_fr = new Array(n).fill(0.0);
