@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * tools/test_pause.mjs — 読点の間ノブ（pau_s / pau_iki）回帰テスト
+ * tools/test_pause.mjs — v11.0 読点の息の床（pau_iki 既定 -30）＆間の長さ（pau_s）回帰テスト
  *
  *   node tools/test_pause.mjs
  *
- * (a) 既定（オプションなし）が GOLDEN_V10_8 (b9b5eb8 既定音) と全プリセット × 2文 × seed 3 つ ＋ 歌モードでバイト一致すること。
- * (b) {pau_s: null, pau_iki: null} 明示、および {pau_s: 0.35}（従来値）明示も既定とバイト一致すること。
- * (c) pau_iki を入れると、読点の間だけが変わり（間の外はスケール比で一致）、有限・長さ同一・ピーク 1 以下・間の RMS が無音より上がること。
+ * (a) オプトアウト {pau_iki: null} が GOLDEN_V10_8 (b9b5eb8 既定音) と全プリセット × 2文 × seed 3 つ ＋ 歌モードでバイト一致すること。
+ * (b) {pau_iki: null, pau_s: null}／{pau_iki: null, pau_s: 0.35} 明示もバイト一致し、読点の無い歌モードは既定のままでも一致すること。
+ * (c) 既定は {pau_iki: -30} 明示とバイト一致し（chibi はプリセットで pau_iki:null＝既定のまま GOLDEN 一致）、v10.8 から読点の間だけが変わり（間の外はスケール比で一致）、有限・長さ同一・ピーク 1 以下・間の RMS が無音より上がること。
  * (d) pau_s を詰めると全長が (0.35 - pau_s) × 読点数 ぶん短くなり、壊れんこと。
  */
 import crypto from "node:crypto";
@@ -64,6 +64,7 @@ const GOLDEN_V10_8 = {
   "robot|uta": "87689dc897ea1d373f1fde97",
 };
 const TEXTS = ["わたし、にほんご、ちょっとしゃべれます", "ヤマノウエニ、アオイソラガミエル?"];
+const OFF = { pau_iki: null };
 const h = (s) => crypto.createHash("sha256").update(encodeWav(s)).digest("hex").slice(0, 24);
 const n = { a: [0, 0], b: [0, 0], c: [0, 0], d: [0, 0] };
 const check = (k, c, m) => { n[k][1]++; if (c) n[k][0]++; else console.log("NG  " + m); };
@@ -72,31 +73,37 @@ const rms = (x, a, b) => { let s = 0; for (let i = a; i < b; i++) s += x[i] * x[
 for (const [pn, p] of Object.entries(PRESETS)) {
   for (const [k, t] of TEXTS.entries()) for (const seed of [2024, 7, 99]) {
     const key = `${pn}|t${k}|${seed}`, o = { ...p, seed };
-    const R = makeHitofude(t, o), def = R.samples, hd = h(def);
-    check("a", hd === GOLDEN_V10_8[key], `${key}: 既定が GOLDEN_V10_8 とバイト一致せん`);
-    check("b", h(makeHitofude(t, { ...o, pau_s: null, pau_iki: null }).samples) === hd && h(makeHitofude(t, { ...o, pau_s: 0.35 }).samples) === hd, `${key}: null／0.35 明示が既定とバイト一致せん`);
-    const ik = makeHitofude(t, { ...o, pau_iki: -36 }).samples;
+    const R = makeHitofude(t, { ...o, ...OFF }), old = R.samples, ho = h(old);
+    check("a", ho === GOLDEN_V10_8[key], `${key}: {pau_iki:null} が GOLDEN_V10_8 とバイト一致せん`);
+    check("b", h(makeHitofude(t, { ...o, ...OFF, pau_s: null }).samples) === ho && h(makeHitofude(t, { ...o, ...OFF, pau_s: 0.35 }).samples) === ho, `${key}: {pau_iki:null, pau_s:null/0.35} が GOLDEN とバイト一致せん`);
+    const def = makeHitofude(t, o).samples;
     const pz = R.moras.filter((m) => m.kind === "pau").map((m) => [Math.trunc(m.a * SR), Math.trunc(m.e * SR)]);
-    const inP = (i) => pz.some(([a, b]) => i >= a && i < b);
-    let fin = true, pk = 0, ratio = null, outOk = true;
-    for (let i = 0; i < ik.length; i++) {
-      if (!Number.isFinite(ik[i])) fin = false; pk = Math.max(pk, Math.abs(ik[i]));
-      if (!inP(i) && Math.abs(def[i]) > 1e-3) { const q = ik[i] / def[i]; if (ratio === null) ratio = q; else if (Math.abs(q - ratio) > 1e-3) outOk = false; }
+    if (p.pau_iki === null) { // chibi など既定で息を外したプリセットは、既定のまま v10.8 とバイト一致
+      check("c", h(def) === ho, `${key}: プリセットで pau_iki:null やのに既定が GOLDEN とバイト一致せん`);
+    } else {
+      const same30 = h(def) === h(makeHitofude(t, { ...o, pau_iki: -30 }).samples);
+      const inP = (i) => pz.some(([a, b]) => i >= a && i < b);
+      let fin = true, pk = 0, ratio = null, outOk = true;
+      for (let i = 0; i < def.length; i++) {
+        if (!Number.isFinite(def[i])) fin = false; pk = Math.max(pk, Math.abs(def[i]));
+        if (!inP(i) && Math.abs(old[i]) > 1e-3) { const q = def[i] / old[i]; if (ratio === null) ratio = q; else if (Math.abs(q - ratio) > 1e-3) outOk = false; }
     }
-    const up = pz.every(([a, b]) => rms(ik, a, b) > 3 * rms(def, a, b) + 1e-6);
-    check("c", fin && ik.length === def.length && pk <= 1.0 && outOk && up, `${key}: 有限 ${fin} 長さ ${ik.length}/${def.length} ピーク ${pk.toFixed(3)} 間の外一致 ${outOk} 間が上がる ${up}`);
-    const sh = makeHitofude(t, { ...o, pau_s: 0.2, pau_iki: -36 }).samples;
+    const up = pz.length > 0 && pz.every(([a, b]) => rms(def, a, b) > 3 * rms(old, a, b) + 1e-6);
+    check("c", same30 && fin && def.length === old.length && pk <= 1.0 && outOk && up, `${key}: -30明示一致 ${same30} 有限 ${fin} 長さ ${def.length}/${old.length} ピーク ${pk.toFixed(3)} 間の外一致 ${outOk} 間が上がる ${up}`);
+    }
+    const sh = makeHitofude(t, { ...o, pau_s: 0.2 }).samples;
     const dN = def.length - sh.length, want = Math.round(0.15 * pz.length * SR);
     let fin2 = true, pk2 = 0;
     for (let i = 0; i < sh.length; i++) { if (!Number.isFinite(sh[i])) fin2 = false; pk2 = Math.max(pk2, Math.abs(sh[i])); }
     check("d", fin2 && pk2 <= 1.0 && Math.abs(dN - want) <= Math.round(0.006 * SR), `${key}: 短縮 ${dN} 標本（期待 ~${want}）有限 ${fin2} ピーク ${pk2.toFixed(3)}`);
   }
-  const key = `${pn}|uta`;
-  check("a", h(makeHitofude("ア", { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 }).samples) === GOLDEN_V10_8[key], `${key}: 歌モード既定が GOLDEN_V10_8 とバイト一致せん`);
+  const key = `${pn}|uta`, uo = { ...p, uta_hz: [p.hz], vd_ms: [1200], vib_c: 0.0, sigh: 0.0 };
+  check("a", h(makeHitofude("ア", { ...uo, ...OFF }).samples) === GOLDEN_V10_8[key], `${key}: 歌モード {pau_iki:null} が GOLDEN_V10_8 とバイト一致せん`);
+  check("b", h(makeHitofude("ア", uo).samples) === GOLDEN_V10_8[key], `${key}: 読点なし歌モードの既定が GOLDEN_V10_8 とバイト一致せん`);
 }
-console.log(`(a) 既定 = GOLDEN_V10_8 (b9b5eb8) バイト一致: ${n.a[0]}/${n.a[1]}`);
-console.log(`(b) {pau_s:null, pau_iki:null}／{pau_s:0.35} 明示 = 既定 バイト一致: ${n.b[0]}/${n.b[1]}`);
-console.log(`(c) pau_iki=-36 は間だけ変わる・壊れん: ${n.c[0]}/${n.c[1]}`);
+console.log(`(a) {pau_iki:null} = GOLDEN_V10_8 (b9b5eb8) バイト一致: ${n.a[0]}/${n.a[1]}`);
+console.log(`(b) pau_s null/0.35 明示・読点なし歌の既定 = GOLDEN バイト一致: ${n.b[0]}/${n.b[1]}`);
+console.log(`(c) v11.0 既定 = pau_iki -30、読点の間だけ変わる・壊れん: ${n.c[0]}/${n.c[1]}`);
 console.log(`(d) pau_s=0.2 で正しく詰まる・壊れん: ${n.d[0]}/${n.d[1]}`);
 const ng = Object.values(n).reduce((s, [a, b]) => s + b - a, 0);
 console.log(ng ? `NG ${ng}` : "ALL OK");

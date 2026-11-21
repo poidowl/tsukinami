@@ -43,6 +43,7 @@ export const PRESETS = {
     description: "ちびっ子（短め声道 fscale=1.20・高ピッチ 375Hz・明るい粗削り tilt_w=4）",
     seed: 2024, hz: 375.0, fscale: 1.20, rate: 1.18,
     g_vo: 0.895, damp: 0.28, shin: 1.0, tilt_w: 4, sigh: 0.0, jitter: 0.0024, wander_st: 0.18,
+    pau_iki: null, // v11.0: 子ども声は読点の息で ReazonSpeech の崩れ（seed 7 が「大」1字に）が出たため v10.8 の完全無音のまま
   },
   ossan: {
     label: "おっさん",
@@ -914,8 +915,8 @@ export function makeHitofude(text, opts = {}) {
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
     rawAirMul = 0.6,  // サラサラ化既定 (soroe2): 扉を通る生ノイズ rawAir の倍率 (1.0 で非減衰; {combG: null, rawAirMul: 1.0} で 90f0c44 音)
-    pau_s = null,     // 読点「、」の間の長さ (秒)。null で従来の 0.35 秒（オプトイン）
-    pau_iki = null,   // 読点の間に残す息の床 (dB, 有声部 RMS 比、例 -36)。null で従来どおり完全無音（オプトイン）
+    pau_s = null,     // 読点「、」の間の長さ (秒)。null で従来の 0.35 秒（詰めると ReazonSpeech の後半落ちが増えるので非推奨）
+    pau_iki = -30,    // v11.0 既定: 読点の間に残す息の床 (dB, 有声部 RMS 比)。null で v10.8 (b9b5eb8) どおり完全無音＝バイト一致
   } = opts;
 
   let accentKw = null, targetText = text, phraseCuts = null;

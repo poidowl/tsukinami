@@ -515,6 +515,7 @@ function getOpts() {
     wander_st: base.wander_st,
     damp: base.damp ?? 0.30,
     shin: base.shin ?? 1.0,
+    ...("pau_iki" in base ? { pau_iki: base.pau_iki } : {}),
     uta_hz: isUta ? UTA_MELODY : null,
     captureSteps: true,
   };
@@ -1133,7 +1134,8 @@ const shareHtml = `<!DOCTYPE html>
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
-      <li><strong>v10.8：</strong><strong>ノイズ削りコード自体の断捨離＆単一因果ループ統合（計 -306行 / -8.9KB）</strong> — 旧並列時代の非因果往復コム <code>yamaBp/ffbb/combHalf</code> をピーク利得一定の因果2極ゼロDCバンドパスへ置換して全段を完全因果1パス化し、重複していた <code>xSeed</code>・後段 <code>karuku</code>・ロボ専用別エンジン <code>combPeriod/resonator2Pole</code>・死蔵 <code>G2/G3</code> 軌道を全撤去して全7プリセット＋歌を単一ループへ統合。</li>
+      <li><strong>v11.0：</strong><strong>読点の息の床（<code>pau_iki: -30</code> 既定）</strong> — 読点「、」の 0.35 秒を完全無音に彫り切らず、同じ原石ノイズが無声のまま5極声道＋唇放射を通った吐息を、有声部 RMS 比 −30 dB でうっすら残す（両端は余弦窓）。ReazonSpeech k2 が読点を文末と取り違えて「ちょっとしゃべれます」を落とす本数が、大人6声×3 seed で 6/18 → 2/18。<code>{pau_iki: null}</code> で v10.8 (<code>b9b5eb8</code>) とバイト一致。ちびっ子は崩れが出たため従来の無音のまま。間の長さノブ <code>pau_s</code>（既定 0.35 秒）も追加。</li>
+      <li><strong>v10.8 (<a href="https://github.com/poidowl/tsukinami/commit/b9b5eb8" target="_blank" rel="noopener noreferrer"><code>b9b5eb8</code></a>)：</strong><strong>ノイズ削りコード自体の断捨離＆単一因果ループ統合（計 -306行 / -8.9KB）</strong> — 旧並列時代の非因果往復コム <code>yamaBp/ffbb/combHalf</code> をピーク利得一定の因果2極ゼロDCバンドパスへ置換して全段を完全因果1パス化し、重複していた <code>xSeed</code>・後段 <code>karuku</code>・ロボ専用別エンジン <code>combPeriod/resonator2Pole</code>・死蔵 <code>G2/G3</code> 軌道を全撤去して全7プリセット＋歌を単一ループへ統合。</li>
       <li><strong>v10.1 (<a href="https://github.com/poidowl/tsukinami/commit/a084abe" target="_blank" rel="noopener noreferrer"><code>a084abe</code></a>)：</strong>v10 の子音・ハ行明瞭度×粘膜ソフトクッションに、<strong>v9 サラサラ化（<code>combG: 0.985, rawAirMul: 0.6</code> / soroe2）を既定合流</strong>（持続母音シマー <code>5.5% → 1.8%</code>、<code>{combG: null, rawAirMul: 1.0}</code> で <code>90f0c44</code> の音とバイト一致）。</li>
       <li><strong>v10 (<a href="https://github.com/poidowl/tsukinami/commit/90f0c44" target="_blank" rel="noopener noreferrer"><code>90f0c44</code></a>)：</strong>聴き取りと自然さの二軸両立アップデート — <strong>子音明瞭度（<code>/s/, /t/, /k/</code>）とハ行気息（後続母音 F2 同調 <code>h</code> / 両唇 <code>f</code>）の完全復元</strong>、<code>ei</code> 長音同化、および<strong>高域コム減衰＋粘膜ソフトクッション＋等身大声道倍率</strong>による女声・歌唱時のエフェクター（フランジャー・ワウ）感の解消。</li>
       <li><strong>v9 サラサラ化 (<a href="https://github.com/poidowl/tsukinami/commit/2859fff" target="_blank" rel="noopener noreferrer"><code>2859fff</code></a>・11-20)：</strong>有声のあいだ粘膜コム帰還を <code>combG×有声度</code>（既定 <code>0.985</code>）に固定し、扉を通る生ノイズ <code>rawAir</code> を <code>0.6</code> 倍に（<strong>soroe2</strong>）。毎周期まじる新しいノイズによるザラザラ（シマー）を減らす。</li>
