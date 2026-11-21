@@ -50,13 +50,14 @@ export function features(samples, sr, feat = "v1") {
 }
 
 /** モーラの時刻表（kusanagi の正解）→ フレームの状態名。frameT はフレームの真ん中の時刻（秒）。 */
-export function frameLabels(moras, frameT, ctx = false) {
+export function frameLabels(moras, frameT, ctx = false, nctx = false) {
   const segs = [];
+  let pv = "";   // r4 (nctx): ん を前の母音ごとに分ける（N+o など。关亡婆 teian_loop_005 の P3）
   for (const m of moras) {
-    if (m.kind === "pau") segs.push([m.a, m.e, "sil"]);
+    if (m.kind === "pau") { segs.push([m.a, m.e, "sil"]); pv = ""; }
     else if (m.kind === "Q") segs.push([m.a, m.b, "Q"]);
-    else if (m.kind === "N") segs.push([m.a, m.e, "N"]);
-    else { if (m.c && m.b > m.a) segs.push([m.a, m.b, "c:" + m.c + (ctx ? "+" + m.v : "")]); segs.push([m.b, m.e, "v:" + m.v]); }
+    else if (m.kind === "N") segs.push([m.a, m.e, nctx && pv ? "N+" + pv : "N"]);
+    else { pv = m.v || pv; if (m.c && m.b > m.a) segs.push([m.a, m.b, "c:" + m.c + (ctx ? "+" + m.v : "")]); segs.push([m.b, m.e, "v:" + m.v]); }
   }
   let j = 0;
   return frameT.map((t) => { while (j < segs.length && segs[j][1] <= t) j++; return j < segs.length && segs[j][0] <= t ? segs[j][2] : "sil"; });
