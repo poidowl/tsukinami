@@ -1,28 +1,28 @@
 # Tsukinami TTS / Amanojaku TTS (`tsukinami`)
 
-![Tsukinami TTS — Read Japanese Kana. Read how it works, in Python.](assets/social_preview.png)
+![Tsukinami TTS — Japanese kana TTS from formulas only.](assets/social_preview.png)
 
 **[🇯🇵 日本語 (Japanese README)](README.md) | [🌐 English](README_EN.md)**
 
-> **Read Japanese Kana.**  
-> **Read how it works, in Python.**
+> **No neural net. No training. A voice that imitates nobody.**  
+> **Japanese kana, read by formulas only: a lip “door” and five resonances.**
 
-### 👉 Try It Live in Your Browser (No Install — Mobile & Desktop)
-- 🎛️ **[Interactive Toybox (`toybox.html`)](https://poidowl.github.io/tsukinami/toybox.html)** — 6 real `carve.py` character presets + one-click A/B compare + 10 magic-number sliders + Recipe JSON generator
-- 🔬 **[6-Stage Carving & 17-Mora Microscope (`watashi_demo.html`)](https://poidowl.github.io/tsukinami/watashi_demo.html)** — Hear how *"Watashi, nihongo, chotto shaberemasu"* is carved from white noise
-- 🧪 **[7-Track Ablation Jury (`ablation.html`)](https://poidowl.github.io/tsukinami/ablation.html)** — Disable each DSP component one by one and hear the exact difference
-- 🎹 **[Free-Kana Web Synth (`demo.html`)](https://poidowl.github.io/tsukinami/demo.html)** — Type any Japanese kana and synthesize live in the browser
+### Listen now (no install)
+- 🗡️ **[kusanagi — physical model](https://poidowl.github.io/tsukinami/kusanagi.html)** — Hit **▶** and it speaks *“Watashi, nihongo, chotto shaberemasu.”* No pretrained weights, no recorded voice.
+- 🎛️ Also on `main`: the [Toybox](https://poidowl.github.io/tsukinami/toybox.html) and a [free-kana synth](https://poidowl.github.io/tsukinami/demo.html).
 
----
+### One command (kusanagi / pure JS, Node 18+)
 
-> **Don't draw the voice—create the conditions where a voice is born.**  
-> **No recorded voice samples. No pre-trained neural weights. Carve a human voice out of uniform random noise.**
+```bash
+git clone -b kusanagi --single-branch https://github.com/poidowl/tsukinami.git
+cd tsukinami
+node yomu.mjs --preset toiki "わたし、にほんご、ちょっとしゃべれます"
+# → out/yomu_NNN_toiki.wav
+```
 
-**Tsukinami TTS (`tsukinami`)** is a ~120 KB pure-Python Japanese speech & singing synthesizer that uses **zero recorded audio units** (no concatenative corpus), **zero neural network weights**, and **zero sine-wave oscillators (`math.sin`) or pre-made periodic waveforms** in its sound source. Stage 1 runs on the **Python 3 standard library alone** (`pip install` nothing) and uses no FFT when `henv=null` (the default Stage 1 preset).
-
-- **Code License**: **MIT License** ([LICENSE](LICENSE)) — free for commercial/non-commercial use, modification, and redistribution.
-- **Generated Audio (WAV) Rights**: **Zero restrictions** — no credit or attribution required for videos, streams, games, apps, or commercial works.
-- **External Dependencies (Stage 1)**: **Zero** (`math`, `random`, `wave`, `struct`, `json`, `array`, `os` only; works on Windows, macOS, and Linux).
+### Two lines of work in this repo
+- **`kusanagi` branch** — the hook: no neural net; an asymmetric Bernoulli lip door plus F1–F5 resonances, formulas only. ~72 KB of pure JavaScript. Details: [branch README](https://github.com/poidowl/tsukinami/blob/kusanagi/README.md).
+- **`main` (Tsukinami)** — a ~120 KB pure-Python synthesizer that stamps a carved noise grain (`python yomu.py`, stdlib only). MIT. Generated WAVs have no license restrictions.
 
 ---
 

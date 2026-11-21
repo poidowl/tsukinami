@@ -1,28 +1,28 @@
 # 月並みTTS / 天邪鬼TTS (`tsukinami`)
 
-![月並みTTS / 天邪鬼TTS — 日本語かな・カナを読む。その仕組みを、Pythonで読む。](assets/social_preview.png)
+![月並みTTS / 天邪鬼TTS — 日本語かな・カナを読む。その仕組みを、コードで読む。](assets/social_preview.png)
 
 **[🇯🇵 日本語](README.md) | [🌐 English (README_EN.md)](README_EN.md)**
 
-> **日本語かな・カナを読む。**  
-> **その仕組みを、Pythonで読む。**
+> **ニューラルなし。学習なし。誰の声もまねない。**  
+> **唇の「扉」と、5つの共鳴の数式だけで、かなを読む。**
 
-> **「声を描く」のではなく、「声が生まれる条件を作る」。**  
-> **声のサンプルを持たない。学習済み音声モデルも持たない。乱数から声を削り出す。**
+### 今すぐ聴く（インストール不要）
+- 🗡️ **[草薙 kusanagi（物理モデル）](https://poidowl.github.io/tsukinami/kusanagi.html)** — 「▶ 彫って鳴らす」で、吐息の声が「わたし、にほんご、ちょっとしゃべれます」と読む。学習済みモデルも録音データも使わない。
+- 🎛️ ほかに、main 系統のオモチャ箱: [toybox.html](https://poidowl.github.io/tsukinami/toybox.html) ／ [自由かな入力](https://poidowl.github.io/tsukinami/demo.html)
 
-### 👉 今すぐブラウザで鳴らす・いじる（Live Demo — スマホ・PC対応・インストール不要）
-- 🎛️ **[みんなのオモチャ箱 (`toybox.html`)](https://poidowl.github.io/tsukinami/toybox.html)** — 実機 `carve.py` の6キャラ声プリセット ＋ 壊す前の音とのA/B比較 ＋ 10急所スライダー ＋ レシピJSON共有
-- 🔬 **[6段階彫刻＆17拍断面スコープ (`watashi_demo.html`)](https://poidowl.github.io/tsukinami/watashi_demo.html)** — 「わたし、にほんご、ちょっとしゃべれます」が雑音から声になる全工程を聴く
-- 🧪 **[7種アブレーション聴き比べ (`ablation.html`)](https://poidowl.github.io/tsukinami/ablation.html)** — 部品（40粒の芋判・揺らぎ・H1・オールパス等）を1つずつ抜いた音を比較
-- 🎹 **[自由かな入力シンセ (`demo.html`)](https://poidowl.github.io/tsukinami/demo.html)** — 好きなひらがな・カタカナを入力してその場で合成
+### 1コマンドで鳴らす（草薙 / 純JS・Node 18+）
 
----
+```bash
+git clone -b kusanagi --single-branch https://github.com/poidowl/tsukinami.git
+cd tsukinami
+node yomu.mjs --preset toiki "わたし、にほんご、ちょっとしゃべれます"
+# → out/yomu_NNN_toiki.wav
+```
 
-**月並みTTS / 天邪鬼TTS** は、録音データ（波形接続）も学習済み重み（ニューラルTTS）も、さらにはサイン波やパルス列といった既製の周期波形も使わず、**1回生成の固定乱数粒（`grain`＝芋判）を周期配置（`PER=2D + yure + shimmer`）し、並列共鳴バンクで各帯域を抽出・再合成して、全域通過フィルタで位相・時間分散を整える**、約120KBのピュアPython音声合成器です（第1段はPython標準ライブラリのみで動作し、`henv=null` の [`S.txt`](S.txt) / [`mkt.py`](mkt.py) 設定ではFFT処理を通らず第1段のみで完結します）。
-
-- **コードのライセンス**: **MIT License**（[LICENSE](LICENSE)）— 商用・非商用・改変・再配布すべて自由（「もってけドロボー」方式）。
-- **生成した音声（WAV）の権利**: **クレジット表記を含め一切の制限なし**。動画・配信・ゲーム・アプリ・商用作品に無表記でそのまま使えます。
-- **外部データ・外部ライブラリ依存（第1段）**: **ゼロ**。Windows / macOS / Linux の Python 3 標準ライブラリだけで動作します。
+### このリポジトリの2系統
+- **草薙（枝 `kusanagi`）** — 売りはここ。ニューラル不使用。非対称ベルヌーイの唇扉と、F1〜F5 の共鳴（数式だけ）。純JavaScript 約72KB。仕組みは枝の [README](https://github.com/poidowl/tsukinami/blob/kusanagi/README.md)。
+- **main（月並み）** — 乱数粒を周期配置する純Python 約120KB（標準ライブラリのみ、`python yomu.py`）。MIT。生成したWAVの権利制限なし。
 
 ---
 
