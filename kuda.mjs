@@ -18,13 +18,76 @@
  *      - 母音中央核の自然な声門圧膨らみ (CV境界オーバーシュート防止 -> 全抑揚で低RQA停滞)
  *   3. 声道狭窄部への直接ダイポール乱流注入 + 軟組織3D位相分散 (0.00 dB 振幅平坦オールパス)
  *      + Butterworth アンチエイリアシング・リサンプラ (24kHz / 44.1kHz 等に対応)
+ * 動作環境:
+ *   Node.js / ブラウザ両対応の完全1ファイル独立 ESM (外部 import ゼロ)。
+ *   - ESM: `import { synthKuda } from "./kuda.mjs"; const { wav, samples, sr } = synthKuda("こんにちは");`
+ *   - CLI: `node kuda.mjs [--preset kawaii|amae|genki] [--sr 24000|44100] [--flat Hz] -o out.wav "テキスト"`
  */
-import fs from "node:fs";
-import { pathToFileURL } from "node:url";
-import { encodeWav, f0Rule, makeRng, smooth1, toKata, annotate, ACCENT_KAWAII } from "./hitofude.mjs";
 
 export const SR = 44100;
 const FP = 5.0;
+
+/** 決定論的 32-bit PRNG (Mulberry32: ブラウザ・Node共通で完全同一波形を再現) */
+export function makeRng(seed) {
+  let a = (Math.trunc(seed) ^ 0x6d2b79f5) >>> 0;
+  const random = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296.0;
+  };
+  return { random, uniform: (lo, hi) => lo + (hi - lo) * random() };
+}
+
+/** ひらがなをカタカナに正規化する */
+export function toKata(s) {
+  let out = "";
+  for (const ch of String(s || "")) {
+    const code = ch.codePointAt(0);
+    out += (code >= 0x3041 && code <= 0x3096) ? String.fromCodePoint(code + 0x60) : ch;
+  }
+  return out;
+}
+
+/** 5ms フレーム列への移動平均スムーザ */
+export function smooth1(x, ms) {
+  const k = Math.max(1, Math.trunc(ms / FP)), n = x.length;
+  if (k <= 1 || n === 0) return Array.from(x);
+  const N = n + 2 * k, a = new Float64Array(N);
+  for (let i = 0; i < k; i++) { a[i] = x[0]; a[k + n + i] = x[n - 1]; }
+  for (let i = 0; i < n; i++) a[k + i] = x[i];
+  const off = Math.floor((k - 1) / 2), out = new Array(n), inv = 1.0 / k;
+  for (let i = 0; i < n; i++) {
+    const j = i + k + off;
+    let s = 0.0;
+    for (let m = 0; m < k; m++) {
+      const q = j - m;
+      if (q >= 0 && q < N) s += a[q] * inv;
+    }
+    out[i] = s;
+  }
+  return out;
+}
+
+/** Float32 PCM を 16-bit モノラル RIFF WAV (Uint8Array) にエンコードする */
+export function encodeWav(samples, sampleRate = SR) {
+  const n = samples.length, buf = new ArrayBuffer(44 + n * 2), view = new DataView(buf);
+  const writeAscii = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + n * 2, true);
+  writeAscii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) view.setInt16(44 + i * 2, Math.round(Math.max(-1.0, Math.min(1.0, samples[i])) * 32767.0), true);
+  return new Uint8Array(buf);
+}
 const M = 31;       // 12.4cm young female vocal tract (@ 88.2kHz -> dx = 0.40cm)
 const MN = 23;      // 9.2cm nasal tract (opens on true nasals n/m/N)
 const MS = 10;      // 4.0cm closed-end maxillary sinus branch (zeros @ 2.205kHz & 6.615kHz, passband @ 4.410kHz)
@@ -72,6 +135,208 @@ const MANNER = {
 const VOICELESS = new Set(["k", "s", "sh", "t", "ch", "ts", "h", "f", "p"]);
 const VOICED_OBS = new Set(["g", "d", "b", "z", "j"]);
 const SIBILANT = new Set(["s", "sh", "z", "j", "ts", "ch"]);
+const SPECIAL = new Set(["ン", "ッ", "ー"]);
+const PART = new Set(Array.from("モニガヲデヘテ"));
+const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
+
+/** 可愛らしい日本語抑揚のデフォルト韻律パラメータ */
+export const ACCENT_KAWAII = {
+  reg: 335.0, rng: 9.6, jump: 5.2, fall: 5.6, sag: 1.1, lag: 1.0, rlag: 0.5,
+  ds: 1.8, ds_h: 0.4, reset: 0.72, decl: 0.9, fin: 1.6, qrise: 6.0, sm: 30.0,
+};
+
+function splitMarked(text) {
+  const out = [];
+  for (const ch of toKata(text)) {
+    if (ch === "'" || ch === "’") out.push("'");
+    else if (ch === " " || ch === "/" || ch === "|") {
+      if (out.length && out[out.length - 1] !== "/" && out[out.length - 1] !== "、") out.push("/");
+    } else if (ch === "?" || ch === "？") {
+      if (out.length && (out[out.length - 1] === "/" || out[out.length - 1] === "、")) out[out.length - 1] = "?";
+      else if (out.length) out.push("?");
+    } else if (PAUSE.has(ch)) {
+      if (out.length && out[out.length - 1] === "/") out[out.length - 1] = "、";
+      else if (out.length && out[out.length - 1] !== "、" && out[out.length - 1] !== "?") out.push("、");
+    } else if (SMALL[ch] && out.length && !["、", "ッ", "ン", "ー", "'", "/"].includes(out[out.length - 1])) {
+      out[out.length - 1] += ch;
+    } else {
+      out.push(ch);
+    }
+  }
+  while (out.length && (out[out.length - 1] === "、" || out[out.length - 1] === "/")) out.pop();
+  return out;
+}
+
+/** テキストからアクセント核・句区切り注釈を抽出する */
+export function annotate(text) {
+  const toks = splitMarked(String(text || "").replace(/0/g, "#"));
+  const clean = [], phr = [];
+  let cur = null, k = 0;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t === "、" || t === "/" || t === "?") {
+      if (t === "?" && cur !== null) cur[3] = 1;
+      if (t === "、" || (t === "?" && i + 1 < toks.length)) clean.push("、");
+      cur = null;
+      continue;
+    }
+    if (t === "#") { if (cur !== null && cur[2] === null) cur[2] = 0; continue; }
+    if (t === "'") { if (cur !== null) cur[2] = k - cur[0]; continue; }
+    if (cur === null) { cur = [k, 0, null, 0]; phr.push(cur); }
+    cur[1] += 1;
+    clean.push(t);
+    k += 1;
+  }
+  return [clean.join(""), phr];
+}
+
+function guessPhrases(moras) {
+  const chunks = [], qs = [];
+  let cur = [];
+  for (const m of moras) {
+    const t = typeof m === "object" ? m.t : m;
+    if (t === "'" || t === "/") continue;
+    if (t === "、" || t === "?") {
+      if (cur.length) { chunks.push(cur); qs.push(t === "?"); cur = []; }
+      else if (t === "?" && qs.length) qs[qs.length - 1] = true;
+    } else cur.push(t);
+  }
+  if (cur.length) { chunks.push(cur); qs.push(false); }
+  const phr = [];
+  let k = 0;
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const seg = chunks[ci], L = seg.length;
+    const W = L - ((PART.has(seg[L - 1]) && L > 2) ? 1 : 0);
+    let acc = W >= 3 ? Math.max(1, W - 2) : 1;
+    while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
+    phr.push([k, L, acc, qs[ci] ? 1 : 0]);
+    k += L;
+  }
+  return phr;
+}
+
+function heavy(m1, m2) {
+  return SPECIAL.has(m2.t) || (m1.v != null && (LONGV[m1.v] || "").includes(m2.t));
+}
+
+function smoothTri(x, k) {
+  if (k <= 1 || !x.length) return x.slice();
+  let cur = x.slice();
+  for (let p = 0; p < 2; p++) {
+    const hl = p === 0 ? Math.floor(k / 2) : (k - 1 - Math.floor(k / 2));
+    const hr = k - 1 - hl, n = cur.length;
+    const pad = new Float64Array(hl + n + hr), c = new Float64Array(pad.length + 1);
+    for (let i = 0; i < hl; i++) pad[i] = cur[0];
+    for (let i = 0; i < n; i++) pad[hl + i] = cur[i];
+    for (let i = 0; i < hr; i++) pad[hl + n + i] = cur[n - 1];
+    for (let i = 0; i < pad.length; i++) c[i + 1] = c[i] + pad[i];
+    const nx = new Array(n);
+    for (let i = 0; i < n; i++) nx[i] = (c[i + k] - c[i]) / k;
+    cur = nx;
+  }
+  return cur;
+}
+
+/** モーラ列から日本語の自然な 5ms フレーム F0 軌道 [Hz] を生成する */
+export function f0Rule(moras, n, opts = {}) {
+  const {
+    phrases: inPhr = null, question = false, reg = 340.0, rng = 8.0, jump = 4.0, fall = 5.0,
+    sag = 1.0, lag = 1.0, rlag = 0.5, ds = 2.0, ds_h = 0.5, reset = 0.6, decl = 1.2, fin = 2.5, qrise = 5.0,
+    sm = 35.0, fp_ms = 5.0, fit_range = true,
+  } = opts;
+  const ml = moras.slice();
+  let phrases;
+  if (!inPhr) {
+    phrases = guessPhrases(ml);
+  } else {
+    const nonPau = ml.filter((m) => m.kind !== "pau").map((m) => m.t);
+    phrases = inPhr.map((p) => (p[2] != null ? p.slice() : [p[0], p[1], guessPhrases(nonPau.slice(p[0], p[0] + p[1]))[0][2], ...p.slice(3)]));
+  }
+  const idx = [];
+  for (let j = 0; j < ml.length; j++) if (ml[j].kind !== "pau") idx.push(j);
+  const lv = new Array(ml.length).fill(null);
+  if (idx.length && phrases.length) {
+    let top = 0.0;
+    for (let pi = 0; pi < phrases.length; pi++) {
+      const [s, L, acc, qf] = phrases[pi];
+      if (pi > 0) {
+        const [ps, pL, pacc] = phrases[pi - 1];
+        const prevEnd = idx[ps + pL - 1], thisStart = idx[s];
+        top -= pacc ? ds : ds_h;
+        let hasPau = false;
+        for (let j = prevEnd + 1; j < thisStart; j++) if (ml[j].kind === "pau") { hasPau = true; break; }
+        if (hasPau) top *= (1 - reset);
+      }
+      const H = top, Lo = top - jump;
+      const weak = L > 1 && heavy(ml[idx[s]], ml[idx[s + 1]]);
+      for (let q = 0; q < L; q++) {
+        const j = idx[s + q], pos = q + 1;
+        let a, b;
+        if (acc === 1 && pos === 1) { a = b = H; }
+        else if (acc && pos > acc) {
+          const d = fall + sag * (pos - acc - 1);
+          a = b = H - d;
+          if (pos === acc + 1) a = H - fall * (1 - lag);
+        } else if (pos === 1) {
+          a = b = weak ? (H - jump * 0.45) : Lo;
+          if (L === 1) a = b = H - 1.0;
+        } else {
+          a = b = H;
+          if (pos === 2 && !weak) a = H - jump * rlag;
+        }
+        lv[j] = [a, b];
+      }
+      if (qf) {
+        const j = idx[s + L - 1];
+        lv[j][1] = lv[j][0] + qrise;
+      }
+    }
+    const last = idx[idx.length - 1];
+    if (question) lv[last][1] = lv[last][0] + qrise;
+    else if (!phrases[phrases.length - 1][3]) {
+      lv[last][1] = lv[last][0] - fin;
+      if (idx.length > 1) lv[idx[idx.length - 2]][1] -= fin * 0.25;
+    }
+  }
+  const kt = [], kv = [];
+  for (let i = 0; i < ml.length; i++) {
+    if (lv[i] === null) continue;
+    let b = ml[i].b, e = ml[i].e;
+    if (e - b < 0.02) b = ml[i].a;
+    kt.push(b, e);
+    kv.push(lv[i][0], lv[i][1]);
+  }
+  if (!kt.length) return new Array(n).fill(0.0);
+  const t0 = kt[0];
+  for (let i = 0; i < kv.length; i++) kv[i] -= decl * (kt[i] - t0);
+  const fp = fp_ms / 1000.0;
+  let st = new Array(n);
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i * fp;
+    if (t <= kt[0]) { st[i] = kv[0]; continue; }
+    if (t >= kt[kt.length - 1]) { st[i] = kv[kv.length - 1]; continue; }
+    while (kt[j + 1] < t) j++;
+    const a = kt[j], b = kt[j + 1];
+    const w = b <= a ? 0.0 : (t - a) / (b - a);
+    st[i] = kv[j] + w * (kv[j + 1] - kv[j]);
+  }
+  st = smoothTri(st, Math.max(1, Math.trunc(sm / fp_ms)));
+  const vs = st.slice().sort((a, b) => a - b);
+  if (fit_range && rng) {
+    const lo = vs[Math.trunc(0.05 * (vs.length - 1))];
+    const hi = vs[Math.trunc(0.95 * (vs.length - 1))];
+    const k = (hi - lo > 1e-6) ? (rng / (hi - lo)) : 1.0;
+    for (let i = 0; i < n; i++) st[i] *= k;
+    for (let i = 0; i < vs.length; i++) vs[i] *= k;
+  }
+  let sum = 0.0;
+  for (let i = 0; i < vs.length; i++) sum += vs[i];
+  const mu = sum / vs.length;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = reg * Math.pow(2.0, (st[i] - mu) / 12.0);
+  return out;
+}
 
 function parseMoras(text) {
   const s = toKata(String(text || ""));
@@ -537,7 +802,7 @@ function applyAntiAliasLpf(buf, srIn, cutoffHz) {
  * @param {number|null} [opts.flatHz=null] 固定ピッチ評価用 F0 [Hz]
  * @param {number[]|null} [opts.uta_hz=null] モーラごとの外部 F0 列 [Hz]
  * @param {number} [opts.seed=2024] 乱数シード
- * @returns {{ samples: Float32Array, sr: number, wav: Buffer }}
+ * @returns {{ samples: Float32Array, sr: number, wav: Uint8Array }}
  */
 export function synthKuda(text, opts = {}) {
   const presetObj = KUDA_PRESETS[opts.preset || "kawaii"] || KUDA_PRESETS.kawaii;
@@ -842,28 +1107,33 @@ export function synthKuda(text, opts = {}) {
     }
   }
 
-  return { samples, sr: srOut, wav: Buffer.from(encodeWav(samples, srOut)) };
+  return { samples, sr: srOut, wav: encodeWav(samples, srOut) };
 }
 
-// CLI entrypoint: node kuda.mjs [--preset kawaii|amae|genki] [--sr 24000|44100] [--flat 305] -o out.wav "テキスト"
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2);
-  let outPath = "kuda_out.wav", preset = "kawaii", srOut = 24000, flatHz = null, textParts = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if ((a === "-o" || a === "--out") && args[i + 1]) { outPath = args[++i]; }
-    else if (a === "--preset" && args[i + 1]) { preset = args[++i]; }
-    else if (a === "--sr" && args[i + 1]) { srOut = Number(args[++i]) || 24000; }
-    else if (a === "--flat" && args[i + 1]) { flatHz = Number(args[++i]) || null; }
-    else if (a === "-h" || a === "--help") {
-      console.log("使い方: node kuda.mjs [--preset kawaii|amae|genki] [--sr 24000|44100] [--flat Hz] -o out.wav \"テキスト\"");
-      process.exit(0);
-    } else {
-      textParts.push(a);
+// CLI entrypoint (Node.js only; completely skipped in browsers):
+// node kuda.mjs [--preset kawaii|amae|genki] [--sr 24000|44100] [--flat 305] -o out.wav "テキスト"
+if (typeof process !== "undefined" && process.versions?.node && process.argv?.[1]) {
+  const { pathToFileURL } = await import("node:url");
+  if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const fs = await import("node:fs");
+    const args = process.argv.slice(2);
+    let outPath = "kuda_out.wav", preset = "kawaii", srOut = 24000, flatHz = null, textParts = [];
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if ((a === "-o" || a === "--out") && args[i + 1]) { outPath = args[++i]; }
+      else if (a === "--preset" && args[i + 1]) { preset = args[++i]; }
+      else if (a === "--sr" && args[i + 1]) { srOut = Number(args[++i]) || 24000; }
+      else if (a === "--flat" && args[i + 1]) { flatHz = Number(args[++i]) || null; }
+      else if (a === "-h" || a === "--help") {
+        console.log("使い方: node kuda.mjs [--preset kawaii|amae|genki] [--sr 24000|44100] [--flat Hz] -o out.wav \"テキスト\"");
+        process.exit(0);
+      } else {
+        textParts.push(a);
+      }
     }
+    const text = textParts.join(" ") || "わたし、にほんご、ちょっとしゃべれます";
+    const res = synthKuda(text, { preset, srOut, flatHz });
+    fs.writeFileSync(outPath, res.wav);
+    console.log(`KUDA (${preset}, ${res.sr}Hz): wrote ${outPath} (${res.wav.byteLength} bytes, ${(res.samples.length / res.sr).toFixed(2)}s)`);
   }
-  const text = textParts.join(" ") || "わたし、にほんご、ちょっとしゃべれます";
-  const res = synthKuda(text, { preset, srOut, flatHz });
-  fs.writeFileSync(outPath, res.wav);
-  console.log(`KUDA (${preset}, ${res.sr}Hz): wrote ${outPath} (${res.wav.length} bytes, ${(res.samples.length / res.sr).toFixed(2)}s)`);
 }
