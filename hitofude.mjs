@@ -967,6 +967,7 @@ export function makeHitofude(text, opts = {}) {
     yurume_toji = null, // 声門扉の閉じの速さを開きの速さ (8.20/周期) へ寄せる（1.0 で低音枝 hiMix=0 と同じ閉じ方＝H1−H2 が上がる）
     yurume_tani = null, // サラサラ既定 combG の固定ピン留めを、プリセット自身の g_vo 連動くびれへ寄せる（1.0 で g_vo 連動＝倍音の谷が浅くなる）
     yurume_bern = null, // 高い声のベルヌーイ急閉鎖 (bern=0.55*hiMix) と閉鎖直後の気流遮断 (closedDecay=0.12) を低音枝 (0.0 / 0.50) へ寄せる
+    yurume_clear = null,// クリア化: コム種振幅の周期バタつき抑制 (gEnv 1スカラー安定化 + gT→0.996) と F0以下低域濁り除去 (0.72*hRef 2極HPF)
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -984,7 +985,7 @@ export function makeHitofude(text, opts = {}) {
   }
 
   const yu = (v) => (v == null || !Number.isFinite(+v) ? 0.0 : Math.min(1.0, Math.max(0.0, +v)));
-  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern);
+  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern), uClear = yu(yurume_clear);
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
@@ -1147,12 +1148,13 @@ export function makeHitofude(text, opts = {}) {
   const qDivP = [8.0, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
   const dMulP = [150.0 - 60.0 * hiMix, 50.0 - 20.0 * hiMix, 30.0 - 15.0 * hiMix, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
-  let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
+  let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0, gEnv = 0.16;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
     let gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
     // 削りゆるめ③: combG の一律ピン留め（全プリセットで谷が冷凍ロボと同じ深さになる）を、プリセット自身の g_vo 連動へ寄せる
     if (uTani > 0.0 && combGx !== null && g > 1e-4) gT += uTani * (Math.max(g, seedFloor * (1.0 - SIGH_S[i])) - gT);
+    if (uClear > 0.0 && coupled && g > 1e-4) gT += uClear * (0.996 * vo - gT);
     const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
     const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
     let sig;
@@ -1163,8 +1165,13 @@ export function makeHitofude(text, opts = {}) {
       const fb2 = readDelay(gBuf2, i, p); gLp2 = (1.0 - damp) * fb2 + damp * gLp2;
       const gVal = Math.tanh((cIn * gBuf[i] + gT * (gLp2 + ret * 0.16 * doorPrev * pRet)) * 0.85) / 0.85;
       gBuf2[i] = gVal;
+      let gDrive = gVal;
+      if (uClear > 0.0) {
+        gEnv = 0.994 * gEnv + 0.006 * gVal * gVal;
+        gDrive = gVal * (1.0 + uClear * (1.0 / Math.sqrt(gEnv / 0.16 + 0.06) - 1.0));
+      }
       const aOpen = Math.exp(-8.20 / p), aClose = Math.exp(-closeMul / p);
-      doorLp1 = (1.0 - aClose) * gVal + aClose * doorLp1;
+      doorLp1 = (1.0 - aClose) * gDrive + aClose * doorLp1;
       doorLp2 = (1.0 - aOpen) * doorLp1 + aOpen * doorLp2;
       const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain - bern * uFlow;
       const neck = hiMix > 0.4
@@ -1175,7 +1182,8 @@ export function makeHitofude(text, opts = {}) {
       if (door > 0.0) {
         const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
         const aFl = 0.88 + ((door > uFlow ? 0.35 : 0.08) - 0.88) * hiMix;
-        uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
+        const pLung = uClear > 0.0 ? (0.38 + (1.0 - 0.65 * uClear) * (pLungWalk[i] - 0.38)) : pLungWalk[i];
+        uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLung + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
       } else uFlow *= closedDecay;
       sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
     } else {
@@ -1196,6 +1204,16 @@ export function makeHitofude(text, opts = {}) {
   if (captureSteps) { x1 = gBuf2.slice(); x2 = uOut.slice(); }
   x = xClean;
   for (let i = 1; i < N; i++) ycRad[i] = yc[i] - radK * yc[i - 1];
+  if (uClear > 0.0 && coupled) {
+    const w0 = twoPiSR * (0.72 * hRef), cw = Math.cos(w0), al = Math.sin(w0) / Math.SQRT2;
+    const a0 = 1.0 + al, b0 = (1.0 + cw) * 0.5 / a0, b1 = -(1.0 + cw) / a0, b2 = b0, a1 = (-2.0 * cw) / a0, a2 = (1.0 - al) / a0;
+    let hx1 = 0.0, hx2 = 0.0, hy1 = 0.0, hy2 = 0.0;
+    for (let i = 0; i < N; i++) {
+      const xi = ycRad[i], yi = b0 * xi + b1 * hx1 + b2 * hx2 - a1 * hy1 - a2 * hy2;
+      hx2 = hx1; hx1 = xi; hy2 = hy1; hy1 = yi;
+      ycRad[i] = xi + uClear * (yi - xi);
+    }
+  }
   let vInSq = 0.0, vOutSq = 0.0, vCnt = 0;
   for (let i = 1; i < N; i++) if (GS[i] > 0.25) { vInSq += x[i] * x[i]; vOutSq += ycRad[i] * ycRad[i]; vCnt++; }
   const vScale = (coupled ? 0.45 : 0.43) * ((vCnt > 0 ? Math.sqrt(vInSq / vCnt) : rmsActive(x)) / ((vCnt > 0 ? Math.sqrt(vOutSq / vCnt) : rmsActive(ycRad)) || 1.0));
