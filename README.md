@@ -69,10 +69,10 @@ x = rng.uniform(-1, +1) × N   # [-1, +1] の一様ホワイトノイズ（乱�
 | `pau_s` (opts・レシピのみ) | `0.35` | 読点の間の長さ（秒）。`null` で 0.35。詰めると ReazonSpeech の後半落ちが増える（0.20 秒で悪化）ので非推奨 |
 | `f0_st` (opts・レシピのみ) | `null` | ポーズ以外のモーラごとの F0 加減（半音）。`null` 要素はそのモーラを変えない。母音区間だけに掛かり、端は約 20ms の余弦ランプ。未指定時は既定音とバイト一致。話し声の強調ではアクセント核（`'`）を動かさず、既存の `vd_ms`（母音長）および `loud_db` と連動させる |
 | `loud_db` (opts・レシピのみ) | `null` | ポーズ以外のモーラごとの母音ゲイン（dB）。`null` 要素はそのモーラを変えない。掛かり方は `f0_st` と同じ（母音区間、端のランプ）。未指定時は既定音とバイト一致。強調では `vd_ms`・`f0_st` と揃えて使う |
-| `yurume_acc` (opts・レシピのみ) | `null` | 削りゆるめ①。`sigh >= 0.25` だけが理由で `ACCENT_NORMAL` に落ちていた起伏を `ACCENT_CUTE` へ戻す（`0〜1` で表を線形にまぜる、`1.0` で hz だけで表を選ぶ）。`hz < 200` は従来どおり NORMAL。`toiki`/`alto`/`sasayaki` の F0 レンジ 5.6 → 9.2 半音。推奨 `1.0` |
-| `yurume_toji` (opts・レシピのみ) | `null` | 削りゆるめ②。声門扉の閉じの速さ `closeMul`（高い声ほど 22.0/周期）を開きの速さ 8.20/周期 へ寄せる（`1.0` で低音枝 `hiMix=0` と同じ閉じ方）。H1−H2 +3〜4 dB、2.6〜5.6 kHz は −3〜−5 dB。推奨 `1.0` |
-| `yurume_tani` (opts・レシピのみ) | `null` | 削りゆるめ③。サラサラ既定 `combG` の一律ピン留め（全プリセットの倍音の谷が `robot` と同じ深さ）を、プリセット自身の `g_vo` 連動くびれへ寄せる（`1.0` で `{combG: null}` と同じ帰還）。谷 −1.6〜−9.3 dB、周期ゆれは増える。推奨 `0.5` |
-| `yurume_lo` (opts・レシピのみ) | `null` | 削りゆるめ④。放射の差分 `1 − radK z⁻¹` の `radK`（高い声ほど 0.90）を低音枝の 0.42 へ寄せ、H1/F1 帯の削りを減らす。効きは `0.25` でほぼ頭打ち、そこから先は高域だけが下がる。推奨 `0.25` |
+| `yurume_acc` (opts・レシピのみ) | `null` | 削りゆるめ①。`sigh >= 0.25` だけが理由で `ACCENT_NORMAL` に落ちていた起伏を `ACCENT_CUTE` へ戻す（`0〜1` で表を線形にまぜる、`1.0` で hz だけで表を選ぶ）。`hz < 200` は従来どおり NORMAL。`toiki` の F0 レンジ 3.83 → 6.88 半音。推奨 `1.0` |
+| `yurume_toji` (opts・レシピのみ) | `null` | 削りゆるめ②。声門扉の閉じの速さ `closeMul`（v8 `7f09d18`、高い声ほど 22.0/周期）を開きの速さ 8.20/周期 へ寄せる（`1.0` で低音枝 `hiMix=0` と同じ閉じ方）。`0.5` で `chibi` の子音安定、`1.0` で軟閉鎖最大。推奨 `0.5`（本命 R3b@2.0）／`1.0`（比較用 R3c@1.5） |
+| `yurume_tani` (opts・レシピのみ) | `null` | 削りゆるめ③。サラサラ既定 `combG=0.985` の一律ピン留め（`2859fff`/`a084abe`）を、プリセット自身の `g_vo` 連動くびれへ寄せる（`1.0` で `{combG: null}` と同じ帰還）。推奨 `0.5` |
+| `yurume_bern` (opts・レシピのみ) | `null` | 削りゆるめ④。v8 `7f09d18` の高い声のベルヌーイ急閉鎖 `bern=0.55*hiMix` と閉鎖直後の気流遮断 `closedDecay=0.12` を低音枝（`0.0` / `0.50`）へ寄せる。`doorLp1` の応答を鈍らせず `yurume_toji` との相乗で軟閉鎖と子音明瞭度を両立。推奨 `1.0` |
 
 ---
 
@@ -102,6 +102,6 @@ node tools/build_x_player.mjs
 
 ## 改変履歴（抜粋）
 
-- **yurume（任意ノブ）**: 削りすぎの削り落とし。`yurume_acc` / `yurume_toji` / `yurume_tani` / `yurume_lo`（すべて既定 `null`＝7 プリセットとも abb2dae とバイト一致）。推奨の組み合わせは `{yurume_acc: 1.0, yurume_toji: 1.0, yurume_tani: 0.5, yurume_lo: 0.25}`。
+- **yurume（任意ノブ整理）**: 削りすぎの削り落とし 4 ノブ（`yurume_acc` / `yurume_toji` / `yurume_tani` / `yurume_bern`、すべて既定 `null`＝7 プリセットとも `abb2dae` とバイト一致；`yurume_lo`・`yurume_q` は測定の結果不採用）。既存ノブ `damp: 0.16`・`rawAirMul` と組んだ本命は R3b@2.0 `{yurume_acc: 1.0, yurume_toji: 0.5, yurume_tani: 0.5, yurume_bern: 1.0, damp: 0.16, rawAirMul: 2.0}`（イタコ ASR 8091/8092 平均 7.3%/7.0% vs base 10.2%/9.6%）、比較用は R3c@1.5 `{..., yurume_toji: 1.0, rawAirMul: 1.5}`（8.3%/10.3%）。
 - **v11.0**: 読点の息の床 `pau_iki: -30` を既定化（ReazonSpeech k2 の後半落ち 大人6声×3 seed で 6/18 → 2/18）、間の長さノブ `pau_s` 追加。`{pau_iki: null}` で v10.8 とバイト一致（`node tools/test_pause.mjs`）。`chibi` は従来の無音のまま。
 - **v10.8** (`b9b5eb8`): ノイズ削りコードの断捨離＆単一因果ループ統合。

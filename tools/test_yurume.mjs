@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * tools/test_yurume.mjs — 削りゆるめ任意ノブ（yurume_acc / yurume_toji / yurume_tani / yurume_lo）回帰テスト
+ * tools/test_yurume.mjs — 削りゆるめ任意ノブ（yurume_acc / yurume_toji / yurume_tani / yurume_bern）回帰テスト
  *
  *   node tools/test_yurume.mjs
  *
  * (a) ノブ未指定・0・null 明示が GOLDEN_ABB2DAE（abb2dae 既定音）と全プリセット × 2文 × seed 2 つでバイト一致すること。
  * (b) 各ノブ 1.0 は、効くはずのプリセットでだけ音を変え、効かないはずのプリセットではバイト一致のままであること
- *     （yurume_acc: sigh>=0.25 かつ hz>=200 のみ／yurume_toji・yurume_lo: 扉ありで hz>125（hiMix>0）のみ／yurume_tani: 扉あり shin>0 のみ）。
- * (c) 推奨の組み合わせ・各ノブ 1.0 で有限・長さ同一・ピーク 1 以下であること。
+ *     （yurume_acc: sigh>=0.25 かつ hz>=200 のみ／yurume_toji・yurume_bern: 扉ありで hz>125（hiMix>0）のみ／yurume_tani: 扉あり shin>0 のみ）。
+ * (c) 本命 R3b@2.0・比較用 R3c@1.5・各ノブ 1.0 で有限・長さ同一・ピーク 1 以下であること。
  * (d) yurume_tani: 1.0 は {combG: null} とバイト一致すること（g_vo 連動の帰還そのものに戻る）。
  */
 import crypto from "node:crypto";
@@ -44,7 +44,8 @@ const GOLDEN_ABB2DAE = {
   "robot|t1|7": "697f34c70a69ea8eeda46d3b",
 };
 const TEXTS = ["きょ'うは / あ'めが / ふ'ります", "わたし、にほんご、ちょっとしゃべれます"];
-const REC = { yurume_acc: 1.0, yurume_toji: 1.0, yurume_tani: 0.5, yurume_lo: 0.25 };
+const REC_MAIN = { yurume_acc: 1.0, yurume_toji: 0.5, yurume_tani: 0.5, yurume_bern: 1.0, damp: 0.16, rawAirMul: 2.0 };
+const REC_CMP = { yurume_acc: 1.0, yurume_toji: 1.0, yurume_tani: 0.5, yurume_bern: 1.0, damp: 0.16, rawAirMul: 1.5 };
 const h = (s) => crypto.createHash("sha256").update(encodeWav(s)).digest("hex").slice(0, 24);
 const n = { a: [0, 0], b: [0, 0], c: [0, 0], d: [0, 0] };
 const check = (k, c, m) => { n[k][1]++; if (c) n[k][0]++; else console.log("NG  " + m); };
@@ -53,7 +54,6 @@ const hiMixOf = (p) => Math.min(1.0, Math.max(0.0, (Math.max(85.0, p.hz) - 125.0
 const applies = {
   yurume_acc: (p) => p.sigh >= 0.25 && p.hz >= 200.0,
   yurume_toji: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
-  yurume_lo: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
   yurume_tani: (p) => p.shin > 0.0,
   yurume_bern: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
 };
@@ -63,15 +63,15 @@ for (const [pn, p] of Object.entries(PRESETS)) {
     const key = `${pn}|t${k}|${seed}`, o = { ...p, seed };
     const base = makeHitofude(t, o).samples, hb = h(base);
     check("a", hb === GOLDEN_ABB2DAE[key], `${key}: ノブ未指定が GOLDEN_ABB2DAE とバイト一致せん`);
-    check("a", h(makeHitofude(t, { ...o, yurume_acc: 0, yurume_toji: 0, yurume_tani: 0, yurume_lo: 0, yurume_bern: 0 }).samples) === hb, `${key}: ノブ 0 明示がバイト一致せん`);
-    check("a", h(makeHitofude(t, { ...o, yurume_acc: null, yurume_toji: null, yurume_tani: null, yurume_lo: null, yurume_bern: null }).samples) === hb, `${key}: ノブ null 明示がバイト一致せん`);
+    check("a", h(makeHitofude(t, { ...o, yurume_acc: 0, yurume_toji: 0, yurume_tani: 0, yurume_bern: 0 }).samples) === hb, `${key}: ノブ 0 明示がバイト一致せん`);
+    check("a", h(makeHitofude(t, { ...o, yurume_acc: null, yurume_toji: null, yurume_tani: null, yurume_bern: null }).samples) === hb, `${key}: ノブ null 明示がバイト一致せん`);
     for (const [knob, fn] of Object.entries(applies)) {
       const s = makeHitofude(t, { ...o, [knob]: 1.0 }).samples, changed = h(s) !== hb;
       check("b", changed === fn(p), `${key}: ${knob}=1.0 の効き方が想定と違う（changed=${changed}）`);
       check("c", sane(s, base.length), `${key}: ${knob}=1.0 が壊れとる`);
     }
-    check("c", sane(makeHitofude(t, { ...o, ...REC }).samples, base.length), `${key}: 推奨の組み合わせが壊れとる`);
-    check("c", sane(makeHitofude(t, { ...o, yurume_acc: 1.0, yurume_tani: 0.5, yurume_bern: 1.0, damp: 0.16 }).samples, base.length), `${key}: bern+damp0.16 の組み合わせが壊れとる`);
+    check("c", sane(makeHitofude(t, { ...o, ...REC_MAIN }).samples, base.length), `${key}: 本命 R3b@2.0 が壊れとる`);
+    check("c", sane(makeHitofude(t, { ...o, ...REC_CMP }).samples, base.length), `${key}: 比較用 R3c@1.5 が壊れとる`);
     check("d", h(makeHitofude(t, { ...o, yurume_tani: 1.0 }).samples) === h(makeHitofude(t, { ...o, combG: null }).samples), `${key}: yurume_tani=1.0 が {combG:null} と一致せん`);
   }
 }
