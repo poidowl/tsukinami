@@ -26,9 +26,9 @@ function makeNoise(durS = 1.0) {
   return encodeWav(s);
 }
 
-assert.equal(ALL_TOOLS.length, 110, `Expected 110 tools, got ${ALL_TOOLS.length}`);
+assert.equal(ALL_TOOLS.length, 130, `Expected 130 tools, got ${ALL_TOOLS.length}`);
 const ids = new Set(ALL_TOOLS.map((t) => t.id));
-assert.equal(ids.size, 110, "Tool IDs must be unique 1..110");
+assert.equal(ids.size, 130, "Tool IDs must be unique 1..130");
 
 const cases = {
   sine350: makeSine(350.0, 0.8),
