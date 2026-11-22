@@ -14,6 +14,7 @@ import { CAT07_TOOLS } from "./cat07_consonants.mjs";
 import { CAT08_TOOLS } from "./cat08_psycho.mjs";
 import { CAT09_TOOLS } from "./cat09_composite.mjs";
 import { buildHtmlReport, CAT10_TOOLS } from "./cat10_visual.mjs";
+import { CAT11_TOOLS } from "./cat11_felony.mjs";
 
 export const ALL_TOOLS = [
   ...CAT01_TOOLS,
@@ -26,6 +27,7 @@ export const ALL_TOOLS = [
   ...CAT08_TOOLS,
   ...CAT09_TOOLS,
   ...CAT10_TOOLS,
+  ...CAT11_TOOLS,
 ];
 
 export function analyzeBuffer(bytes, ref = null, refMetrics = null) {
