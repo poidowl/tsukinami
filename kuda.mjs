@@ -510,7 +510,7 @@ function buildScore(text, opts = {}) {
   const rawMs = parseMoras(text);
   const dec = rawMs.map((m, idx) => ({ raw: m, ...decodeMora(m), idx }));
 
-  const CDUR = { "": 0, k: 0.072, g: 0.054, s: 0.106, z: 0.092, sh: 0.106, j: 0.094, t: 0.061, d: 0.055, ch: 0.104, ts: 0.098, n: 0.056, h: 0.074, f: 0.072, m: 0.058, y: 0.048, r: 0.032, w: 0.048, b: 0.048, p: 0.066 };
+  const CDUR = { "": 0, k: 0.072, g: 0.054, s: 0.106, z: 0.092, sh: 0.106, j: 0.094, t: 0.061, d: 0.055, ch: 0.104, ts: 0.098, n: 0.056, h: 0.074, f: 0.072, m: 0.058, y: 0.038, r: 0.032, w: 0.048, b: 0.048, p: 0.070 };
   const VDUR = { a: 0.094, e: 0.090, i: 0.086, o: 0.096, u: 0.086 };
 
   const phraseLen = new Int32Array(dec.length);
@@ -650,7 +650,7 @@ function buildScore(text, opts = {}) {
         const mn = MANNER[ev.c];
         if (ev.c === "y") {
           cPostKey = "pal";
-          cPostW = sec < ev.cEnd ? 1.0 : Math.max(0, 1.0 - (sec - ev.cEnd) / 0.042);
+          cPostW = sec < ev.cEnd ? 0.90 : Math.max(0, 0.90 * (1.0 - (sec - ev.cEnd) / 0.034));
         } else if (ev.c === "w") {
           cPostKey = "lab";
           cPostW = sec < ev.cEnd ? 1.0 : Math.max(0, 1.0 - (sec - ev.cEnd) / 0.042);
@@ -670,10 +670,14 @@ function buildScore(text, opts = {}) {
           }
         }
         if (ev.pal) {
-          if (sec < ev.cEnd) palW = (ev.c === "r") ? 0.22 : 0.86;
+          const alreadyPal = pl === "pal";
+          const isBack = ev.v === "u" || ev.v === "o";
+          if (sec < ev.cEnd) palW = (ev.c === "r") ? 0.28 : (alreadyPal && isBack ? 0.65 : 0.86);
           else {
-            const u = (sec - ev.cEnd) / 0.048;
-            palW = u < 1.0 ? 0.88 * Math.pow(1.0 - u, 1.22) : 0.0;
+            const pDur = alreadyPal ? (isBack ? 0.026 : 0.048) : 0.034;
+            const pPeak = alreadyPal ? (isBack ? 0.50 : 0.88) : 0.82;
+            const u = (sec - ev.cEnd) / pDur;
+            palW = u < 1.0 ? pPeak * Math.pow(1.0 - u, 1.25) : 0.0;
           }
         }
       }
@@ -807,7 +811,9 @@ function buildScore(text, opts = {}) {
           const bEnv = Math.sin(Math.PI * Math.min(1.0, rel * 1.18));
           if (pl === "lab") {
             lipPart_tr[t] = Math.min(0.70, rel * 1.18);
-            labPop_tr[t] = (isVL ? 0.98 : 0.44) * bEnv;
+            // Natural bilabial release pop (tames /p/ boom while leaving /b/ untouched) + voiceless VOT aspiration
+            labPop_tr[t] = 0.44 * bEnv;
+            if (isVL && rel < vlStart) glotFric_tr[t] = 0.38 * bEnv;
           } else {
             // Cavity-gain-compensated bursts: velar injects behind a +12 dB front cavity, alveolar at 0 dB near teeth
             const bAmp = isVL ? (pl === "alv" ? 0.96 : 0.70) : (pl === "alv" ? 0.86 : 0.56);
@@ -840,7 +846,8 @@ function buildScore(text, opts = {}) {
         const isVL = VOICELESS.has(ev.c);
         const prevEv = events[events.indexOf(ev) - 1];
         const isAffrStart = !isVL && (!prevEv || prevEv.kind === "pau" || prevEv.kind === "N");
-        if (isAffrStart && u < 0.14) {
+        const affrCut = (ev.c === "j") ? 0.22 : 0.14;
+        if (isAffrStart && u < affrCut) {
           vo_tr[t] = 0.34;
           pLung_tr[t] *= 0.80;
           voicedBool[t] = true;
@@ -849,7 +856,7 @@ function buildScore(text, opts = {}) {
           stop_tr[t] = 0.90;
           fricJ_tr[t] = CONS_LOC[pl].inj;
         } else {
-          const fu = isAffrStart ? (u - 0.14) / 0.86 : u;
+          const fu = isAffrStart ? (u - affrCut) / (1.0 - affrCut) : u;
           vo_tr[t] = isVL ? 0.0 : 0.33;
           if (!isVL) voicedBool[t] = true;
           const envF = isVL ? Math.pow(Math.sin(Math.PI * Math.min(1, fu)), 1.75) : Math.pow(Math.sin(Math.PI * Math.min(1, fu)), 1.45);
@@ -1255,7 +1262,8 @@ export function synthKuda(text, opts = {}) {
       bLp2 = 0.15 * bLp1 + 0.85 * bLp2;
 
       const sibDip = 0.50 * (sibAlvF * (sL2 * 1.22) + sibPalF * (pL2 * 1.28));
-      const brdDip = 0.50 * (broadF * (bLp2 * 1.85) + burstDrive * (bLp2 * 1.22));
+      const burstNoise = (fJ === 27) ? (bLp2 * 0.88 + pL2 * 0.24 + sL2 * 0.14) : (bLp2 * 1.22);
+      const brdDip = 0.50 * (broadF * (bLp2 * 1.85) + burstDrive * burstNoise);
       const turbDipole = (fJ > 4) ? (sibDip + brdDip) : 0.0;
       const fwdFrac = (sibAlvF + sibPalF) > 0.15 ? 0.95 : 0.72;
 
