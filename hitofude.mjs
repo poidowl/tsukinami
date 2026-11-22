@@ -1177,7 +1177,7 @@ export function makeHitofude(text, opts = {}) {
   const ycRad = new Float64Array(N);
   let x1 = null, x2 = null;
 
-  // === Step 1–3: カワイイ専用・単一因果ループ（VDP自励声帯×軟閉鎖2唇扉×5極声道＋並列喉頭管F3-F5倍音蘇生） ===
+  // === Step 1–3: カワイイ専用・純粋1本道因果ループ（VDP自励声帯×軟閉鎖2唇扉×5極笑顔声道） ===
   x = karuku(x, 320);
   const xClean = arakezuriT(x.slice(), tw, 1, perSample(cons_sharp, N));
   const softPos = (v) => { const z = v * 12.0; return z > 20.0 ? v : (z < -20.0 ? 0.0 : Math.log1p(Math.exp(z)) / 12.0); };
@@ -1186,19 +1186,14 @@ export function makeHitofude(text, opts = {}) {
   const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
   const vdpBuf = captureSteps ? new Float64Array(N) : null, uOut = new Float64Array(N), yc = new Float64Array(N);
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
-  const ret = 0.1125, qSoft = 0.88, rawAir = 0.012 * rawAirMul, radK = 0.90;
+  const ret = 0.1125, rawAir = 0.012 * rawAirMul, radK = 0.90;
   const loGain = 1.85, upGain = 3.20, knee = 0.14;
-  // F1/F2の1.0-1.5kHz渋滞(こもり)を和らげつつ、F3-F5は並列喉頭管(epilaryngeal)で2.7〜6.0kHzの倍音を蘇生
   const bwMinP = [195.0, 185.0, 140.0, 190.0, 230.0];
   const qDivP = [4.2, 7.8, 13.5, 14.5, 14.5];
   const dMulP = [90.0, 30.0, 12.0, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
-  // 並列喉頭管クラスター (広帯域Q≈4.8・純声門uFlow駆動): 金属的な異音(高Q共鳴＆ノイズ笛)をゼロにして2.7〜5.5kHzの倍音だけ滑らかに輝かせる
-  const ep1 = new Float64Array(3), ep2 = new Float64Array(3);
-  const epW = [3.2, 3.0, 2.2];
-  const epBw = [520.0, 620.0, 720.0];
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0, vx = 0.0, vv = 0.0;
-  let hpAir = 0.0, xPrev = 0.0, uGlotPrev = 0.0;
+  let hpAir = 0.0, xPrev = 0.0;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
     const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
@@ -1207,10 +1202,10 @@ export function makeHitofude(text, opts = {}) {
     vv += -w0 * w0 * vx + mu * (1.0 - vx * vx) * vv + 0.015 * w0 * xClean[i] + ret * 0.35 * w0 * doorPrev * pRet;
     vx += vv;
     if (Math.abs(vx) > 4.0) { vx = Math.sign(vx) * 4.0; vv = 0.0; }
-    // OQ休止開度バイアス (+0.12): 笛っぽいH1過多(H1-H2=+12dB)を抑え、H2の芯があるアニメ声帯パルスへ
+    // OQ休止開度バイアス (+0.12): 笛っぽいH1過多を抑え、H2の芯があるアニメ声帯パルスへ
     const gVal = (vx + 0.12) * 0.35;
     if (vdpBuf) vdpBuf[i] = gVal;
-    const aDoor = Math.exp(-20.0 / p);
+    const aDoor = Math.exp(-15.0 / p);
     doorLp1 = (1.0 - aDoor) * gVal + aDoor * doorLp1;
     doorLp2 = (1.0 - aDoor) * doorLp1 + aDoor * doorLp2;
     const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain;
@@ -1221,37 +1216,21 @@ export function makeHitofude(text, opts = {}) {
       const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
       const aFl = door > uFlow ? 0.24 : 0.015;
       uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
-    } else uFlow *= 0.16;
+    } else uFlow *= 0.34;
     // 局所的非モーダル有声気息 (Ishi+ 2026 / Utsugi+): 声帯を止めず高音ピーク・句末・吸気で息を咲かせる
     hpAir = 0.65 * (hpAir + xClean[i] - xPrev);
     xPrev = xClean[i];
     const hiPeak = Math.max(0.0, Math.min(1.0, (f0S[i] / hRef - 1.10) / 0.25));
     const aspLoc = asp * (1.0 + 0.85 * hiPeak + 1.10 * SIGH_S[i]) + 0.30 * INH_S[i];
-    const uGlot = uFlow * 3.6;
-    const sig0 = (1.0 - vo) * 0.28 * xClean[i] + vo * (uGlot + aspLoc * (0.35 + 0.65 * door) * hpAir);
-    // 純粋な声門微分パルス uDiff のみを広帯域並列喉頭管へ（気息ノイズを鳴らさない）
-    const uDiff = uGlot - 0.92 * uGlotPrev;
-    uGlotPrev = uGlot;
-    uOut[i] = sig0;
-    let sig = sig0;
-    let epiSum = 0.0;
+    let sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6 + aspLoc * (0.35 + 0.65 * door) * hpAir);
+    uOut[i] = sig;
     for (let k = 0; k < 5; k++) {
       const fk = FS[k][i], rk = Math.exp(-piSR * (Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev));
       const ck = -rk * rk, bk = 2.0 * rk * Math.cos(twoPiSR * fk);
       sig = (1.0 - bk - ck) * sig + bk * y1[k] + ck * y2[k];
       y2[k] = y1[k]; y1[k] = sig;
-      if (k >= 2) {
-        const ek = k - 2;
-        const efk = ek === 0 ? (3000.0 + (fk - 3000.0) * 0.45) : (ek === 1 ? (4150.0 + (fk - 4150.0) * 0.55) : fk);
-        const erk = Math.exp(-piSR * epBw[ek]);
-        const eck = -erk * erk, ebk = 2.0 * erk * Math.cos(twoPiSR * efk);
-        const eOut = 0.5 * (1.0 - erk * erk) * uDiff + ebk * ep1[ek] + eck * ep2[ek];
-        ep2[ek] = ep1[ek]; ep1[ek] = eOut;
-        epiSum += epW[ek] * eOut;
-      }
     }
-    const yMix = sig + vo * epiSum;
-    yc[i] = yMix; ycPrev = sig;
+    yc[i] = sig; ycPrev = sig;
   }
   if (captureSteps) { x1 = vdpBuf; x2 = uOut.slice(); }
   x = xClean;
@@ -1265,10 +1244,11 @@ export function makeHitofude(text, opts = {}) {
       const xi = ycRad[i], yi = b0 * xi + b1 * hx1 + b2 * hx2 - a1 * hy1 - a2 * hy2;
       hx2 = hx1; hx1 = xi; hy2 = hy1; hy1 = yi; ycRad[i] = yi;
     }
-    // 声道側枝の零点（アンチフォルマント）2段：
-    // ① 1.28kHz (-4.5dB, Q=1.5): 咽頭・鼻腔側枝による箱っぽさ(1.0-1.5kHz過多)抜き
-    // ② 4.35kHz (-3.5dB, Q=3.0): 梨状窩ノッチ (Takemoto/Honda MRI声道物理) — 人間の喉の奥行きを宿す
-    for (const [fc, db, q] of [[1280.0, -4.5, 1.5], [4350.0, -3.5, 3.0]]) {
+    // 最小位相・純粋1本道の声道解剖学シェーピング3段（並列位相干渉ゼロで異音なし）：
+    // ① 1.28kHz (-4.5dB, Q=1.5): 咽頭・鼻腔側枝による箱っぽさ抜き
+    // ② 3.20kHz (+8.5dB, Q=0.72): 喉頭管 (epilaryngeal) の2.6〜5.6kHz倍音キラキラ蘇生
+    // ③ 4.35kHz (-3.5dB, Q=3.0): 梨状窩ノッチ (Takemoto/Honda MRI声道物理) — 喉の奥行き
+    for (const [fc, db, q] of [[1280.0, -4.5, 1.5], [3200.0, +8.5, 0.72], [4350.0, -3.5, 3.0]]) {
       const A = Math.pow(10.0, db / 40.0), wn = twoPiSR * fc, c = Math.cos(wn), a = Math.sin(wn) / (2.0 * q);
       const na0 = 1.0 + a / A, nb0 = (1.0 + a * A) / na0, nb1 = (-2.0 * c) / na0, nb2 = (1.0 - a * A) / na0;
       const na1 = (-2.0 * c) / na0, na2 = (1.0 - a / A) / na0;
