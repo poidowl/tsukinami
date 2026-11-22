@@ -1962,8 +1962,6 @@ function updateControlsUI() {
   const mood = chaosPct < 20 ? "きっちり聖歌隊" : chaosPct < 45 ? "まとまり合唱" : chaosPct < 70 ? "自然なライブ合唱" : chaosPct < 90 ? "にぎやか個性派" : "球場カオス大集合";
   chaosLabel.textContent = chaosPct + "%（" + mood + "）";
 }
-updateControlsUI();
-
 let audioCtx = null, analyser = null, dryBus = null, sendBus = null;
 let convolver = null, revHPF = null, warmLow = null, silkyHigh = null, venueWetGain = null;
 let batonGain = null, batonPan = null;
@@ -1971,6 +1969,8 @@ let isPlaying = false, activeRunId = 0;
 let scheduledSources = [], nextStartTime = 0, playTimer = null;
 let visualOrbs = [], currentStageIdx = -1, targetSkyWarmth = 0, skyWarmth = 0, flashAlpha = 0;
 let stageEvents = [];
+
+updateControlsUI();
 
 function createVenueIR(ac, v) {
   const len = Math.floor(ac.sampleRate * v.dur);
@@ -2156,6 +2156,7 @@ async function startChoir() {
   try {
     stopAll(false);
     ensureAudio();
+    if (audioCtx.state === "suspended") await audioCtx.resume();
     applyVenueAudio();
     isPlaying = true;
     const runId = ++activeRunId;
