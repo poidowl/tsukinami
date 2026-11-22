@@ -1132,6 +1132,7 @@ export function makeHitofude(text, opts = {}) {
     if (coupled) {
       const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
       p1Prev = y1[0];
+      // VDP非線形度 mu/w0: 高音(0.18)=澄んだ弱非線形、低音(0.43)=厚い粘膜の弛緩寄り（草薙内6声の耳比べで選定）
       const w0 = (2.0 * Math.PI) / p, mu = (0.18 + 0.25 * (1.0 - hiMix)) * w0;
       vv += -w0 * w0 * vx + mu * (1.0 - vx * vx) * vv + 0.015 * w0 * xClean[i] + ret * 0.35 * w0 * doorPrev * pRet;
       vx += vv;
