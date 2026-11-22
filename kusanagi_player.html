@@ -320,6 +320,8 @@
     white-space: nowrap;
   }
   .seed-btn:hover { border-color: var(--emerald); color: var(--emerald); }
+  .footer-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+  .kawaii-btn.on { background: var(--amber-dim); border-color: var(--amber); color: var(--amber-hi); }
 
   /* Narrow X column / mobile card down to 245px */
   @media (max-width: 350px) {
@@ -405,7 +407,11 @@
 
   <footer class="footer">
     <span id="hakaruLine">計測待機中…</span>
-    <button id="seedBtn" class="seed-btn" type="button">🎲 別原石 (seed: 2024)</button>
+    <span class="footer-btns">
+      <button id="kawaiiBtn" class="seed-btn kawaii-btn" type="button" aria-pressed="false"
+        title="カワイイ：選んでるプリセットに R3b@2.0 {yurume_acc:1, yurume_toji:0.5, yurume_tani:0.5, yurume_bern:1, damp:0.16, rawAirMul:2.0} を重ねる（同じ文・同じ原石で切/入を聴き比べ）">カワイイ 切</button>
+      <button id="seedBtn" class="seed-btn" type="button">🎲 別原石 (seed: 2024)</button>
+    </span>
   </footer>
 </div>
 
@@ -914,6 +920,11 @@ const PART = new Set(Array.from("モニガヲデヘテ"));
 const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
 const ACCENT_NORMAL = { reg: 340.0, rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.5, reset: 0.6, decl: 1.4, fin: 2.6, qrise: 5.0, sm: 35.0 };
 const ACCENT_CUTE = { reg: 410.0, rng: 10.0, jump: 5.6, fall: 6.0, sag: 1.2, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.4, reset: 0.7, decl: 1.0, fin: 2.0, qrise: 6.0, sm: 30.0 };
+function mixAccent(a, b, u) {
+  const o = {};
+  for (const k of Object.keys(a)) o[k] = a[k] + u * (b[k] - a[k]);
+  return o;
+}
 function splitMarked(text) {
   const out = [];
   for (const ch of toKata(text)) {
@@ -1224,6 +1235,43 @@ function normalizeToRms(x, targetRms = 0.16, ceiling = 0.891, gateStart = 0, gat
   }
   return out;
 }
+function eachNonPauMora(moras, arr, fn) {
+  if (!arr) return;
+  let k = 0;
+  for (const m of moras) {
+    if (m.kind === "pau") continue;
+    if (k < arr.length && arr[k] != null && Number.isFinite(Number(arr[k]))) fn(m, Number(arr[k]), k);
+    k++;
+  }
+}
+function applyLoudDb(r, loud_db, fpz) {
+  if (!loud_db) return;
+  const n = r.n, loud = r.loud.slice();
+  eachNonPauMora(r.moras, loud_db, (m, db) => {
+    const dL = 2.0 * Math.log(Math.pow(10, db / 20.0));
+    const ib = Math.max(0, Math.trunc(m.b / fpz)), ie = Math.min(n, Math.trunc(m.e / fpz));
+    const ramp = Math.max(1, Math.min(4, Math.trunc((ie - ib) / 4))); // 約 20ms
+    for (let t = ib; t < ie; t++) {
+      const k = Math.min(t - ib, ie - 1 - t);
+      const w = k >= ramp ? 1.0 : Math.pow(Math.sin((0.5 * Math.PI * k) / ramp), 2);
+      loud[t] += dL * w;
+    }
+  });
+  r.loud = loud;
+}
+function applyF0St(f0_fr, r, n, fpz, f0_st) {
+  if (!f0_st) return;
+  eachNonPauMora(r.moras, f0_st, (m, st) => {
+    const mul = Math.pow(2.0, st / 12.0);
+    const ib = Math.max(0, Math.trunc(m.b / fpz)), ie = Math.min(n, Math.trunc(m.e / fpz));
+    const ramp = Math.max(1, Math.min(4, Math.trunc((ie - ib) / 4)));
+    for (let t = ib; t < ie; t++) {
+      const k = Math.min(t - ib, ie - 1 - t);
+      const w = k >= ramp ? 1.0 : Math.pow(Math.sin((0.5 * Math.PI * k) / ramp), 2);
+      f0_fr[t] *= Math.pow(mul, w);
+    }
+  });
+}
 function makeHitofude(text, opts = {}) {
   const {
     seed = 2024,
@@ -1242,6 +1290,12 @@ function makeHitofude(text, opts = {}) {
     post = 0.1,       // 発話後の無音長 (秒)
     uta_hz = null,    // 歌モード：モーラごとの目標周波数配列 [Hz, ...]
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
+    f0_st = null,     // 任意: ポーズ以外のモーラごとの F0 加減 [半音]（null 要素は変更しない）
+    loud_db = null,   // 任意: ポーズ以外のモーラごとの母音ゲイン [dB]（null 要素は変更しない）
+    yurume_acc = null,  // sigh>=0.25 の巻き添えで ACCENT_NORMAL に落とすのを緩める（1.0 で hz だけで表を選ぶ。hz<200 は従来どおり NORMAL）
+    yurume_toji = null, // 声門扉の閉じの速さを開きの速さ (8.20/周期) へ寄せる（1.0 で低音枝 hiMix=0 と同じ閉じ方＝H1−H2 が上がる）
+    yurume_tani = null, // サラサラ既定 combG の固定ピン留めを、プリセット自身の g_vo 連動くびれへ寄せる（1.0 で g_vo 連動＝倍音の谷が浅くなる）
+    yurume_bern = null, // 高い声のベルヌーイ急閉鎖 (bern=0.55*hiMix) と閉鎖直後の気流遮断 (closedDecay=0.12) を低音枝 (0.0 / 0.50) へ寄せる
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -1256,12 +1310,15 @@ function makeHitofude(text, opts = {}) {
     targetText = clean;
     phraseCuts = phrases.slice(1).map((p) => p[0]);
   }
+  const yu = (v) => (v == null || !Number.isFinite(+v) ? 0.0 : Math.min(1.0, Math.max(0.0, +v)));
+  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern);
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
   if (pau_s != null) prm.pau = Math.max(0.0, +pau_s);
   if (uta_hz && uta_hz.length) { prm.no_dev = true; prm.ou_long = false; prm.ei_long = false; }
   const r = tracksFromKana(targetText, pre, post, prm);
+  applyLoudDb(r, loud_db, fpz);
   const n = r.n, N = Math.trunc(n * fpz * SR);
   if (!r.voiced.some(Boolean) && r.bands.length === 0) {
     const z = new Float32Array(N);
@@ -1298,9 +1355,11 @@ function makeHitofude(text, opts = {}) {
       }
     }
   } else {
-    const acc = (sigh >= 0.25 || hz < 200.0) ? ACCENT_NORMAL : ACCENT_CUTE;
+    let acc = (sigh >= 0.25 || hz < 200.0) ? ACCENT_NORMAL : ACCENT_CUTE;
+    if (uAcc > 0.0 && sigh >= 0.25 && hz >= 200.0) acc = mixAccent(ACCENT_NORMAL, ACCENT_CUTE, uAcc);
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
   }
+  applyF0St(f0_fr, r, n, fpz, f0_st);
   const sigh_fr = new Array(n).fill(0.0);
   if (sigh > 0.0) {
     const hasVoIn = (m_) => {
@@ -1385,9 +1444,13 @@ function makeHitofude(text, opts = {}) {
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR, ret = 0.45 * shin, qSoft = coupled ? (1.45 - 0.30 * hiMix) : 1.0;
   const rawAir = (0.02 + 0.03 * hiMix) * rawAirMul;
   const combGx = (coupled && combG != null) ? Math.min(+combG, 0.9995) : null;
-  const radK = coupled ? (0.42 + 0.48 * hiMix) : 0.70, bern = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
-  const knee = 0.22 - 0.04 * hiMix, closeMul = 8.20 + 13.80 * hiMix, closedDecay = 0.50 - 0.38 * hiMix;
+  const radK = coupled ? (0.42 + 0.48 * hiMix) : 0.70;
+  const bern0 = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
+  const knee = 0.22 - 0.04 * hiMix, closeMul0 = 8.20 + 13.80 * hiMix, closedDecay0 = 0.50 - 0.38 * hiMix;
+  const bern = uBern > 0.0 ? bern0 * (1.0 - uBern) : bern0;
+  const closedDecay = uBern > 0.0 ? closedDecay0 + uBern * (0.50 - closedDecay0) : closedDecay0;
   const seedFloor = (jitter > 0.0 ? 0.58 : 0.0) * hiMix;
+  const closeMul = uToji > 0.0 ? closeMul0 + uToji * (8.20 - closeMul0) : closeMul0;
   const bwMinP = [80.0, 110.0 * qSoft, 150.0 * qSoft, 220.0 * qSoft, 260.0 * qSoft];
   const qDivP = [8.0, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
   const dMulP = [150.0 - 60.0 * hiMix, 50.0 - 20.0 * hiMix, 30.0 - 15.0 * hiMix, 0.0, 0.0];
@@ -1395,7 +1458,8 @@ function makeHitofude(text, opts = {}) {
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
-    const gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
+    let gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
+    if (uTani > 0.0 && combGx !== null && g > 1e-4) gT += uTani * (Math.max(g, seedFloor * (1.0 - SIGH_S[i])) - gT);
     const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
     const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
     let sig;
@@ -1666,6 +1730,9 @@ const OSSAN_TEXT = "こんばんは、いいよるですね";
 const UTA_TEXT = "わたしのなまえは、つきなみです";
 const BUILTIN_TEXTS = new Set([DEFAULT_TEXT, OSSAN_TEXT, UTA_TEXT]);
 
+// カワイイ切替: R3b@2.0 (kusanagi ce43b10 README). OFF のときは何も足さず既定とバイト一致。
+const KAWAII = { yurume_acc: 1, yurume_toji: 0.5, yurume_tani: 0.5, yurume_bern: 1, damp: 0.16, rawAirMul: 2.0 };
+
 const UTA_MELODY = [294, 330, 349, 392, 440, 392, 330, 294, 330, 349, 392, 349, 330, 294];
 
 const elInput = document.getElementById("kanaInput");
@@ -1675,6 +1742,7 @@ const elDesc = document.getElementById("stepDesc");
 const elPerf = document.getElementById("perfBadge");
 const elHakaru = document.getElementById("hakaruLine");
 const elSeed = document.getElementById("seedBtn");
+const elKawaii = document.getElementById("kawaiiBtn");
 const elScope = document.getElementById("scope");
 const elWaveLbl = document.getElementById("waveLabel");
 const slHz = document.getElementById("slHz");
@@ -1690,6 +1758,7 @@ let curPreset = "toiki";
 let curStep = 4;
 let curSeed = 2024;
 let isUta = false;
+let isKawaii = false;
 let cachedKey = "";
 let cachedRes = null;
 let cachedSpecDb = [null, null, null, null, null];
@@ -1709,6 +1778,7 @@ function getOpts() {
   const base = PRESETS[curPreset] || PRESETS.toiki;
   return {
     ...base,
+    ...(isKawaii ? KAWAII : null),
     seed: curSeed,
     hz: Number(slHz.value),
     g_vo: Number(slGvo.value),
@@ -2129,6 +2199,14 @@ for (const sl of [slHz, slGvo, slSigh]) {
 elSeed.addEventListener("click", () => {
   curSeed = curSeed >= 2039 ? 2024 : curSeed + 1;
   elSeed.textContent = "🎲 別原石 (seed: " + curSeed + ")";
+  playCurrentStep(curStep);
+});
+
+elKawaii.addEventListener("click", () => {
+  isKawaii = !isKawaii;
+  elKawaii.classList.toggle("on", isKawaii);
+  elKawaii.setAttribute("aria-pressed", isKawaii ? "true" : "false");
+  elKawaii.textContent = isKawaii ? "カワイイ 入" : "カワイイ 切";
   playCurrentStep(curStep);
 });
 
