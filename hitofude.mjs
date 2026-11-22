@@ -554,6 +554,13 @@ const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
 export const ACCENT_NORMAL = { reg: 340.0, rng: 6.2, jump: 2.8, fall: 3.8, sag: 0.9, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.5, reset: 0.6, decl: 1.4, fin: 2.6, qrise: 5.0, sm: 35.0 };
 export const ACCENT_CUTE = { reg: 410.0, rng: 10.0, jump: 5.6, fall: 6.0, sag: 1.2, lag: 1.0, rlag: 0.5, ds: 2.0, ds_h: 0.4, reset: 0.7, decl: 1.0, fin: 2.0, qrise: 6.0, sm: 30.0 };
 
+// 2つのアクセント表を数値キーごとに線形にまぜる（u=0 で a、u=1 で b）
+function mixAccent(a, b, u) {
+  const o = {};
+  for (const k of Object.keys(a)) o[k] = a[k] + u * (b[k] - a[k]);
+  return o;
+}
+
 function splitMarked(text) {
   const out = [];
   for (const ch of toKata(text)) {
@@ -955,6 +962,11 @@ export function makeHitofude(text, opts = {}) {
     vd_ms = null,     // 歌モード：モーラごとの母音長配列 [ms, ...]
     f0_st = null,     // 任意: ポーズ以外のモーラごとの F0 加減 [半音]（null 要素は変更しない）
     loud_db = null,   // 任意: ポーズ以外のモーラごとの母音ゲイン [dB]（null 要素は変更しない）
+    // 削りゆるめ（すべて任意 0.0〜1.0、null/0 で従来どおりバイト一致）。1.0 は「草薙自身の別の枝がすでに使っている削り量」まで緩める
+    yurume_acc = null,  // sigh>=0.25 の巻き添えで ACCENT_NORMAL に落とすのを緩める（1.0 で hz だけで表を選ぶ。hz<200 は従来どおり NORMAL）
+    yurume_toji = null, // 声門扉の閉じの速さを開きの速さ (8.20/周期) へ寄せる（1.0 で低音枝 hiMix=0 と同じ閉じ方＝H1−H2 が上がる）
+    yurume_tani = null, // サラサラ既定 combG の固定ピン留めを、プリセット自身の g_vo 連動くびれへ寄せる（1.0 で g_vo 連動＝倍音の谷が浅くなる）
+    yurume_lo = null,   // 放射の差分 (1 − radK z⁻¹) の radK を低音枝の 0.42 へ寄せる（1.0 で高い声も低音枝と同じ放射＝H1/F1 帯の削りが減る）
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -971,6 +983,8 @@ export function makeHitofude(text, opts = {}) {
     phraseCuts = phrases.slice(1).map((p) => p[0]);
   }
 
+  const yu = (v) => (v == null || !Number.isFinite(+v) ? 0.0 : Math.min(1.0, Math.max(0.0, +v)));
+  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uRad = yu(yurume_lo);
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
@@ -1018,7 +1032,9 @@ export function makeHitofude(text, opts = {}) {
       }
     }
   } else {
-    const acc = (sigh >= 0.25 || hz < 200.0) ? ACCENT_NORMAL : ACCENT_CUTE;
+    let acc = (sigh >= 0.25 || hz < 200.0) ? ACCENT_NORMAL : ACCENT_CUTE;
+    // 削りゆるめ①: 息抜き量 sigh はアクセントの起伏とは別の軸。sigh だけが理由で NORMAL に落ちた分を CUTE へ戻す（低い声 hz<200 は触らない）
+    if (uAcc > 0.0 && sigh >= 0.25 && hz >= 200.0) acc = mixAccent(ACCENT_NORMAL, ACCENT_CUTE, uAcc);
     f0_fr = f0Rule(r.moras, n, Object.assign({}, acc, { reg: hz }, accentKw || {}));
   }
 
@@ -1118,9 +1134,13 @@ export function makeHitofude(text, opts = {}) {
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR, ret = 0.45 * shin, qSoft = coupled ? (1.45 - 0.30 * hiMix) : 1.0;
   const rawAir = (0.02 + 0.03 * hiMix) * rawAirMul;
   const combGx = (coupled && combG != null) ? Math.min(+combG, 0.9995) : null;
-  const radK = coupled ? (0.42 + 0.48 * hiMix) : 0.70, bern = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
-  const knee = 0.22 - 0.04 * hiMix, closeMul = 8.20 + 13.80 * hiMix, closedDecay = 0.50 - 0.38 * hiMix;
+  const radK0 = coupled ? (0.42 + 0.48 * hiMix) : 0.70;
+  // 削りゆるめ④: 高い声ほど強くなる放射の低域削り (radK→0.90) を、低音枝の radK=0.42 へ寄せる
+  const radK = (uRad > 0.0 && coupled) ? radK0 + uRad * (0.42 - radK0) : radK0, bern = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
+  const knee = 0.22 - 0.04 * hiMix, closeMul0 = 8.20 + 13.80 * hiMix, closedDecay = 0.50 - 0.38 * hiMix;
   const seedFloor = (jitter > 0.0 ? 0.58 : 0.0) * hiMix;
+  // 削りゆるめ②: 扉の閉じ (closeMul/周期) を開き (8.20/周期) と同じ速さへ寄せる。閉じが鋭いほど高次倍音が立ち H1−H2 が下がる
+  const closeMul = uToji > 0.0 ? closeMul0 + uToji * (8.20 - closeMul0) : closeMul0;
   const bwMinP = [80.0, 110.0 * qSoft, 150.0 * qSoft, 220.0 * qSoft, 260.0 * qSoft];
   const qDivP = [8.0, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
   const dMulP = [150.0 - 60.0 * hiMix, 50.0 - 20.0 * hiMix, 30.0 - 15.0 * hiMix, 0.0, 0.0];
@@ -1128,7 +1148,9 @@ export function makeHitofude(text, opts = {}) {
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
-    const gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
+    let gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
+    // 削りゆるめ③: combG の一律ピン留め（全プリセットで谷が冷凍ロボと同じ深さになる）を、プリセット自身の g_vo 連動へ寄せる
+    if (uTani > 0.0 && combGx !== null && g > 1e-4) gT += uTani * (Math.max(g, seedFloor * (1.0 - SIGH_S[i])) - gT);
     const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
     const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
     let sig;
