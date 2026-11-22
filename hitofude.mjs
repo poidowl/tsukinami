@@ -1178,16 +1178,17 @@ export function makeHitofude(text, opts = {}) {
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
   const ret = 0.1125, qSoft = 0.88, rawAir = 0.012 * rawAirMul, radK = 0.90;
   const loGain = 1.65, upGain = 3.00, knee = 0.16;
-  // F1/F2の1.0-1.5kHz渋滞(こもり)を和らげつつ、F3-F5は並列喉頭管(epilaryngeal)で2.5〜6.0kHzの倍音を蘇生
-  const bwMinP = [180.0, 165.0, 130.0, 180.0, 220.0];
-  const qDivP = [4.5, 8.5, 14.0, 15.5, 15.5];
+  // F1/F2の1.0-1.5kHz渋滞(こもり)を和らげつつ、F3-F5は並列喉頭管(epilaryngeal)で2.7〜6.0kHzの倍音を蘇生
+  const bwMinP = [195.0, 185.0, 140.0, 190.0, 230.0];
+  const qDivP = [4.2, 7.8, 13.5, 14.5, 14.5];
   const dMulP = [90.0, 30.0, 12.0, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
-  // 並列喉頭管クラスター (F3喉頭管~3.1kHz, F4, F5): 直列F1/F2の 1/f^2 減衰をバイパスして2.7〜6.0kHzの倍音ラダーを輝かせる
+  // 並列喉頭管クラスター (広帯域Q≈4.8・純声門uFlow駆動): 金属的な異音(高Q共鳴＆ノイズ笛)をゼロにして2.7〜5.5kHzの倍音だけ滑らかに輝かせる
   const ep1 = new Float64Array(3), ep2 = new Float64Array(3);
-  const epW = [3.4, 2.4, 1.8];
+  const epW = [3.2, 3.0, 2.2];
+  const epBw = [520.0, 620.0, 720.0];
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0, vx = 0.0, vv = 0.0;
-  let hpAir = 0.0, xPrev = 0.0, sig0Prev = 0.0;
+  let hpAir = 0.0, xPrev = 0.0, uGlotPrev = 0.0;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
     const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
@@ -1215,10 +1216,11 @@ export function makeHitofude(text, opts = {}) {
     xPrev = xClean[i];
     const hiPeak = Math.max(0.0, Math.min(1.0, (f0S[i] / hRef - 1.10) / 0.25));
     const aspLoc = asp * (1.0 + 0.85 * hiPeak + 1.10 * SIGH_S[i]) + 0.30 * INH_S[i];
-    const sig0 = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6 + aspLoc * (0.35 + 0.65 * door) * hpAir);
-    // 声門微分パルス（高次倍音リッチな同一音源）を並列喉頭管 F3-F5 へ通す
-    const uDiff = sig0 - 0.92 * sig0Prev;
-    sig0Prev = sig0;
+    const uGlot = uFlow * 3.6;
+    const sig0 = (1.0 - vo) * 0.28 * xClean[i] + vo * (uGlot + aspLoc * (0.35 + 0.65 * door) * hpAir);
+    // 純粋な声門微分パルス uDiff のみを広帯域並列喉頭管へ（気息ノイズを鳴らさない）
+    const uDiff = uGlot - 0.92 * uGlotPrev;
+    uGlotPrev = uGlot;
     uOut[i] = sig0;
     let sig = sig0;
     let epiSum = 0.0;
@@ -1229,9 +1231,10 @@ export function makeHitofude(text, opts = {}) {
       y2[k] = y1[k]; y1[k] = sig;
       if (k >= 2) {
         const ek = k - 2;
-        const efk = ek === 0 ? Math.min(fk, 3150.0) : fk;
-        const ebk = ek === 0 ? (2.0 * rk * Math.cos(twoPiSR * efk)) : bk;
-        const eOut = 0.5 * (1.0 - rk * rk) * uDiff + ebk * ep1[ek] + ck * ep2[ek];
+        const efk = ek === 0 ? (3000.0 + (fk - 3000.0) * 0.45) : (ek === 1 ? (4150.0 + (fk - 4150.0) * 0.55) : fk);
+        const erk = Math.exp(-piSR * epBw[ek]);
+        const eck = -erk * erk, ebk = 2.0 * erk * Math.cos(twoPiSR * efk);
+        const eOut = 0.5 * (1.0 - erk * erk) * uDiff + ebk * ep1[ek] + eck * ep2[ek];
         ep2[ek] = ep1[ek]; ep1[ek] = eOut;
         epiSum += epW[ek] * eOut;
       }
