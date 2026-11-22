@@ -1132,7 +1132,7 @@ export function makeHitofude(text, opts = {}) {
   const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
   const nPoles = coupled ? 5 : 4;
   const gBuf = new Float64Array(N), gBuf2 = new Float64Array(N), uOut = new Float64Array(N), yc = new Float64Array(N);
-  const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR, ret = 0.45 * shin, qSoft = coupled ? (1.45 - 0.30 * hiMix) : 1.0;
+  const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR, ret = 0.45 * shin * (uClear > 0.0 ? (1.0 - 0.75 * uClear * hiMix) : 1.0), qSoft = coupled ? (1.45 - 0.30 * hiMix) : 1.0;
   const rawAir = (0.02 + 0.03 * hiMix) * rawAirMul;
   const combGx = (coupled && combG != null) ? Math.min(+combG, 0.9995) : null;
   const radK = coupled ? (0.42 + 0.48 * hiMix) : 0.70;
@@ -1154,7 +1154,7 @@ export function makeHitofude(text, opts = {}) {
     let gT = combGx !== null && g > 1e-4 ? combGx * vo : (coupled ? Math.max(g, seedFloor * (1.0 - SIGH_S[i])) : g);
     // 削りゆるめ③: combG の一律ピン留め（全プリセットで谷が冷凍ロボと同じ深さになる）を、プリセット自身の g_vo 連動へ寄せる
     if (uTani > 0.0 && combGx !== null && g > 1e-4) gT += uTani * (Math.max(g, seedFloor * (1.0 - SIGH_S[i])) - gT);
-    if (uClear > 0.0 && coupled && g > 1e-4) gT += uClear * (0.996 * vo - gT);
+    if (uClear > 0.0 && coupled && g > 1e-4) gT += uClear * (0.9985 * vo - gT);
     const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
     const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
     let sig;
@@ -1167,8 +1167,8 @@ export function makeHitofude(text, opts = {}) {
       gBuf2[i] = gVal;
       let gDrive = gVal;
       if (uClear > 0.0) {
-        gEnv = 0.994 * gEnv + 0.006 * gVal * gVal;
-        gDrive = gVal * (1.0 + uClear * (1.0 / Math.sqrt(gEnv / 0.16 + 0.06) - 1.0));
+        gEnv = 0.9985 * gEnv + 0.0015 * gVal * gVal;
+        gDrive = gVal * (1.0 + uClear * (1.0 / Math.sqrt(gEnv / 0.16 + 0.03) - 1.0));
       }
       const aOpen = Math.exp(-8.20 / p), aClose = Math.exp(-closeMul / p);
       doorLp1 = (1.0 - aClose) * gDrive + aClose * doorLp1;
@@ -1182,7 +1182,7 @@ export function makeHitofude(text, opts = {}) {
       if (door > 0.0) {
         const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
         const aFl = 0.88 + ((door > uFlow ? 0.35 : 0.08) - 0.88) * hiMix;
-        const pLung = uClear > 0.0 ? (0.38 + (1.0 - 0.65 * uClear) * (pLungWalk[i] - 0.38)) : pLungWalk[i];
+        const pLung = uClear > 0.0 ? (0.38 + (1.0 - 0.85 * uClear) * (pLungWalk[i] - 0.38)) : pLungWalk[i];
         uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLung + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
       } else uFlow *= closedDecay;
       sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
