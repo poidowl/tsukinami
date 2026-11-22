@@ -345,6 +345,8 @@ const playerHtml = `<!DOCTYPE html>
     white-space: nowrap;
   }
   .seed-btn:hover { border-color: var(--emerald); color: var(--emerald); }
+  .footer-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+  .kawaii-btn.on { background: var(--amber-dim); border-color: var(--amber); color: var(--amber-hi); }
 
   /* Narrow X column / mobile card down to 245px */
   @media (max-width: 350px) {
@@ -430,7 +432,11 @@ const playerHtml = `<!DOCTYPE html>
 
   <footer class="footer">
     <span id="hakaruLine">計測待機中…</span>
-    <button id="seedBtn" class="seed-btn" type="button">🎲 別原石 (seed: 2024)</button>
+    <span class="footer-btns">
+      <button id="kawaiiBtn" class="seed-btn kawaii-btn" type="button" aria-pressed="false"
+        title="カワイイ：選んでるプリセットに R3b@2.0 {yurume_acc:1, yurume_toji:0.5, yurume_tani:0.5, yurume_bern:1, damp:0.16, rawAirMul:2.0} を重ねる（同じ文・同じ原石で切/入を聴き比べ）">カワイイ 切</button>
+      <button id="seedBtn" class="seed-btn" type="button">🎲 別原石 (seed: 2024)</button>
+    </span>
   </footer>
 </div>
 
@@ -459,6 +465,9 @@ const OSSAN_TEXT = "こんばんは、いいよるですね";
 const UTA_TEXT = "わたしのなまえは、つきなみです";
 const BUILTIN_TEXTS = new Set([DEFAULT_TEXT, OSSAN_TEXT, UTA_TEXT]);
 
+// カワイイ切替: R3b@2.0 (kusanagi ce43b10 README). OFF のときは何も足さず既定とバイト一致。
+const KAWAII = { yurume_acc: 1, yurume_toji: 0.5, yurume_tani: 0.5, yurume_bern: 1, damp: 0.16, rawAirMul: 2.0 };
+
 const UTA_MELODY = [294, 330, 349, 392, 440, 392, 330, 294, 330, 349, 392, 349, 330, 294];
 
 const elInput = document.getElementById("kanaInput");
@@ -468,6 +477,7 @@ const elDesc = document.getElementById("stepDesc");
 const elPerf = document.getElementById("perfBadge");
 const elHakaru = document.getElementById("hakaruLine");
 const elSeed = document.getElementById("seedBtn");
+const elKawaii = document.getElementById("kawaiiBtn");
 const elScope = document.getElementById("scope");
 const elWaveLbl = document.getElementById("waveLabel");
 const slHz = document.getElementById("slHz");
@@ -483,6 +493,7 @@ let curPreset = "toiki";
 let curStep = 4;
 let curSeed = 2024;
 let isUta = false;
+let isKawaii = false;
 let cachedKey = "";
 let cachedRes = null;
 let cachedSpecDb = [null, null, null, null, null];
@@ -502,6 +513,7 @@ function getOpts() {
   const base = PRESETS[curPreset] || PRESETS.toiki;
   return {
     ...base,
+    ...(isKawaii ? KAWAII : null),
     seed: curSeed,
     hz: Number(slHz.value),
     g_vo: Number(slGvo.value),
@@ -925,6 +937,14 @@ elSeed.addEventListener("click", () => {
   playCurrentStep(curStep);
 });
 
+elKawaii.addEventListener("click", () => {
+  isKawaii = !isKawaii;
+  elKawaii.classList.toggle("on", isKawaii);
+  elKawaii.setAttribute("aria-pressed", isKawaii ? "true" : "false");
+  elKawaii.textContent = isKawaii ? "カワイイ 入" : "カワイイ 切";
+  playCurrentStep(curStep);
+});
+
 window.addEventListener("resize", () => drawScope(-1));
 
 // Initial boot: render frame immediately, then pre-carve default phrase on next frame
@@ -957,7 +977,7 @@ requestAnimationFrame(() => {
 </html>
 `;
 
-const PLAYER_VER = "11.0";
+const PLAYER_VER = "11.1";
 const ENGINE_KB = Math.round(Buffer.byteLength(engineSrc, "utf8") / 1000);
 
 const shareHtml = `<!DOCTYPE html>
@@ -1124,6 +1144,7 @@ const shareHtml = `<!DOCTYPE html>
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
+      <li><strong>v11.1 (<a href="https://github.com/poidowl/tsukinami/commit/ce43b10" target="_blank" rel="noopener noreferrer"><code>ce43b10</code></a>)：</strong><strong>「カワイイ」切替</strong> — 削りすぎを緩める opt-in つまみ（<code>yurume_acc / yurume_toji / yurume_tani / yurume_bern</code>）と息の量 <code>rawAirMul</code> を、選んだプリセットに R3b@2.0 <code>{yurume_acc:1, yurume_toji:0.5, yurume_tani:0.5, yurume_bern:1, damp:0.16, rawAirMul:2.0}</code> として重ねる。既定は切で、切のときは各プリセットの既定とバイト一致。同じ文・同じ原石で切/入を聴き比べられる。</li>
       <li><strong>v11.0：</strong><strong>読点の息の床（<code>pau_iki: -30</code> 既定）</strong> — 読点「、」の 0.35 秒を完全無音に彫り切らず、同じ原石ノイズが無声のまま5極声道＋唇放射を通った吐息を、有声部 RMS 比 −30 dB でうっすら残す（両端は余弦窓）。ReazonSpeech k2 が読点を文末と取り違えて「ちょっとしゃべれます」を落とす本数が、大人6声×3 seed で 6/18 → 2/18。<code>{pau_iki: null}</code> で v10.8 (<code>b9b5eb8</code>) とバイト一致。ちびっ子は崩れが出たため従来の無音のまま。間の長さノブ <code>pau_s</code>（既定 0.35 秒）も追加。</li>
       <li><strong>v10.8 (<a href="https://github.com/poidowl/tsukinami/commit/b9b5eb8" target="_blank" rel="noopener noreferrer"><code>b9b5eb8</code></a>)：</strong><strong>ノイズ削りコード自体の断捨離＆単一因果ループ統合（計 -306行 / -8.9KB）</strong> — 旧並列時代の非因果往復コム <code>yamaBp/ffbb/combHalf</code> をピーク利得一定の因果2極ゼロDCバンドパスへ置換して全段を完全因果1パス化し、重複していた <code>xSeed</code>・後段 <code>karuku</code>・ロボ専用別エンジン <code>combPeriod/resonator2Pole</code>・死蔵 <code>G2/G3</code> 軌道を全撤去して全7プリセット＋歌を単一ループへ統合。</li>
       <li><strong>v10.1 (<a href="https://github.com/poidowl/tsukinami/commit/a084abe" target="_blank" rel="noopener noreferrer"><code>a084abe</code></a>)：</strong>v10 の子音・ハ行明瞭度×粘膜ソフトクッションに、<strong>v9 サラサラ化（<code>combG: 0.985, rawAirMul: 0.6</code> / soroe2）を既定合流</strong>（持続母音シマー <code>5.5% → 1.8%</code>、<code>{combG: null, rawAirMul: 1.0}</code> で <code>90f0c44</code> の音とバイト一致）。</li>
