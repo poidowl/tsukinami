@@ -1025,6 +1025,29 @@ export function makeHitofude(text, opts = {}) {
     }
   } else {
     f0_fr = f0Rule(r.moras, n, Object.assign({}, ACCENT_KAWAII, { reg: hz }, accentKw || {}));
+    // 物理的 CF0 マイクロ摂動 (Hombert+ 1979 / Kirby & Ladd 2016):
+    // 無声→有声の解放直後に輪状甲状筋の緊張で一瞬 (+1.45st, tau=42ms) 上昇し、語末で緩やかに抜ける + 微小呼吸ドリフト
+    {
+      const microSt = new Array(n).fill(0.0);
+      let cf0 = 0.0;
+      const decay = Math.exp(-fpz / 0.042);
+      for (let t = 0; t < n; t++) {
+        const vNow = r.voiced[t] ? 1 : 0;
+        const vPrev = t > 0 && r.voiced[t - 1] ? 1 : 0;
+        if (vNow && !vPrev) cf0 = 1.45;
+        else cf0 *= decay;
+        let offDrop = 0.0;
+        if (vNow) {
+          for (let k = 1; k <= 5; k++) {
+            if (t + k < n && !r.voiced[t + k]) { offDrop = -0.65 * (1.0 - (k - 1) / 5.0); break; }
+          }
+        }
+        const drift = 0.35 * Math.sin(t * 0.037 + 0.4) + 0.20 * Math.sin(t * 0.091 + 2.1);
+        microSt[t] = cf0 + offDrop + drift;
+      }
+      const smMicro = smooth1(microSt, 12);
+      for (let t = 0; t < n; t++) f0_fr[t] = f0_fr[t] * Math.pow(2.0, smMicro[t] / 12.0);
+    }
     // 語尾スクープ＆句末リフト (Seaborn+ 2025 / score_kawaii_features tail_lift) & 長音語尾の有機微揺らぎ
     const isQ = Boolean(accentKw && accentKw.question);
     for (let im = 0; im < r.moras.length; im++) {
@@ -1119,7 +1142,7 @@ export function makeHitofude(text, opts = {}) {
       f2 = 1500.0 + (f2 - 1500.0) * (1.0 + 0.10 * smK);
     }
     F1[t] = Math.max(f1 * fs * (1.0 + 0.04 * smK), (r.voiced[t] || inhale_fr[t] > 0.0) ? 1.04 * f0_fr[t] : 180.0);
-    F2[t] = Math.min(Math.max(f2 * fs * (1.0 + 0.08 * smK), F1[t] + 280.0), 8500.0);
+    F2[t] = Math.min(Math.max(f2 * fs * (0.91 + 0.04 * smK), F1[t] + 260.0), 8500.0);
     F3[t] = Math.min(Math.max(f3 * fs * (1.0 + 0.06 * smK), F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + (1150.0 + 120.0 * smK) * fs);
   }
@@ -1174,30 +1197,38 @@ export function makeHitofude(text, opts = {}) {
   const pLungWalk = furafura(x, 0.38, 0.006, 0.22);
   // 声門閉鎖シマー (原石ノイズ由来の緩やかな粘膜剛性ゆらぎ → 周期ごとの位相ロック 0.996 を有機的にほぐす)
   const closeShim = furafura(x, 0.0, 1.0, 0.42);
+  // 喉頭管 (F3/F4) の独立微小ドリフト → 倍音共変動ネットワークの独立器官数を引き上げる
+  const epiDrift = furafura(x, 0.0, 0.045, 0.28);
   const F5 = F4.map((v) => Math.min(8800.0, v + 1100.0 * fs));
   const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
   const vdpBuf = captureSteps ? new Float64Array(N) : null, uOut = new Float64Array(N), yc = new Float64Array(N);
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
-  const ret = 0.1125, rawAir = 0.012 * rawAirMul, radK = 0.90;
-  const loGain = 1.85, upGain = 3.20, knee = 0.14;
+  const ret = 0.1125, rawAir = 0.012 * rawAirMul, radK = 0.97;
+  const loGain = 1.95, upGain = 3.30, knee = 0.11;
   const bwMinP = [195.0, 185.0, 140.0, 190.0, 230.0];
   const qDivP = [4.2, 7.8, 13.5, 14.5, 14.5];
   const dMulP = [90.0, 30.0, 12.0, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0, vx = 0.0, vv = 0.0;
-  let hpAir = 0.0, xPrev = 0.0;
+  let vxPrev = 0.0, cycJit = 0.0, jitLp = 0.0;
+  let hpAir = 0.0, hpAir2 = 0.0, xPrev = 0.0, hpPrev = 0.0;
   for (let i = 0; i < N; i++) {
-    const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
+    const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0));
+    // サイクル同期・生理的ジッター (Titze 1994): 1周期ゼロ交差時のみ更新 → 周期内歪みゼロで電子位相ロックをほぐす
+    jitLp = 0.96 * jitLp + 0.04 * xClean[i];
+    if (vxPrev <= 0.0 && vx > 0.0) cycJit = Math.max(-1.0, Math.min(1.0, jitLp * 7.5));
+    vxPrev = vx;
+    const p = PER[i] * (1.0 + 0.01 * cycJit);
     const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
     p1Prev = y1[0];
     const w0 = (2.0 * Math.PI) / p, mu = 0.18 * w0;
     vv += -w0 * w0 * vx + mu * (1.0 - vx * vx) * vv + 0.015 * w0 * xClean[i] + ret * 0.35 * w0 * doorPrev * pRet;
     vx += vv;
     if (Math.abs(vx) > 4.0) { vx = Math.sign(vx) * 4.0; vv = 0.0; }
-    // OQ休止開度バイアス (+0.12): 笛っぽいH1過多を抑え、H2の芯があるアニメ声帯パルスへ
-    const gVal = (vx + 0.12) * 0.35;
+    // 肉厚LF声門閉鎖 (OQ ~42-46%): H1過多の笛声を脱却し、H2〜A1に実体のある人間声帯へ
+    const gVal = (vx - 0.40) * 0.42;
     if (vdpBuf) vdpBuf[i] = gVal;
-    const aDoor = Math.exp(-(15.0 + 2.8 * closeShim[i]) / p);
+    const aDoor = Math.exp(-(27.0 + 3.2 * closeShim[i]) / p);
     doorLp1 = (1.0 - aDoor) * gVal + aDoor * doorLp1;
     doorLp2 = (1.0 - aDoor) * doorLp1 + aDoor * doorLp2;
     const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain;
@@ -1209,20 +1240,22 @@ export function makeHitofude(text, opts = {}) {
       const aFl = door > uFlow ? 0.24 : 0.015;
       uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
     } else uFlow *= 0.34;
-    // 局所的非モーダル有声気息 (Ishi+ 2026 / Utsugi+): 声帯を止めず高音ピーク・句末・吸気で息を咲かせる
-    hpAir = 0.65 * (hpAir + xClean[i] - xPrev);
-    xPrev = xClean[i];
+    // 笑顔発話の局所的非モーダル有声気息 (Ishi+ 2026): 2次HPFシルキー空気＋句末吐息溶け
+    const hp1 = 0.58 * (hpAir + xClean[i] - xPrev); xPrev = xClean[i]; hpAir = hp1;
+    hpAir2 = 0.58 * (hpAir2 + hp1 - hpPrev); hpPrev = hp1;
     const hiPeak = Math.max(0.0, Math.min(1.0, (f0S[i] / hRef - 1.10) / 0.25));
-    const aspLoc = asp * (1.0 + 0.85 * hiPeak + 1.10 * SIGH_S[i]) + 0.30 * INH_S[i];
-    let sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6 + aspLoc * (0.35 + 0.65 * door) * hpAir);
+    const aspLoc = asp * (1.55 + 1.05 * hiPeak + 2.60 * SIGH_S[i]) + 0.30 * INH_S[i];
+    const tailSoft = 1.0 - 0.45 * SIGH_S[i];
+    let sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6 * tailSoft + aspLoc * (0.42 + 0.58 * door) * hpAir2 * 1.75);
     uOut[i] = sig;
     for (let k = 0; k < 5; k++) {
-      const fk = FS[k][i], rk = Math.exp(-piSR * (Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev));
+      const fk = k >= 2 ? FS[k][i] * (1.0 + epiDrift[i] * (k === 2 ? 1.0 : -0.8)) : FS[k][i];
+      const rk = Math.exp(-piSR * (Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev));
       const ck = -rk * rk, bk = 2.0 * rk * Math.cos(twoPiSR * fk);
       sig = (1.0 - bk - ck) * sig + bk * y1[k] + ck * y2[k];
       y2[k] = y1[k]; y1[k] = sig;
     }
-    yc[i] = sig; ycPrev = sig;
+    yc[i] = sig + vo * asp * (0.058 + 0.095 * SIGH_S[i]) * hpAir2; ycPrev = sig;
   }
   if (captureSteps) { x1 = vdpBuf; x2 = uOut.slice(); }
   x = xClean;
@@ -1237,10 +1270,10 @@ export function makeHitofude(text, opts = {}) {
       hx2 = hx1; hx1 = xi; hy2 = hy1; hy1 = yi; ycRad[i] = yi;
     }
     // 最小位相・純粋1本道の声道解剖学シェーピング3段（並列位相干渉ゼロで異音なし）：
-    // ① 1.28kHz (-4.5dB, Q=1.5): 咽頭・鼻腔側枝による箱っぽさ抜き
-    // ② 3.20kHz (+8.5dB, Q=0.72): 喉頭管 (epilaryngeal) の2.6〜5.6kHz倍音キラキラ蘇生
-    // ③ 4.35kHz (-3.5dB, Q=3.0): 梨状窩ノッチ (Takemoto/Honda MRI声道物理) — 喉の奥行き
-    for (const [fc, db, q] of [[1280.0, -4.5, 1.5], [3200.0, +8.5, 0.72], [4350.0, -3.5, 3.0]]) {
+    // ① 1.28kHz (-3.5dB, Q=1.5): 咽頭・鼻腔側枝による箱っぽさ抜き
+    // ② 3.20kHz (-3.8dB, Q=0.78): 肉厚倍音の耳刺さりを優しく丸め、ふっくら頬の笑顔トーンへ
+    // ③ 4.35kHz (-3.0dB, Q=3.0): 梨状窩ノッチ (Takemoto/Honda MRI声道物理) — 喉の奥行き
+    for (const [fc, db, q] of [[1280.0, -3.5, 1.5], [3200.0, -3.8, 0.78], [4350.0, -3.0, 3.0]]) {
       const A = Math.pow(10.0, db / 40.0), wn = twoPiSR * fc, c = Math.cos(wn), a = Math.sin(wn) / (2.0 * q);
       const na0 = 1.0 + a / A, nb0 = (1.0 + a * A) / na0, nb1 = (-2.0 * c) / na0, nb2 = (1.0 - a * A) / na0;
       const na1 = (-2.0 * c) / na0, na2 = (1.0 - a / A) / na0;
@@ -1274,7 +1307,7 @@ export function makeHitofude(text, opts = {}) {
     bpcPrev = o;
     bpc[i] = hp;
   }
-  const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 16), N);
+  const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 26), N);
 
   const y = new Float64Array(N);
   for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.36 * FCW[i] * bpc[i];
@@ -1300,11 +1333,11 @@ export function makeHitofude(text, opts = {}) {
     for (let i = 0; i < N; i++) y[i] *= gLv[i];
   }
 
-  // 変調スペクトル過多(3-22Hzのブツ切り感)を抑え、音節間の谷を0.74倍に和らげてレガートに繋ぐ
-  const loudSm = smooth1(r.loud, 26);
+  // 変調スペクトル過多(3-22Hzのブツ切り感)を抑え、音節間の谷を0.56倍に和らげて滑らかにレガート結合
+  const loudSm = smooth1(r.loud, 40);
   const loExp = new Array(n);
   for (let t = 0; t < n; t++) {
-    const ld = loudSm[t] > -18.0 ? loudSm[t] * 0.74 : loudSm[t];
+    const ld = loudSm[t] > -18.0 ? loudSm[t] * 0.56 : loudSm[t];
     loExp[t] = Math.exp((ld + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
   }
   const env = perSample(loExp, N);
