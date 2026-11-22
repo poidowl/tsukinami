@@ -969,6 +969,7 @@ export function makeHitofude(text, opts = {}) {
     yurume_bern = null, // 高い声のベルヌーイ急閉鎖 (bern=0.55*hiMix) と閉鎖直後の気流遮断 (closedDecay=0.12) を低音枝 (0.0 / 0.50) へ寄せる
     yurume_iki = null,  // arakezuriT と 5極声道で削り落ちる超高域の息 (x - xClean) を扉開閉 (vo*door) 連動で残す（5.6〜9.5kHzの抜け）
     yurume_ptilt = null,// 固定 damp / closeMul が高い音節ほど高域を削る逆傾斜を緩め、基準ピッチ hRef との比で連動させる
+    yurume_flow = null, // 高い声の気流閉じ追従 (aFl=0.08) を低音枝 (0.88) へ緩め、doorLp1 を鈍らせず H1-H2 を柔らかくする
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -986,7 +987,7 @@ export function makeHitofude(text, opts = {}) {
   }
 
   const yu = (v) => (v == null || !Number.isFinite(+v) ? 0.0 : Math.min(1.0, Math.max(0.0, +v)));
-  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern), uIki = yu(yurume_iki), uPtilt = yu(yurume_ptilt);
+  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern), uIki = yu(yurume_iki), uPtilt = yu(yurume_ptilt), uFlowY = yu(yurume_flow);
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
@@ -1180,10 +1181,11 @@ export function makeHitofude(text, opts = {}) {
       doorPrev = door;
       if (door > 0.0) {
         const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
-        const aFl = 0.88 + ((door > uFlow ? 0.35 : 0.08) - 0.88) * hiMix;
+        const aFlClose = uFlowY > 0.0 ? (0.08 + uFlowY * (0.88 - 0.08)) : 0.08;
+        const aFl = 0.88 + ((door > uFlow ? 0.35 : aFlClose) - 0.88) * hiMix;
         uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
       } else uFlow *= closedDecay;
-      if (ikiAir) ikiAir[i] = vo * door * (x[i] - xClean[i]);
+      if (ikiAir) ikiAir[i] = vo * door * (uPtilt > 0.0 ? Math.max(0.25, 1.0 + 1.5 * uPtilt * relP) : 1.0) * (x[i] - xClean[i]);
       sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
     } else {
       gBuf[i] = g > 1e-4 ? (cIn * xClean[i] + gT * gLp1) : xClean[i];
