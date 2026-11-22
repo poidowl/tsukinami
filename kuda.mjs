@@ -553,10 +553,14 @@ function buildScore(text, opts = {}) {
     if (ev.kind === "Q") {
       vo_tr[t] = 0.0;
       stop_tr[t] = 1.0;
-      const pl = ev.nextPlace || "alv";
-      consAmt[pl][t] = 1.0;
-      consMinA[pl][t] = 0.015;
-      fricJ_tr[t] = CONS_LOC[pl].inj;
+      const pl = ev.nextPlace;
+      if (pl && CONS_LOC[pl]) {
+        consAmt[pl][t] = 1.0;
+        consMinA[pl][t] = 0.015;
+        fricJ_tr[t] = CONS_LOC[pl].inj;
+      } else {
+        fricJ_tr[t] = 2; // glottal stop (e.g. "おっはよー", "あっ！")
+      }
       continue;
     }
 
