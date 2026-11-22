@@ -967,6 +967,7 @@ export function makeHitofude(text, opts = {}) {
     yurume_toji = null, // 声門扉の閉じの速さを開きの速さ (8.20/周期) へ寄せる（1.0 で低音枝 hiMix=0 と同じ閉じ方＝H1−H2 が上がる）
     yurume_tani = null, // サラサラ既定 combG の固定ピン留めを、プリセット自身の g_vo 連動くびれへ寄せる（1.0 で g_vo 連動＝倍音の谷が浅くなる）
     yurume_lo = null,   // 放射の差分 (1 − radK z⁻¹) の radK を低音枝の 0.42 へ寄せる（1.0 で高い声も低音枝と同じ放射＝H1/F1 帯の削りが減る）
+    yurume_bern = null, // 高い声のベルヌーイ急閉鎖 (bern=0.55*hiMix) と閉鎖直後の気流遮断 (closedDecay=0.12) を低音枝 (0.0 / 0.50) へ寄せる
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -984,7 +985,7 @@ export function makeHitofude(text, opts = {}) {
   }
 
   const yu = (v) => (v == null || !Number.isFinite(+v) ? 0.0 : Math.min(1.0, Math.max(0.0, +v)));
-  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uRad = yu(yurume_lo);
+  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uRad = yu(yurume_lo), uBern = yu(yurume_bern);
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
@@ -1136,8 +1137,12 @@ export function makeHitofude(text, opts = {}) {
   const combGx = (coupled && combG != null) ? Math.min(+combG, 0.9995) : null;
   const radK0 = coupled ? (0.42 + 0.48 * hiMix) : 0.70;
   // 削りゆるめ④: 高い声ほど強くなる放射の低域削り (radK→0.90) を、低音枝の radK=0.42 へ寄せる
-  const radK = (uRad > 0.0 && coupled) ? radK0 + uRad * (0.42 - radK0) : radK0, bern = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
-  const knee = 0.22 - 0.04 * hiMix, closeMul0 = 8.20 + 13.80 * hiMix, closedDecay = 0.50 - 0.38 * hiMix;
+  const radK = (uRad > 0.0 && coupled) ? radK0 + uRad * (0.42 - radK0) : radK0;
+  const bern0 = 0.55 * hiMix, loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix;
+  const knee = 0.22 - 0.04 * hiMix, closeMul0 = 8.20 + 13.80 * hiMix, closedDecay0 = 0.50 - 0.38 * hiMix;
+  // 削りゆるめ⑤: 扉の応答速度 (doorLp1) は鈍らせず、高い声のベルヌーイ吸い寄せ (bern) と閉鎖直後の気流遮断 (closedDecay) を低音枝 (0.0 / 0.50) へ寄せる
+  const bern = uBern > 0.0 ? bern0 * (1.0 - uBern) : bern0;
+  const closedDecay = uBern > 0.0 ? closedDecay0 + uBern * (0.50 - closedDecay0) : closedDecay0;
   const seedFloor = (jitter > 0.0 ? 0.58 : 0.0) * hiMix;
   // 削りゆるめ②: 扉の閉じ (closeMul/周期) を開き (8.20/周期) と同じ速さへ寄せる。閉じが鋭いほど高次倍音が立ち H1−H2 が下がる
   const closeMul = uToji > 0.0 ? closeMul0 + uToji * (8.20 - closeMul0) : closeMul0;

@@ -55,6 +55,7 @@ const applies = {
   yurume_toji: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
   yurume_lo: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
   yurume_tani: (p) => p.shin > 0.0,
+  yurume_bern: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
 };
 
 for (const [pn, p] of Object.entries(PRESETS)) {
@@ -62,14 +63,15 @@ for (const [pn, p] of Object.entries(PRESETS)) {
     const key = `${pn}|t${k}|${seed}`, o = { ...p, seed };
     const base = makeHitofude(t, o).samples, hb = h(base);
     check("a", hb === GOLDEN_ABB2DAE[key], `${key}: ノブ未指定が GOLDEN_ABB2DAE とバイト一致せん`);
-    check("a", h(makeHitofude(t, { ...o, yurume_acc: 0, yurume_toji: 0, yurume_tani: 0, yurume_lo: 0 }).samples) === hb, `${key}: ノブ 0 明示がバイト一致せん`);
-    check("a", h(makeHitofude(t, { ...o, yurume_acc: null, yurume_toji: null, yurume_tani: null, yurume_lo: null }).samples) === hb, `${key}: ノブ null 明示がバイト一致せん`);
+    check("a", h(makeHitofude(t, { ...o, yurume_acc: 0, yurume_toji: 0, yurume_tani: 0, yurume_lo: 0, yurume_bern: 0 }).samples) === hb, `${key}: ノブ 0 明示がバイト一致せん`);
+    check("a", h(makeHitofude(t, { ...o, yurume_acc: null, yurume_toji: null, yurume_tani: null, yurume_lo: null, yurume_bern: null }).samples) === hb, `${key}: ノブ null 明示がバイト一致せん`);
     for (const [knob, fn] of Object.entries(applies)) {
       const s = makeHitofude(t, { ...o, [knob]: 1.0 }).samples, changed = h(s) !== hb;
       check("b", changed === fn(p), `${key}: ${knob}=1.0 の効き方が想定と違う（changed=${changed}）`);
       check("c", sane(s, base.length), `${key}: ${knob}=1.0 が壊れとる`);
     }
     check("c", sane(makeHitofude(t, { ...o, ...REC }).samples, base.length), `${key}: 推奨の組み合わせが壊れとる`);
+    check("c", sane(makeHitofude(t, { ...o, yurume_acc: 1.0, yurume_tani: 0.5, yurume_bern: 1.0, damp: 0.16 }).samples, base.length), `${key}: bern+damp0.16 の組み合わせが壊れとる`);
     check("d", h(makeHitofude(t, { ...o, yurume_tani: 1.0 }).samples) === h(makeHitofude(t, { ...o, combG: null }).samples), `${key}: yurume_tani=1.0 が {combG:null} と一致せん`);
   }
 }
