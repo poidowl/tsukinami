@@ -967,6 +967,8 @@ export function makeHitofude(text, opts = {}) {
     yurume_toji = null, // 声門扉の閉じの速さを開きの速さ (8.20/周期) へ寄せる（1.0 で低音枝 hiMix=0 と同じ閉じ方＝H1−H2 が上がる）
     yurume_tani = null, // サラサラ既定 combG の固定ピン留めを、プリセット自身の g_vo 連動くびれへ寄せる（1.0 で g_vo 連動＝倍音の谷が浅くなる）
     yurume_bern = null, // 高い声のベルヌーイ急閉鎖 (bern=0.55*hiMix) と閉鎖直後の気流遮断 (closedDecay=0.12) を低音枝 (0.0 / 0.50) へ寄せる
+    yurume_iki = null,  // arakezuriT と 5極声道で削り落ちる超高域の息 (x - xClean) を扉開閉 (vo*door) 連動で残す（5.6〜9.5kHzの抜け）
+    yurume_ptilt = null,// 固定 damp / closeMul が高い音節ほど高域を削る逆傾斜を緩め、基準ピッチ hRef との比で連動させる
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false, // true のとき [原石0, ①声帯波/谷, ②粘膜扉/角, ③声道, ④完成] の5波形を返す
     combG = 0.985,    // サラサラ化既定 (soroe2): 有声中の粘膜コム帰還を combG×有声度 に固定 (上限 0.9995)。null で 90f0c44 までの非固定動作
@@ -984,7 +986,7 @@ export function makeHitofude(text, opts = {}) {
   }
 
   const yu = (v) => (v == null || !Number.isFinite(+v) ? 0.0 : Math.min(1.0, Math.max(0.0, +v)));
-  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern);
+  const uAcc = yu(yurume_acc), uToji = yu(yurume_toji), uTani = yu(yurume_tani), uBern = yu(yurume_bern), uIki = yu(yurume_iki), uPtilt = yu(yurume_ptilt);
   const fpz = FP / 1000.0;
   const prm = { rate, fend_at: sigh > 0.0 ? 0.45 : 0.16, phraseCuts };
   if (vd_ms) prm.vd_ms = vd_ms;
@@ -1147,6 +1149,7 @@ export function makeHitofude(text, opts = {}) {
   const qDivP = [8.0, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
   const dMulP = [150.0 - 60.0 * hiMix, 50.0 - 20.0 * hiMix, 30.0 - 15.0 * hiMix, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
+  const pRef = SR / hRef, ikiAir = (uIki > 0.0 && coupled) ? new Float64Array(N) : null;
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
@@ -1154,16 +1157,19 @@ export function makeHitofude(text, opts = {}) {
     // 削りゆるめ③: combG の一律ピン留め（全プリセットで谷が冷凍ロボと同じ深さになる）を、プリセット自身の g_vo 連動へ寄せる
     if (uTani > 0.0 && combGx !== null && g > 1e-4) gT += uTani * (Math.max(g, seedFloor * (1.0 - SIGH_S[i])) - gT);
     const cIn = gT > 1e-4 ? Math.sqrt(1.0 - gT * gT) : 1.0;
-    const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
+    const relP = (uPtilt > 0.0 && coupled) ? Math.max(-0.5, Math.min(0.5, Math.log2(pRef / p))) : 0.0;
+    const dEff = (uPtilt > 0.0 && coupled) ? Math.min(0.95, Math.max(0.0, damp * (1.0 - 2.0 * uPtilt * relP))) : damp;
+    const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - dEff) * fb1 + dEff * gLp1;
     let sig;
     if (coupled) {
       const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
       p1Prev = y1[0];
       gBuf[i] = Math.tanh((cIn * xClean[i] + gT * (gLp1 + ret * 0.24 * doorPrev * pRet)) * 0.85) / 0.85;
-      const fb2 = readDelay(gBuf2, i, p); gLp2 = (1.0 - damp) * fb2 + damp * gLp2;
+      const fb2 = readDelay(gBuf2, i, p); gLp2 = (1.0 - dEff) * fb2 + dEff * gLp2;
       const gVal = Math.tanh((cIn * gBuf[i] + gT * (gLp2 + ret * 0.16 * doorPrev * pRet)) * 0.85) / 0.85;
       gBuf2[i] = gVal;
-      const aOpen = Math.exp(-8.20 / p), aClose = Math.exp(-closeMul / p);
+      const cMulEff = uPtilt > 0.0 ? Math.max(8.20, closeMul * (1.0 + 1.5 * uPtilt * relP)) : closeMul;
+      const aOpen = Math.exp(-8.20 / p), aClose = Math.exp(-cMulEff / p);
       doorLp1 = (1.0 - aClose) * gVal + aClose * doorLp1;
       doorLp2 = (1.0 - aOpen) * doorLp1 + aOpen * doorLp2;
       const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain - bern * uFlow;
@@ -1177,6 +1183,7 @@ export function makeHitofude(text, opts = {}) {
         const aFl = 0.88 + ((door > uFlow ? 0.35 : 0.08) - 0.88) * hiMix;
         uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
       } else uFlow *= closedDecay;
+      if (ikiAir) ikiAir[i] = vo * door * (x[i] - xClean[i]);
       sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
     } else {
       gBuf[i] = g > 1e-4 ? (cIn * xClean[i] + gT * gLp1) : xClean[i];
@@ -1211,7 +1218,8 @@ export function makeHitofude(text, opts = {}) {
   const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 6), N);
 
   const y = new Float64Array(N);
-  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i];
+  const ikiGain = ikiAir ? (uIki * rawAir) : 0.0;
+  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i] + (ikiAir ? ikiGain * G1S[i] * ikiAir[i] : 0.0);
   const x3 = captureSteps ? y.slice() : null;
 
   // === Step 4: 【引き算④】1スカラー整音 ＋ 時間包絡 ===

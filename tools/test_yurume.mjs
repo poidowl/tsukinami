@@ -56,6 +56,8 @@ const applies = {
   yurume_toji: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
   yurume_tani: (p) => p.shin > 0.0,
   yurume_bern: (p) => p.shin > 0.0 && hiMixOf(p) > 0.0,
+  yurume_iki: (p) => p.shin > 0.0,
+  yurume_ptilt: (p) => p.shin > 0.0,
 };
 
 for (const [pn, p] of Object.entries(PRESETS)) {
@@ -63,8 +65,8 @@ for (const [pn, p] of Object.entries(PRESETS)) {
     const key = `${pn}|t${k}|${seed}`, o = { ...p, seed };
     const base = makeHitofude(t, o).samples, hb = h(base);
     check("a", hb === GOLDEN_ABB2DAE[key], `${key}: ノブ未指定が GOLDEN_ABB2DAE とバイト一致せん`);
-    check("a", h(makeHitofude(t, { ...o, yurume_acc: 0, yurume_toji: 0, yurume_tani: 0, yurume_bern: 0 }).samples) === hb, `${key}: ノブ 0 明示がバイト一致せん`);
-    check("a", h(makeHitofude(t, { ...o, yurume_acc: null, yurume_toji: null, yurume_tani: null, yurume_bern: null }).samples) === hb, `${key}: ノブ null 明示がバイト一致せん`);
+    check("a", h(makeHitofude(t, { ...o, yurume_acc: 0, yurume_toji: 0, yurume_tani: 0, yurume_bern: 0, yurume_iki: 0, yurume_ptilt: 0 }).samples) === hb, `${key}: ノブ 0 明示がバイト一致せん`);
+    check("a", h(makeHitofude(t, { ...o, yurume_acc: null, yurume_toji: null, yurume_tani: null, yurume_bern: null, yurume_iki: null, yurume_ptilt: null }).samples) === hb, `${key}: ノブ null 明示がバイト一致せん`);
     for (const [knob, fn] of Object.entries(applies)) {
       const s = makeHitofude(t, { ...o, [knob]: 1.0 }).samples, changed = h(s) !== hb;
       check("b", changed === fn(p), `${key}: ${knob}=1.0 の効き方が想定と違う（changed=${changed}）`);
@@ -72,6 +74,7 @@ for (const [pn, p] of Object.entries(PRESETS)) {
     }
     check("c", sane(makeHitofude(t, { ...o, ...REC_MAIN }).samples, base.length), `${key}: 本命 R3b@2.0 が壊れとる`);
     check("c", sane(makeHitofude(t, { ...o, ...REC_CMP }).samples, base.length), `${key}: 比較用 R3c@1.5 が壊れとる`);
+    check("c", sane(makeHitofude(t, { ...o, ...REC_MAIN, yurume_iki: 0.25, yurume_ptilt: 0.5 }).samples, base.length), `${key}: R5 (iki=0.25, ptilt=0.5) が壊れとる`);
     check("d", h(makeHitofude(t, { ...o, yurume_tani: 1.0 }).samples) === h(makeHitofude(t, { ...o, combG: null }).samples), `${key}: yurume_tani=1.0 が {combG:null} と一致せん`);
   }
 }
