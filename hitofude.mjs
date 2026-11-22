@@ -1086,25 +1086,25 @@ export function makeHitofude(text, opts = {}) {
     }
   }
 
-  // 有声の息吸い軌道 inhale_fr (Ishi, Utsugi, Ota 2026: 発話直前・読点末で声帯が鳴りながら吸う)
+  // 有声の息吸い軌道 inhale_fr (Ishi, Utsugi, Ota 2026: 発話直前・読点末の繊細な55ms有声ブレス)
   const inhale_fr = new Array(n).fill(0.0);
   const inhaleSpans = [];
   if (inhale > 0.0 && !uta_hz) {
     const addInhale = (tStart, tEnd) => {
       const ia = Math.max(1, Math.trunc(tStart / fpz)), ie = Math.min(n - 1, Math.trunc(tEnd / fpz));
-      if (ie - ia < 6) return;
+      if (ie - ia < 4) return;
       inhaleSpans.push([ia, ie]);
       for (let t_ = ia; t_ < ie; t_++) {
         const u = (t_ - ia) / Math.max(1, ie - ia - 1);
         const w = Math.pow(Math.sin(Math.PI * u), 2);
         inhale_fr[t_] = Math.max(inhale_fr[t_], w);
-        f0_fr[t_] = hz * Math.pow(2.0, (3.8 + 0.6 * u) / 12.0);
+        f0_fr[t_] = hz * Math.pow(2.0, (3.8 + 0.5 * u) / 12.0);
       }
     };
     const firstM = r.moras.find((m_) => m_.kind !== "pau");
-    if (firstM && firstM.a >= 0.12) addInhale(firstM.a - 0.11, firstM.a - 0.022);
+    if (firstM && firstM.a >= 0.09) addInhale(firstM.a - 0.072, firstM.a - 0.016);
     for (const m_ of r.moras) {
-      if (m_.kind === "pau" && (m_.e - m_.a) >= 0.14) addInhale(m_.e - 0.115, m_.e - 0.020);
+      if (m_.kind === "pau" && (m_.e - m_.a) >= 0.14) addInhale(m_.e - 0.072, m_.e - 0.016);
     }
   }
 
@@ -1142,7 +1142,7 @@ export function makeHitofude(text, opts = {}) {
   const g_fr = new Array(n);
   for (let t = 0; t < n; t++) {
     const gVo = vo_sm[t] * g_vo * (1.0 - 0.88 * sigh_sm[t]);
-    g_fr[t] = inhale_fr[t] > 0.0 ? Math.max(gVo, 0.38 * g_vo * inhale_fr[t]) : gVo;
+    g_fr[t] = inhale_fr[t] > 0.0 ? Math.max(gVo, 0.34 * g_vo * inhale_fr[t]) : gVo;
   }
 
   // サンプル単位の基本周期 PER[i] (原石ノイズ x からダシをとった自然漂い wander + 周期ごとの微細ジッタ)
@@ -1167,7 +1167,7 @@ export function makeHitofude(text, opts = {}) {
   const ycRad = new Float64Array(N);
   let x1 = null, x2 = null;
 
-  // === Step 1–3: カワイイ専用・単一因果ループ（VDP自励声帯×軟閉鎖2唇扉×局所有声気息×5極笑顔声道） ===
+  // === Step 1–3: カワイイ専用・単一因果ループ（VDP自励声帯×軟閉鎖2唇扉×5極声道＋並列喉頭管F3-F5倍音蘇生） ===
   x = karuku(x, 320);
   const xClean = arakezuriT(x.slice(), tw, 1, perSample(cons_sharp, N));
   const softPos = (v) => { const z = v * 12.0; return z > 20.0 ? v : (z < -20.0 ? 0.0 : Math.log1p(Math.exp(z)) / 12.0); };
@@ -1176,14 +1176,18 @@ export function makeHitofude(text, opts = {}) {
   const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
   const vdpBuf = captureSteps ? new Float64Array(N) : null, uOut = new Float64Array(N), yc = new Float64Array(N);
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
-  const ret = 0.1125, qSoft = 0.88, rawAir = 0.012 * rawAirMul, radK = 0.88;
-  const loGain = 1.65, upGain = 3.00, knee = 0.18;
-  const bwMinP = [150.0, 110.0 * qSoft, 150.0 * qSoft, 220.0 * qSoft, 260.0 * qSoft];
-  const qDivP = [5.2, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
-  const dMulP = [90.0, 30.0, 15.0, 0.0, 0.0];
+  const ret = 0.1125, qSoft = 0.88, rawAir = 0.012 * rawAirMul, radK = 0.90;
+  const loGain = 1.65, upGain = 3.00, knee = 0.16;
+  // F1/F2の1.0-1.5kHz渋滞(こもり)を和らげつつ、F3-F5は並列喉頭管(epilaryngeal)で2.5〜6.0kHzの倍音を蘇生
+  const bwMinP = [180.0, 165.0, 130.0, 180.0, 220.0];
+  const qDivP = [4.5, 8.5, 14.0, 15.5, 15.5];
+  const dMulP = [90.0, 30.0, 12.0, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
+  // 並列喉頭管クラスター (F3喉頭管~3.1kHz, F4, F5): 直列F1/F2の 1/f^2 減衰をバイパスして2.7〜6.0kHzの倍音ラダーを輝かせる
+  const ep1 = new Float64Array(3), ep2 = new Float64Array(3);
+  const epW = [3.4, 2.4, 1.8];
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0, vx = 0.0, vv = 0.0;
-  let hpAir = 0.0, xPrev = 0.0;
+  let hpAir = 0.0, xPrev = 0.0, sig0Prev = 0.0;
   for (let i = 0; i < N; i++) {
     const g = GS[i], vo = Math.min(1.0, g / (g_vo || 1.0)), p = PER[i];
     const pRet = Math.tanh((0.70 * (y1[0] - p1Prev) + 0.30 * (ycPrev - (i > 1 ? yc[i - 2] : 0.0))) * 4.5);
@@ -1194,7 +1198,7 @@ export function makeHitofude(text, opts = {}) {
     if (Math.abs(vx) > 4.0) { vx = Math.sign(vx) * 4.0; vv = 0.0; }
     const gVal = (vx + 0.32) * 0.35;
     if (vdpBuf) vdpBuf[i] = gVal;
-    const aDoor = Math.exp(-16.0 / p);
+    const aDoor = Math.exp(-20.0 / p);
     doorLp1 = (1.0 - aDoor) * gVal + aDoor * doorLp1;
     doorLp2 = (1.0 - aDoor) * doorLp1 + aDoor * doorLp2;
     const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain;
@@ -1203,23 +1207,37 @@ export function makeHitofude(text, opts = {}) {
     doorPrev = door;
     if (door > 0.0) {
       const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
-      const aFl = door > uFlow ? 0.28 : 0.02;
+      const aFl = door > uFlow ? 0.24 : 0.015;
       uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
-    } else uFlow *= 0.22;
+    } else uFlow *= 0.16;
     // 局所的非モーダル有声気息 (Ishi+ 2026 / Utsugi+): 声帯を止めず高音ピーク・句末・吸気で息を咲かせる
     hpAir = 0.65 * (hpAir + xClean[i] - xPrev);
     xPrev = xClean[i];
     const hiPeak = Math.max(0.0, Math.min(1.0, (f0S[i] / hRef - 1.10) / 0.25));
-    const aspLoc = asp * (1.0 + 0.85 * hiPeak + 1.10 * SIGH_S[i]) + 0.55 * INH_S[i];
-    let sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6 + aspLoc * (0.35 + 0.65 * door) * hpAir);
-    uOut[i] = sig;
+    const aspLoc = asp * (1.0 + 0.85 * hiPeak + 1.10 * SIGH_S[i]) + 0.30 * INH_S[i];
+    const sig0 = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6 + aspLoc * (0.35 + 0.65 * door) * hpAir);
+    // 声門微分パルス（高次倍音リッチな同一音源）を並列喉頭管 F3-F5 へ通す
+    const uDiff = sig0 - 0.92 * sig0Prev;
+    sig0Prev = sig0;
+    uOut[i] = sig0;
+    let sig = sig0;
+    let epiSum = 0.0;
     for (let k = 0; k < 5; k++) {
       const fk = FS[k][i], rk = Math.exp(-piSR * (Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev));
       const ck = -rk * rk, bk = 2.0 * rk * Math.cos(twoPiSR * fk);
       sig = (1.0 - bk - ck) * sig + bk * y1[k] + ck * y2[k];
       y2[k] = y1[k]; y1[k] = sig;
+      if (k >= 2) {
+        const ek = k - 2;
+        const efk = ek === 0 ? Math.min(fk, 3150.0) : fk;
+        const ebk = ek === 0 ? (2.0 * rk * Math.cos(twoPiSR * efk)) : bk;
+        const eOut = 0.5 * (1.0 - rk * rk) * uDiff + ebk * ep1[ek] + ck * ep2[ek];
+        ep2[ek] = ep1[ek]; ep1[ek] = eOut;
+        epiSum += epW[ek] * eOut;
+      }
     }
-    yc[i] = sig; ycPrev = sig;
+    const yMix = sig + vo * epiSum;
+    yc[i] = yMix; ycPrev = sig;
   }
   if (captureSteps) { x1 = vdpBuf; x2 = uOut.slice(); }
   x = xClean;
@@ -1238,18 +1256,21 @@ export function makeHitofude(text, opts = {}) {
   for (let i = 1; i < N; i++) if (GS[i] > 0.25 && INH_S[i] < 0.05) { vInSq += x[i] * x[i]; vOutSq += ycRad[i] * ycRad[i]; vCnt++; }
   const vScale = 0.45 * ((vCnt > 0 ? Math.sqrt(vInSq / vCnt) : rmsActive(x)) / ((vCnt > 0 ? Math.sqrt(vOutSq / vCnt) : rmsActive(ycRad)) || 1.0));
 
-  // 子音・ハ行気息帯域 bpc：ピーク利得一定の因果2極ゼロDCバンドパス
+  // 子音・ハ行気息帯域 bpc：高域摩擦音 (し・そ) の低域レンガ裾を切る HPF 付き因果バンドパス
   const FCEN = perSample(f_cons_cen, N), bpc = new Float64Array(N);
-  let bp1 = 0.0, bp2 = 0.0;
+  let bp1 = 0.0, bp2 = 0.0, bpcPrev = 0.0;
   for (let i = 0; i < N; i++) {
-    const f = FCEN[i], r0 = Math.exp(-piSR * Math.max(420.0, f * 0.38));
+    const f = FCEN[i], r0 = Math.exp(-piSR * Math.max(380.0, f * 0.30));
     const o = 0.5 * (1.0 - r0 * r0) * (x[i] - (i > 1 ? x[i - 2] : 0.0)) + 2.0 * r0 * Math.cos(twoPiSR * f) * bp1 - r0 * r0 * bp2;
-    bpc[i] = o; bp2 = bp1; bp1 = o;
+    bp2 = bp1; bp1 = o;
+    const hp = f > 2600.0 ? (o - 0.78 * bpcPrev) : o;
+    bpcPrev = o;
+    bpc[i] = hp;
   }
-  const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 6), N);
+  const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 16), N);
 
   const y = new Float64Array(N);
-  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i];
+  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.36 * FCW[i] * bpc[i];
   const x3 = captureSteps ? y.slice() : null;
 
   // === Step 4: 【引き算④】1スカラー整音 ＋ 時間包絡 ===
@@ -1309,7 +1330,7 @@ export function makeHitofude(text, opts = {}) {
       }
     }
     if (inhaleSpans.length && inhale > 0.0) {
-      const targetGain = vRms * Math.pow(10.0, -21.0 / 20.0) * Math.min(1.5, inhale);
+      const targetGain = vRms * Math.pow(10.0, -30.0 / 20.0) * Math.min(1.5, inhale);
       for (const [fa, fe] of inhaleSpans) {
         const ia = Math.max(0, Math.trunc(fa * fpz * SR)), ie = Math.min(N, Math.trunc(fe * fpz * SR));
         let iSq = 0.0, iCnt = 0;
