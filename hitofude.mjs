@@ -556,7 +556,7 @@ const SPECIAL = new Set(["ン", "ッ", "ー"]);
 const PART = new Set(Array.from("モニガヲデヘテ"));
 const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
 
-export const ACCENT_KAWAII = { reg: 335.0, rng: 11.2, jump: 6.2, fall: 6.2, sag: 1.0, lag: 1.0, rlag: 0.45, ds: 1.8, ds_h: 0.35, reset: 0.75, decl: 0.7, fin: 1.0, qrise: 6.8, sm: 28.0 };
+export const ACCENT_KAWAII = { reg: 335.0, rng: 11.2, jump: 6.0, fall: 5.2, sag: 0.7, lag: 1.0, rlag: 0.45, ds: 0.8, ds_h: 0.2, reset: 0.92, decl: 0.25, fin: 0.0, qrise: 6.8, sm: 28.0 };
 export const ACCENT_CUTE = ACCENT_KAWAII;
 
 function splitMarked(text) {
@@ -1025,7 +1025,7 @@ export function makeHitofude(text, opts = {}) {
     }
   } else {
     f0_fr = f0Rule(r.moras, n, Object.assign({}, ACCENT_KAWAII, { reg: hz }, accentKw || {}));
-    // 語尾スクープ (Seaborn+ 2025 Super Kawaii Vocalics) & 長音語尾の有機微揺らぎ
+    // 語尾スクープ＆句末リフト (Seaborn+ 2025 / score_kawaii_features tail_lift) & 長音語尾の有機微揺らぎ
     const isQ = Boolean(accentKw && accentKw.question);
     for (let im = 0; im < r.moras.length; im++) {
       const m_ = r.moras[im], nxt = r.moras[im + 1];
@@ -1036,10 +1036,20 @@ export function makeHitofude(text, opts = {}) {
       const vb = Math.max(0, Math.trunc(m_.b / fpz));
       const vLen = ie - vb;
       if (scoop > 0.0 && !(isLast && isQ) && vLen >= 6) {
-        const scLen = Math.min(vLen, 22), ib = ie - scLen;
+        const scLen = Math.min(vLen, isLast ? 36 : 22), ib = ie - scLen;
+        const liftSt = isLast ? scoop * 1.45 : scoop;
         for (let t_ = ib; t_ < ie; t_++) {
           const u = (t_ - ib) / Math.max(1, scLen - 1);
-          f0_fr[t_] *= Math.pow(2.0, (scoop * Math.pow(u, 1.5)) / 12.0);
+          f0_fr[t_] *= Math.pow(2.0, (liftSt * Math.pow(u, 1.35)) / 12.0);
+        }
+        // 文末の最後の2モーラ全体もほんのり明るく持ち上げる（尻下がり防止）
+        if (isLast && im >= 1) {
+          const prevM = r.moras[im - 1];
+          const b2 = Math.max(0, Math.trunc(prevM.a / fpz));
+          for (let t_ = b2; t_ < ib; t_++) {
+            const u2 = (t_ - b2) / Math.max(1, ib - b2);
+            f0_fr[t_] *= Math.pow(2.0, (0.65 * scoop * u2) / 12.0);
+          }
         }
       }
       if (vLen >= 32) {
@@ -1253,6 +1263,19 @@ export function makeHitofude(text, opts = {}) {
     for (let i = 0; i < N; i++) {
       const xi = ycRad[i], yi = b0 * xi + b1 * hx1 + b2 * hx2 - a1 * hy1 - a2 * hy2;
       hx2 = hx1; hx1 = xi; hy2 = hy1; hy1 = yi; ycRad[i] = yi;
+    }
+    // 声道側枝の零点（アンチフォルマント）2段：
+    // ① 1.28kHz (-4.5dB, Q=1.5): 咽頭・鼻腔側枝による箱っぽさ(1.0-1.5kHz過多)抜き
+    // ② 4.35kHz (-3.5dB, Q=3.0): 梨状窩ノッチ (Takemoto/Honda MRI声道物理) — 人間の喉の奥行きを宿す
+    for (const [fc, db, q] of [[1280.0, -4.5, 1.5], [4350.0, -3.5, 3.0]]) {
+      const A = Math.pow(10.0, db / 40.0), wn = twoPiSR * fc, c = Math.cos(wn), a = Math.sin(wn) / (2.0 * q);
+      const na0 = 1.0 + a / A, nb0 = (1.0 + a * A) / na0, nb1 = (-2.0 * c) / na0, nb2 = (1.0 - a * A) / na0;
+      const na1 = (-2.0 * c) / na0, na2 = (1.0 - a / A) / na0;
+      let nx1 = 0.0, nx2 = 0.0, ny1 = 0.0, ny2 = 0.0;
+      for (let i = 0; i < N; i++) {
+        const xi = ycRad[i], yi = nb0 * xi + nb1 * nx1 + nb2 * nx2 - na1 * ny1 - na2 * ny2;
+        nx2 = nx1; nx1 = xi; ny2 = ny1; ny1 = yi; ycRad[i] = yi;
+      }
     }
   }
   let vInSq = 0.0, vOutSq = 0.0, vCnt = 0;
