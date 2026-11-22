@@ -97,12 +97,15 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
   const nFrames = Math.max(1, Math.floor((x.length - wl) / hop) + 1);
   const mag = new Array(nFrames);
   const magDb = new Array(nFrames);
+  const envDb = new Array(nFrames); // ケプストラム包絡（F0倍音シマを除去した純粋な声道伝達特性）
   const phase = new Array(nFrames);
   const rmsFr = new Float64Array(nFrames);
   const f0Hz = new Float64Array(nFrames); // 0 = unvoiced
   const minLag = Math.max(2, Math.trunc(sr / 580));
   const maxLag = Math.min(wl - 2, Math.trunc(sr / 140));
   const buf = new Float64Array(nfft);
+  const logFull = new Float64Array(nfft);
+  const qCut = Math.max(8, Math.trunc(0.0017 * sr)); // 1.7ms リフタ（女性/アニメ高音F0を綺麗に除去）
   const invScale = 2.0 / (winSum || 1.0);
 
   for (let t = 0; t < nFrames; t++) {
@@ -120,11 +123,17 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
     const m = new Float64Array(nBins);
     const md = new Float64Array(nBins);
     const ph = new Float64Array(nBins);
-    for (let k = 0; k < nBins; k++) {
+    logFull.fill(0.0);
+    for (let k = 0; k < half; k++) {
       const mv = Math.hypot(re[k], im[k]) * invScale + 1e-9;
-      m[k] = mv;
-      md[k] = 20.0 * Math.log10(mv);
-      ph[k] = Math.atan2(im[k], re[k]);
+      const db = 20.0 * Math.log10(mv);
+      logFull[k] = db;
+      if (k > 0 && k < nfft - k) logFull[nfft - k] = db;
+      if (k < nBins) {
+        m[k] = mv;
+        md[k] = db;
+        ph[k] = Math.atan2(im[k], re[k]);
+      }
     }
     mag[t] = m;
     magDb[t] = md;
@@ -141,9 +150,22 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
         const v = s / (r0 + 1e-12);
         if (v > bestVal) { bestVal = v; bestLag = lag; }
       }
-      if (bestVal > 0.48 && bestLag > 0) f0Hz[t] = sr / bestLag;
+      if (bestVal > 0.48 && bestLag > 0) {
+        f0Hz[t] = sr / bestLag;
+        // Cepstral liftering for clean vocal-tract envelope
+        const { re: ceps } = fftRadix2(logFull);
+        const lif = new Float64Array(nfft);
+        lif[0] = ceps[0] / nfft;
+        for (let q = 1; q < qCut; q++) {
+          const w = 0.5 + 0.5 * Math.cos((Math.PI * q) / qCut);
+          lif[q] = (ceps[q] / nfft) * w;
+          lif[nfft - q] = (ceps[nfft - q] / nfft) * w;
+        }
+        const { re: envFull } = fftRadix2(lif);
+        envDb[t] = Float64Array.from(envFull.subarray(0, nBins));
+      }
     }
   }
 
-  return { sr, x, nfft, wl, hop, freqs: freqs.subarray(0, nBins), nBins, nFrames, mag, magDb, phase, rmsFr, f0Hz };
+  return { sr, x, nfft, wl, hop, freqs: freqs.subarray(0, nBins), nBins, nFrames, mag, magDb, envDb, phase, rmsFr, f0Hz };
 }

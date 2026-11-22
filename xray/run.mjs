@@ -6,10 +6,12 @@ import path from "node:path";
 import { decodeWav, extractBaseFrameData } from "./core.mjs";
 import { CAT01_TOOLS } from "./cat01_glottal.mjs";
 import { CAT02_TOOLS } from "./cat02_artifacts.mjs";
+import { CAT03_TOOLS } from "./cat03_vocal_tract.mjs";
 
 export const ALL_TOOLS = [
   ...CAT01_TOOLS,
   ...CAT02_TOOLS,
+  ...CAT03_TOOLS,
 ];
 
 export function analyzeBuffer(bytes) {
