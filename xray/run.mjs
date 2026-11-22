@@ -5,9 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { decodeWav, extractBaseFrameData } from "./core.mjs";
 import { CAT01_TOOLS } from "./cat01_glottal.mjs";
+import { CAT02_TOOLS } from "./cat02_artifacts.mjs";
 
 export const ALL_TOOLS = [
   ...CAT01_TOOLS,
+  ...CAT02_TOOLS,
 ];
 
 export function analyzeBuffer(bytes) {
