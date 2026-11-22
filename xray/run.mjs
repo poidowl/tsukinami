@@ -83,4 +83,8 @@ function main() {
   }
 }
 
-main();
+import { fileURLToPath } from "node:url";
+
+if (path.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+  main();
+}

@@ -30,26 +30,32 @@ export const CAT02_TOOLS = [
   { id: 13, key: "hnr_hi_db", name: "帯域別HNR 3.0-5.0kHz (キラ帯)", unit: "dB", run: (d) => bandHnr(d, 3000, 5000) },
   { id: 14, key: "hnr_air_db", name: "帯域別HNR 5.0-8.0kHz (空気帯)", unit: "dB", run: (d) => bandHnr(d, 5000, 8000) },
   {
-    id: 15, key: "fixed_whistle_db", name: "固定周波数ピー音/金属笛検知 (2-7kHz)", unit: "dB",
+    id: 15, key: "fixed_whistle_db", name: "固定周波数ピー音/金属笛検知 (非倍音成分 2-7kHz)", unit: "dB",
     run(d) {
-      // Average spectrum over voiced frames; a stationary narrowband ring sticks out sharply above its ±500Hz neighborhood
+      // Mask out normal harmonics k*f0 (±0.18*f0) in each voiced frame so flat-pitch speech never false-alarms,
+      // while a true stationary non-harmonic whistle / metallic ring sticks out sharply above its ±450Hz neighborhood!
       const avg = new Float64Array(d.nBins);
-      let cnt = 0;
+      const cnt = new Int32Array(d.nBins);
       for (let t = 0; t < d.nFrames; t++) {
-        if (!d.f0Hz[t]) continue;
-        for (let b = 0; b < d.nBins; b++) avg[b] += d.magDb[t][b];
-        cnt++;
+        const f0 = d.f0Hz[t]; if (!f0) continue;
+        const md = d.magDb[t];
+        for (let b = 0; b < d.nBins; b++) {
+          const f = d.freqs[b];
+          if (f < 1500 || f > 7500) continue;
+          const harmDist = Math.abs(f / f0 - Math.round(f / f0));
+          if (harmDist < 0.18) continue; // skip true pitch harmonics
+          avg[b] += md[b]; cnt[b]++;
+        }
       }
-      if (!cnt) return 0.0;
-      for (let b = 0; b < d.nBins; b++) avg[b] /= cnt;
+      for (let b = 0; b < d.nBins; b++) avg[b] = cnt[b] ? avg[b] / cnt[b] : -80.0;
       const df = d.freqs[1] - d.freqs[0] || 20.0;
       const winB = Math.max(3, Math.round(450 / df));
       let maxProm = 0.0;
       for (let b = 0; b < d.nBins; b++) {
-        if (d.freqs[b] < 2000 || d.freqs[b] > 7000) continue;
+        if (d.freqs[b] < 2000 || d.freqs[b] > 7000 || cnt[b] < 3) continue;
         let sum = 0.0, n = 0;
         for (let k = Math.max(0, b - winB); k <= Math.min(d.nBins - 1, b + winB); k++) {
-          if (Math.abs(k - b) < 2) continue;
+          if (Math.abs(k - b) < 2 || cnt[k] < 3) continue;
           sum += avg[k]; n++;
         }
         const prom = avg[b] - sum / (n || 1);
@@ -59,40 +65,36 @@ export const CAT02_TOOLS = [
     },
   },
   {
-    id: 16, key: "cliff_impulse_ratio", name: "1サンプル崖/クリック検知 (2階微分尖度)", unit: "ratio",
+    id: 16, key: "cliff_impulse_ratio", name: "1サンプル崖/クリック検知 (2階微分p99.98/中央値)", unit: "ratio",
     run(d) {
-      // High p99.9 / RMS of 2nd difference |x[i]-2x[i-1]+x[i-2]| catches 1-sample glottal cliffs & clicks
+      // p99.98 / median of 2nd difference |x[i]-2x[i-1]+x[i-2]| catches even rare 1-sample clicks without denominator inflation
       const diffs = [];
-      let sq = 0.0, cnt = 0;
       for (let t = 0; t < d.nFrames; t++) {
         if (!d.f0Hz[t]) continue;
         const off = t * d.hop;
         for (let i = 2; i < d.hop && off + i < d.x.length; i++) {
-          const d2 = Math.abs(d.x[off + i] - 2.0 * d.x[off + i - 1] + d.x[off + i - 2]);
-          diffs.push(d2);
-          sq += d2 * d2; cnt++;
+          diffs.push(Math.abs(d.x[off + i] - 2.0 * d.x[off + i - 1] + d.x[off + i - 2]));
         }
       }
-      if (!cnt) return 0.0;
-      const rms2 = Math.sqrt(sq / cnt) || 1e-9;
-      return Number((percentile(diffs, 99.8) / rms2).toFixed(2));
+      if (diffs.length < 16) return 0.0;
+      const med = median(diffs) || 1e-9;
+      return Number(Math.min(999.0, percentile(diffs, 99.98) / med).toFixed(2));
     },
   },
   {
-    id: 17, key: "phaser_notch_depth", name: "並列フェイザー/コム干渉ノッチ深さ", unit: "dB",
+    id: 17, key: "phaser_notch_depth", name: "並列フェイザー/声道ノッチ深さ (ケプストラム包絡)", unit: "dB",
     run(d) {
-      // Measures sharp narrow spectral dips inside 1.5-5.5kHz on voiced frames (signature of parallel phase cancellation)
+      // Measures sharp dips on F0-stripped cepstral vocal-tract envelope (immune to normal F0 inter-harmonic valleys!)
       const df = d.freqs[1] - d.freqs[0] || 20.0;
-      const span = Math.max(2, Math.round(280 / df));
+      const span = Math.max(3, Math.round(450 / df));
       const frameMaxDips = [];
       for (let t = 0; t < d.nFrames; t++) {
-        if (!d.f0Hz[t]) continue;
-        const md = d.magDb[t];
+        const e = d.envDb[t]; if (!e) continue;
         let mxDip = 0.0;
         for (let b = span; b < d.nBins - span; b++) {
           if (d.freqs[b] < 1500 || d.freqs[b] > 5500) continue;
-          const shoulders = 0.5 * (md[b - span] + md[b + span]);
-          const dip = shoulders - md[b];
+          const shoulders = 0.5 * (e[b - span] + e[b + span]);
+          const dip = shoulders - e[b];
           if (dip > mxDip) mxDip = dip;
         }
         frameMaxDips.push(mxDip);

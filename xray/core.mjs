@@ -105,7 +105,7 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
   const maxLag = Math.min(wl - 2, Math.trunc(sr / 140));
   const buf = new Float64Array(nfft);
   const logFull = new Float64Array(nfft);
-  const qCut = Math.max(8, Math.trunc(0.0017 * sr)); // 1.7ms リフタ（女性/アニメ高音F0を綺麗に除去）
+  const qCut = Math.max(8, Math.trunc(0.0021 * sr)); // 2.1ms リフタ（高音F0シマを除去しつつF1/F2の分離を保持）
   const invScale = 2.0 / (winSum || 1.0);
 
   for (let t = 0; t < nFrames; t++) {
