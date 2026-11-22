@@ -5,7 +5,7 @@ L=$HOME/itako_mimi/loop
 # 耳と声の版は ear_commit.txt / tts_commit.txt に書く（r3 から: 耳 = kiku-ear-r3 の中身、声 = その中の hitofude.mjs = kusanagi b205f58）。
 # 耳を差し替えるときは、新しい中身を $L/ear_<版> に置いて ear_commit.txt を書き換えるだけ（周の合間に stop.sh → start.sh）。
 EAR_COMMIT=${EAR_COMMIT:-$(cat $L/ear_commit.txt)}; TTS_COMMIT=${TTS_COMMIT:-$(cat $L/tts_commit.txt)}
-EAR=$L/ear_${EAR_COMMIT}
+EAR=$L/$(cat $L/ear_dir.txt 2>/dev/null || echo ear_${EAR_COMMIT})   # ear_dir.txt があればその dir（声だけ差し替えた混ぜ dir 用）
 NODE=$HOME/itako_kusanagi/node/bin/node
 PY=$L/venv/bin/python
 DAICHO=$HOME/itako_mimi/obake_daichou.jsonl

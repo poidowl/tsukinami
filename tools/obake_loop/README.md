@@ -43,3 +43,5 @@ DIGEST_EVERY=1 zsh ~/itako_mimi/loop/run_round.sh  # 手で 1 周＋要約と提
 
 ## 耳を r3 に上げたとき（2026-11-21）
 r3（K 64・minf 0.8、b205f58 の声で育て直し）: 確認用 かな 90.6% / 母音 95.6%（同じ声で r2 は 46.3 / 70.0）。作り方と下見の表は tsukinami `kiku-ear-r3` の `docs/hentai_mimi_rounds.md`、作業場所は `~/itako_mimi/r3/`。
+- 声だけ替えて耳はそのままにしたいときは、`$L/ear_dir.txt` に混ぜ dir の名前（例 `ear_b933e6c_tts_da87173`）を書く。無ければ `ear_<ear_commit>`。
+- `soudan.py` は关亡婆の JSON がこわれとっても（`\6` のような変な `\`、制御文字）甘めに読み直す。読めたら `_parse_fixed` に元のエラーを残す。
