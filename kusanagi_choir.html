@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="twitter:card" content="player">
 <meta name="twitter:title" content="草薙 kusanagi — 気流がうねる1→128人ライブ大合唱">
-<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。VDP自励声帯(v13)で1→128人へ倍増！4会場×4声種編成×ステージタッチ拍手＆指揮棒で遊べる録音0Byte純JSライブ大合唱">
+<meta name="twitter:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。VDP自励声帯(v13.1)で1→128人へ倍増！4会場×4声種編成×ステージタッチ拍手＆指揮棒で遊べる録音0Byte純JSライブ大合唱">
 <meta name="twitter:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
-<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_choir_player.html?v=13">
+<meta name="twitter:player" content="https://poidowl.github.io/tsukinami/kusanagi_choir_player.html?v=13.1">
 <meta name="twitter:player:width" content="480">
 <meta name="twitter:player:height" content="500">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://poidowl.github.io/tsukinami/kusanagi_choir.html">
 <meta property="og:title" content="草薙 kusanagi — 気流がうねる1→128人ライブ大合唱">
-<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。VDP自励声帯(v13)で1→128人へ倍増！4会場×4声種編成×ステージタッチ拍手＆指揮棒で遊べる純JSライブ大合唱。">
+<meta property="og:description" content="Pythonゼロ・録音0 Byte・学習モデルなし。VDP自励声帯(v13.1)で1→128人へ倍増！4会場×4声種編成×ステージタッチ拍手＆指揮棒で遊べる純JSライブ大合唱。">
 <meta property="og:image" content="https://poidowl.github.io/tsukinami/assets/kusanagi_square.jpg">
 <meta property="og:image:width" content="1024">
 <meta property="og:image:height" content="1024">
@@ -172,7 +172,7 @@
     <div class="baton-pill" id="batonPill">🪄 指揮中</div>
     <div class="hud-bottom">
       <div class="lyric" id="lyricText">会場と人数を選んでライブ合唱スタート</div>
-      <div class="arch" id="archText">v13 スリムVDP自励声帯 (@39461ee)・ステージをタッチで拍手 / ドラッグで指揮！</div>
+      <div class="arch" id="archText">v13.1 スリムVDP自励声帯 (@a7fae9f)・ステージをタッチで拍手 / ドラッグで指揮！</div>
     </div>
   </div>
 
@@ -236,7 +236,7 @@
     <a class="nav-btn" href="./index.html">🎛️ オモチャ箱へ</a>
     <a class="nav-btn" href="https://github.com/poidowl/tsukinami/tree/kusanagi" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
   </div>
-  <div class="foot">草薙 kusanagi @39461ee (v13: VDP自励声帯×クリア＆ダンディ両立・4会場×4編成×拍手＆指揮棒) — 録音 0 Byte</div>
+  <div class="foot">草薙 kusanagi @a7fae9f (v13.1: VDP自励声帯×クリア＆ダンディ両立・4会場×4編成×拍手＆指揮棒) — 録音 0 Byte</div>
 </div>
 
 <script>
@@ -355,7 +355,7 @@ const KOTOBA_PRM = {
   gl: { y: [300, 2700, 3300], w: [360, 800, 2600] },
   nasT: { m: [280, 1100, 2500], n: [280, 1600, 2700], N: [300, 1300, 2600] },
   alvF2: 2350, alvF3: 3000,
-  sc: 6000, shc: 3600, fg: 2.2, fvg: 0.15, ndl: -1.2, asp: 3, bg: 3.0, r3: 2000, rtrack: true,
+  sc: 6000, shc: 3600, fg: 2.2, fvg: 0.15, ndl: -1.2, asp: 3, bg: 4.2, r3: 2000, rtrack: true,
   rate: 0.84, fin: 1.38, pau: 0.35, qn: 0.09,
   sil: -30.0, qlev: -18.0, decl: 1.5, devmax: 0.045, Nlev: -1.0, fend: -6.0, fend_at: 0.16,
   CDUR: { "": 0, k: 70, g: 50, s: 100, z: 70, sh: 100, j: 70, t: 60, d: 40, ch: 80, ts: 80, n: 50, h: 70, f: 70, m: 50, y: 60, r: 25, w: 55, b: 40, p: 70 },
@@ -608,7 +608,7 @@ function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     }
     let f3 = V[2];
     if (pl === "lab") f3 = V[2] - 250 * al3;
-    else if (pl === "vel") f3 = (v === "i" || v === "e") ? Math.max(f2 + 400 * al, V[2] - 200 * al3) : Math.min(V[2], f2 + 900 * al);
+    else if (pl === "vel") f3 = (v === "i" || v === "e") ? Math.min(V[2], f2 + 380 * al) : Math.min(V[2], f2 + 450 * al);
     else if (pl === "alv") f3 = 0.5 * V[2] + 0.5 * 2900 * al3;
     else if (pl === "pal") f3 = Math.max(V[2], 3300 * al3);
     let O = [f1, f2, f3];
@@ -718,11 +718,12 @@ function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
       else rawBands.push([i0, ib, Math.round(vt(s)[1]), 1.25]);
     }
     if (["k", "g", "t", "d", "p", "b", "ch", "ts"].includes(c)) {
-      const ce = i0 + ((c === "ch" || c === "ts") ? Math.floor(nc / 2) : Math.max(1, nc - P.asp));
+      const asp = (c === "k" || c === "g") ? 5 : (c === "p" || c === "b") ? 2 : P.asp;
+      const ce = i0 + ((c === "ch" || c === "ts") ? Math.floor(nc / 2) : Math.max(1, nc - asp));
       if (VOICED_OBS.has(c)) { setslice(G1, i0, ce, 0.8); setslice(dl, i0, ce, P.vdl); }
       else setslice(dl, i0, ce, -6);
-      const cen = (c === "k" || c === "g") ? ((v === "i" || v === "e") ? 3000 : 1900)
-        : (["t", "d", "ch", "ts"].includes(c) ? 4500 : 1200);
+      const cen = (c === "k" || c === "g") ? ((v === "i" || v === "e") ? 2600 : 1650)
+        : (["t", "d", "ch", "ts"].includes(c) ? 4600 : 1200);
       if (!VOICED_OBS.has(c)) rawBands.push([ce, Math.min(ce + 2, ib + 1), cen, P.bg + cen / 2500.0]);
       if (c !== "ch" && c !== "ts") setslice(G1, ce, ib, VOICED_OBS.has(c) ? 1 : 0.4);
     }
@@ -2233,7 +2234,7 @@ btnShare.addEventListener("click", () => {
   const shareUrl = "https://poidowl.github.io/tsukinami/kusanagi_choir.html?venue=" + venueId + "&cast=" + castId + "&max=" + maxCount + "&chaos=" + chaosPct;
   const vName = VENUES[venueId].name.split("（")[0];
   const cName = CASTS[castId].short;
-  const text = "VDP自励声帯(v13)で1→" + maxCount + "人ライブ大合唱【" + cName + "×" + vName + "・カオス" + chaosPct + "%・録音0Byte】ステージ指揮＆拍手つき！ #草薙kusanagi";
+  const text = "VDP自励声帯(v13.1)で1→" + maxCount + "人ライブ大合唱【" + cName + "×" + vName + "・カオス" + chaosPct + "%・録音0Byte】ステージ指揮＆拍手つき！ #草薙kusanagi";
   window.open("https://x.com/intent/tweet?text=" + encodeURIComponent(text) + "&url=" + encodeURIComponent(shareUrl), "_blank", "noopener");
 });
 
