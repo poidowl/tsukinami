@@ -96,9 +96,9 @@ const SIN_J = 15;
 const PIR_J = 4;
 
 export const KUDA_PRESETS = {
-  kawaii: { hz: 296.0, smile: 0.54, rd_base: 1.40, rd_tail: 2.14, scoop: 1.35, asp: 0.044, aspMid: 0.175, rate: 1.00 },
-  amae:   { hz: 286.0, smile: 0.48, rd_base: 1.54, rd_tail: 2.28, scoop: 1.65, asp: 0.050, aspMid: 0.195, rate: 1.08 },
-  genki:  { hz: 312.0, smile: 0.66, rd_base: 1.32, rd_tail: 2.00, scoop: 1.20, asp: 0.040, aspMid: 0.155, rate: 0.94 },
+  kawaii: { hz: 296.0, smile: 0.54, rd_base: 1.40, rd_tail: 2.14, scoop: 1.54, asp: 0.044, aspMid: 0.178, rate: 1.00 },
+  amae:   { hz: 286.0, smile: 0.48, rd_base: 1.54, rd_tail: 2.28, scoop: 1.68, asp: 0.050, aspMid: 0.195, rate: 1.08 },
+  genki:  { hz: 306.0, smile: 0.60, rd_base: 1.38, rd_tail: 2.06, scoop: 1.35, asp: 0.044, aspMid: 0.182, rate: 0.95 },
 };
 
 const K2V = {};
@@ -448,7 +448,7 @@ export function buildVowelArea(v, smile = 0.52) {
 function buildConsPostures() {
   const g = (j, c, w) => Math.exp(-0.5 * Math.pow((j - c) / w, 2));
   const out = {};
-  for (const pl of ["lab", "alv", "pal", "vel", "velF", "r"]) {
+  for (const pl of ["lab", "alv", "pal", "vel", "velA", "velF", "r"]) {
     const A = new Float64Array(M);
     for (let j = 0; j < M; j++) {
       if (j <= 3) A[j] = 0.36 + 0.055 * j;
@@ -460,7 +460,9 @@ function buildConsPostures() {
       } else if (pl === "pal") {
         A[j] = Math.max(0.26, 2.55 + 2.95 * g(j, 10.5, 4.2) - 2.30 * g(j, 22.8, 3.5) + 1.25 * g(j, 30.2, 1.8));
       } else if (pl === "vel") {
-        A[j] = Math.max(0.30, 2.40 + 2.10 * g(j, 8.8, 3.2) - 2.05 * g(j, 15.8, 2.8) + 1.45 * g(j, 23.5, 3.0) - 1.40 * g(j, 29.8, 2.2));
+        A[j] = Math.max(0.30, 2.40 + 2.05 * g(j, 8.8, 3.2) - 2.05 * g(j, 15.8, 2.8) + 1.45 * g(j, 23.5, 3.0) - 1.32 * g(j, 29.8, 2.2));
+      } else if (pl === "velA") {
+        A[j] = Math.max(0.30, 2.35 + 1.20 * g(j, 9.5, 3.4) - 1.95 * g(j, 17.8, 2.6) + 1.65 * g(j, 24.8, 3.0) + 0.45 * g(j, 30.0, 2.0));
       } else if (pl === "velF") {
         A[j] = Math.max(0.32, 2.40 + 1.85 * g(j, 10.5, 4.0) - 1.75 * g(j, 20.0, 3.2) + 0.85 * g(j, 29.8, 2.2));
       } else if (pl === "r") {
@@ -477,6 +479,7 @@ const CONS_LOC = {
   alv:  { c: 26.5, w: 1.10, inj: 27 },
   pal:  { c: 23.0, w: 1.35, inj: 24 },
   velF: { c: 19.8, w: 1.55, inj: 20 },
+  velA: { c: 17.8, w: 1.55, inj: 18 },
   vel:  { c: 16.4, w: 1.65, inj: 17 },
   uvl:  { c: 14.5, w: 1.75, inj: 15 },
 };
@@ -484,6 +487,7 @@ const CONS_LOC = {
 function effPlace(c, v, pal) {
   const pl = PLACE[c];
   if (pl === "vel" && (v === "i" || v === "e" || pal)) return "velF";
+  if (pl === "vel" && v === "a") return "velA";
   if (c === "h" && (v === "i" || pal)) return "pal";
   return pl;
 }
@@ -498,7 +502,7 @@ function buildScore(text, opts = {}) {
     smile = 0.52,
     rd_base = 1.40,
     rd_tail = 2.14,
-    scoop = 1.35,
+    scoop = 1.54,
     flatTiming = false,
     seed = 2024,
   } = opts;
@@ -506,7 +510,7 @@ function buildScore(text, opts = {}) {
   const rawMs = parseMoras(text);
   const dec = rawMs.map((m, idx) => ({ raw: m, ...decodeMora(m), idx }));
 
-  const CDUR = { "": 0, k: 0.076, g: 0.072, s: 0.106, z: 0.094, sh: 0.106, j: 0.096, t: 0.062, d: 0.068, ch: 0.104, ts: 0.098, n: 0.056, h: 0.074, f: 0.072, m: 0.058, y: 0.048, r: 0.032, w: 0.048, b: 0.062, p: 0.068 };
+  const CDUR = { "": 0, k: 0.072, g: 0.054, s: 0.106, z: 0.092, sh: 0.106, j: 0.094, t: 0.061, d: 0.055, ch: 0.104, ts: 0.098, n: 0.056, h: 0.074, f: 0.072, m: 0.058, y: 0.048, r: 0.032, w: 0.048, b: 0.048, p: 0.066 };
   const VDUR = { a: 0.094, e: 0.090, i: 0.086, o: 0.096, u: 0.086 };
 
   const phraseLen = new Int32Array(dec.length);
@@ -550,7 +554,7 @@ function buildScore(text, opts = {}) {
     if (d.kind === "N") {
       const dur = (flatTiming ? 0.098 : (isPhraseEnd && pLen >= 2 ? 0.118 : 0.096)) * rate;
       const nextPlace = nxt && nxt.kind === "CV" ? effPlace(nxt.c, nxt.v, nxt.pal) : null;
-      const nPlace = (nextPlace === "lab" || nextPlace === "alv" || nextPlace === "pal" || nextPlace === "vel" || nextPlace === "velF") ? nextPlace : "uvl";
+      const nPlace = (nextPlace === "lab" || nextPlace === "alv" || nextPlace === "pal" || nextPlace === "vel" || nextPlace === "velA" || nextPlace === "velF") ? nextPlace : "uvl";
       events.push({ ...d, a: curT, cEnd: curT, e: curT + dur, pLen, nPlace, isPhraseStart, isPhraseEnd, isUttEnd });
       curT += dur;
       continue;
@@ -781,32 +785,32 @@ function buildScore(text, opts = {}) {
         fricJ_tr[t] = CONS_LOC.pal.inj;
       } else if (mn === "stop") {
         const isVL = VOICELESS.has(ev.c);
-        const isVel = pl === "vel" || pl === "velF";
-        const holdEnd = isVL ? (isVel ? 0.50 : 0.56) : (isVel ? 0.54 : 0.56);
+        const isVel = pl === "vel" || pl === "velA" || pl === "velF";
+        const holdEnd = isVL ? (isVel ? 0.50 : 0.56) : 0.60;
         if (u < holdEnd) {
-          vo_tr[t] = isVL ? 0.0 : 0.28;
-          if (!isVL) { voicedBool[t] = true; pLung_tr[t] *= 0.78; }
+          vo_tr[t] = isVL ? 0.0 : 0.32;
+          if (!isVL) { voicedBool[t] = true; pLung_tr[t] *= 0.80; }
           consAmt[pl][t] = 1.0;
           consMinA[pl][t] = 0.005;
           stop_tr[t] = 1.0;
           fricJ_tr[t] = CONS_LOC[pl].inj;
         } else {
           const rel = (u - holdEnd) / (1.0 - holdEnd);
-          const vlStart = isVel ? 0.72 : 0.66;
-          // True positive voiced-stop VOT window (g: 15ms, d/b: 11ms) so release burst is NEVER drowned by vowel!
-          const vdWait = isVel ? 0.42 : 0.34;
+          const vlStart = isVel ? 0.70 : 0.65;
+          const vdWait = isVel ? 0.15 : 0.15;
           vo_tr[t] = isVL
             ? (rel > vlStart ? (rel - vlStart) / (1.0 - vlStart) : 0.0)
-            : (rel < vdWait ? 0.24 : (0.24 + 0.76 * Math.min(1.0, (rel - vdWait) / (1.0 - vdWait))));
+            : (rel < vdWait ? 0.34 : (0.34 + 0.66 * Math.min(1.0, (rel - vdWait) / (1.0 - vdWait))));
           if (!isVL || rel > vlStart) voicedBool[t] = true;
-          consAmt[pl][t] = Math.max(0.0, 1.0 - 1.90 * rel);
+          consAmt[pl][t] = Math.max(0.0, 1.0 - 1.85 * rel);
           consMinA[pl][t] = 0.18 + 0.68 * rel;
-          const bEnv = Math.sin(Math.PI * Math.min(1.0, rel * 1.15));
+          const bEnv = Math.sin(Math.PI * Math.min(1.0, rel * 1.18));
           if (pl === "lab") {
             lipPart_tr[t] = Math.min(0.70, rel * 1.18);
-            labPop_tr[t] = (isVL ? 1.05 : 0.62) * bEnv;
+            labPop_tr[t] = (isVL ? 0.98 : 0.44) * bEnv;
           } else {
-            const bAmp = isVL ? (pl === "alv" ? 0.74 : 1.00) : (pl === "alv" ? 1.12 : 1.48);
+            // Cavity-gain-compensated bursts: velar injects behind a +12 dB front cavity, alveolar at 0 dB near teeth
+            const bAmp = isVL ? (pl === "alv" ? 0.96 : 0.70) : (pl === "alv" ? 0.86 : 0.56);
             burst_tr[t] = bAmp * bEnv;
           }
           fricJ_tr[t] = CONS_LOC[pl].inj;
@@ -851,7 +855,7 @@ function buildScore(text, opts = {}) {
           const envF = isVL ? Math.pow(Math.sin(Math.PI * Math.min(1, fu)), 1.75) : Math.pow(Math.sin(Math.PI * Math.min(1, fu)), 1.45);
           consAmt[pl][t] = 0.96;
           consMinA[pl][t] = (ev.c === "f") ? 0.16 : 0.08;
-          const fv = (isVL ? (ev.c === "f" ? 0.70 : 1.00) : 1.20) * envF;
+          const fv = (isVL ? (ev.c === "f" ? 0.70 : 1.00) : 1.24) * envF;
           fric_tr[t] = fv;
           if (ev.c === "f") {
             lipPart_tr[t] = 0.45;
@@ -912,10 +916,10 @@ function buildScore(text, opts = {}) {
         if (longEnd && vU > 0.52) {
           sTail = Math.pow((vU - 0.52) / 0.48, 1.35) * (ev.isUttEnd ? 1.0 : 0.45);
         }
-        // Apply cute scoop primarily on utterance-final mora (restores final_scoop_st without mid-sentence truncation!)
+        // Organic phrase-final cute scoop (smooth power 1.65 avoids sharp whip-induced early EOS on commas)
         if (longEnd && (ev.e - sec) < 0.105) {
           const scU = 1.0 - Math.max(0, ev.e - sec) / 0.105;
-          scoop_tr[t] = scU * scU * (ev.isUttEnd ? 1.0 : 0.72);
+          scoop_tr[t] = Math.pow(scU, 1.65) * (ev.isUttEnd ? 1.0 : 0.76);
         }
         const edge = Math.max(0, 1.0 - vU * 4.5) * 0.16 + (vU > 0.82 ? (vU - 0.82) / 0.18 * 0.18 : 0);
         sigh_tr[t] = sTail;
@@ -1176,7 +1180,7 @@ export function synthKuda(text, opts = {}) {
     let sampleOut = 0.0;
 
     for (let sub = 0; sub < 2; sub++) {
-      const periodTicks = wgSR / Math.max(70.0, f0 * (1.0 + 0.0140 * cycJit));
+      const periodTicks = wgSR / Math.max(70.0, f0 * (1.0 + 0.0148 * cycJit));
       ph += 1.0 / periodTicks;
       if (ph >= 1.0) {
         ph -= 1.0;
@@ -1251,7 +1255,7 @@ export function synthKuda(text, opts = {}) {
       bLp2 = 0.15 * bLp1 + 0.85 * bLp2;
 
       const sibDip = 0.50 * (sibAlvF * (sL2 * 1.22) + sibPalF * (pL2 * 1.28));
-      const brdDip = 0.50 * ((broadF + burstDrive) * (bLp2 * 1.90));
+      const brdDip = 0.50 * (broadF * (bLp2 * 1.85) + burstDrive * (bLp2 * 1.22));
       const turbDipole = (fJ > 4) ? (sibDip + brdDip) : 0.0;
       const fwdFrac = (sibAlvF + sibPalF) > 0.15 ? 0.95 : 0.72;
 
