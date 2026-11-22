@@ -1147,7 +1147,7 @@ export function makeHitofude(text, opts = {}) {
     if (f_cons_w[t_] === 0.0 && cons_sharp[t_] === 0.0) f_cons_cen[t_] = f_cons_cen[t_ - 1];
   }
 
-  const vo_sm = smooth1(r.voiced.map((v) => (v ? 1.0 : 0.0)), 10);
+  const vo_sm = smooth1(r.voiced.map((v) => (v ? 1.0 : 0.0)), 14);
   const sigh_sm = smooth1(sigh_fr, 14);
   const g_fr = new Array(n);
   for (let t = 0; t < n; t++) {
@@ -1172,7 +1172,7 @@ export function makeHitofude(text, opts = {}) {
 
   const GS = perSample(g_fr, N), SIGH_S = perSample(sigh_sm, N), INH_S = perSample(inhale_fr, N);
   const wNorm = wander_st > 0.0 ? (1.0 / wander_st) : 0.0;
-  if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.032 * wander[i] * wNorm)));
+  if (wNorm > 0.0) for (let i = 0; i < N; i++) GS[i] = Math.min(0.975, Math.max(0.0, GS[i] * (1.0 + 0.025 * wander[i] * wNorm)));
   const tw = Math.max(1, Math.round(tilt_w));
   const ycRad = new Float64Array(N);
   let x1 = null, x2 = null;
@@ -1187,7 +1187,7 @@ export function makeHitofude(text, opts = {}) {
   const vdpBuf = captureSteps ? new Float64Array(N) : null, uOut = new Float64Array(N), yc = new Float64Array(N);
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
   const ret = 0.1125, qSoft = 0.88, rawAir = 0.012 * rawAirMul, radK = 0.90;
-  const loGain = 1.65, upGain = 3.00, knee = 0.16;
+  const loGain = 1.85, upGain = 3.20, knee = 0.14;
   // F1/F2の1.0-1.5kHz渋滞(こもり)を和らげつつ、F3-F5は並列喉頭管(epilaryngeal)で2.7〜6.0kHzの倍音を蘇生
   const bwMinP = [195.0, 185.0, 140.0, 190.0, 230.0];
   const qDivP = [4.2, 7.8, 13.5, 14.5, 14.5];
@@ -1207,7 +1207,8 @@ export function makeHitofude(text, opts = {}) {
     vv += -w0 * w0 * vx + mu * (1.0 - vx * vx) * vv + 0.015 * w0 * xClean[i] + ret * 0.35 * w0 * doorPrev * pRet;
     vx += vv;
     if (Math.abs(vx) > 4.0) { vx = Math.sign(vx) * 4.0; vv = 0.0; }
-    const gVal = (vx + 0.32) * 0.35;
+    // OQ休止開度バイアス (+0.12): 笛っぽいH1過多(H1-H2=+12dB)を抑え、H2の芯があるアニメ声帯パルスへ
+    const gVal = (vx + 0.12) * 0.35;
     if (vdpBuf) vdpBuf[i] = gVal;
     const aDoor = Math.exp(-20.0 / p);
     doorLp1 = (1.0 - aDoor) * gVal + aDoor * doorLp1;
@@ -1319,12 +1320,14 @@ export function makeHitofude(text, opts = {}) {
     for (let i = 0; i < N; i++) y[i] *= gLv[i];
   }
 
+  // 変調スペクトル過多(3-22Hzのブツ切り感)を抑え、アニメ声らしいレガートな繋がりにする
+  const loudSm = smooth1(r.loud, 22);
   const loExp = new Array(n);
-  for (let t = 0; t < n; t++) loExp[t] = Math.exp((r.loud[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
+  for (let t = 0; t < n; t++) loExp[t] = Math.exp((loudSm[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
   const env = perSample(loExp, N);
   let pk = 0.0;
   for (let i = 0; i < N; i++) {
-    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.55, 1.0 + 0.24 * wander[i] * wNorm) : 1.0);
+    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.70, 1.0 + 0.10 * wander[i] * wNorm) : 1.0);
     const av = Math.abs(y[i]);
     if (av > pk) pk = av;
   }
