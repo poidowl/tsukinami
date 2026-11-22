@@ -12,6 +12,7 @@ import { CAT05_TOOLS } from "./cat05_prosody.mjs";
 import { CAT06_TOOLS } from "./cat06_breath.mjs";
 import { CAT07_TOOLS } from "./cat07_consonants.mjs";
 import { CAT08_TOOLS } from "./cat08_psycho.mjs";
+import { CAT09_TOOLS } from "./cat09_composite.mjs";
 
 export const ALL_TOOLS = [
   ...CAT01_TOOLS,
@@ -22,14 +23,15 @@ export const ALL_TOOLS = [
   ...CAT06_TOOLS,
   ...CAT07_TOOLS,
   ...CAT08_TOOLS,
+  ...CAT09_TOOLS,
 ];
 
-export function analyzeBuffer(bytes) {
+export function analyzeBuffer(bytes, ref = null, refMetrics = null) {
   const { sr, samples } = decodeWav(bytes);
   const d = extractBaseFrameData(sr, samples);
-  const out = {};
-  for (const tool of ALL_TOOLS) out[tool.key] = tool.run(d);
-  return out;
+  const metrics = {};
+  for (const tool of ALL_TOOLS) metrics[tool.key] = tool.run(d, { metrics, ref, refMetrics });
+  return { d, metrics };
 }
 
 function main() {
@@ -39,14 +41,17 @@ function main() {
   if (!files.length) {
     console.log(`Usage: node xray/run.mjs [--json] <wav1> [wav2 ...]`);
     console.log(`Registered tools (${ALL_TOOLS.length}):`);
-    for (const t of ALL_TOOLS) console.log(`  #${String(t.id).padStart(2, "0")} ${t.key.padEnd(20)} : ${t.name} [${t.unit}]`);
+    for (const t of ALL_TOOLS) console.log(`  #${String(t.id).padStart(2, "0")} ${t.key.padEnd(22)} : ${t.name} [${t.unit}]`);
     return;
   }
 
-  const results = files.map((f) => {
+  let refD = null, refMetrics = null;
+  const results = files.map((f, idx) => {
     const label = path.basename(f, path.extname(f));
     const bytes = fs.readFileSync(f);
-    return { label, file: f, metrics: analyzeBuffer(bytes) };
+    const { d, metrics } = analyzeBuffer(bytes, refD, refMetrics);
+    if (idx === 0) { refD = d; refMetrics = metrics; }
+    return { label, file: f, metrics };
   });
 
   if (asJson) {
