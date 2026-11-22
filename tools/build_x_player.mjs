@@ -1124,7 +1124,8 @@ const shareHtml = `<!DOCTYPE html>
   <section class="card">
     <h2>改変履歴（kusanagi エンジン）</h2>
     <ul class="steps-list">
-      <li><strong>v13（スリム・削りすぎ是正）：</strong>並列フィルタや任意ノブを足さず正味 +11 行の1本道のまま、高音 OQ 休止開度バイアス（半波整流の奇数倍音陥没解消）・粗削り1パス化・F1 ラッパ抑制・舌キレ＆軽い「う」・鼻音区間の柔らか鼻腔ダンピング・会話テンポ＆感情長音（ねぇ→ねー）を統合。</li>
+      <li><strong>v13.1（破裂音物理の見直し・正味 +1 行）：</strong>摩擦音の滑らかさはそのまま、破裂音の VOT 順序（<code>p &lt; t &lt; k</code>）、軟口蓋 <code>k/g</code> の Velar Pinch（F3 収束）、破裂バースト帯域（<code>k</code>: 2600/1650Hz vs <code>t</code>: 4600Hz, <code>bg=4.2</code>）を分離して高音の「た行 vs か行」を改善。</li>
+      <li><strong>v13 (<code>39461ee</code>)：</strong>スリム・削りすぎ是正（正味 +11 行の1本道）— 高音 OQ 休止開度バイアス・粗削り1パス化・F1 ラッパ抑制・舌キレ＆軽い「う」・鼻音区間の柔らか鼻腔ダンピング・会話テンポ＆感情長音（ねぇ→ねー）を統合。</li>
       <li><strong>v12 (<code>90e04ea</code>)：</strong><strong>VDP自励声帯×クリア＆ダンディ両立</strong> — 任意ノブ <code>yurume_*</code> と人声側の2段遅延線コムを廃し、1本線ノイズ <code>xClean</code> で着火する3行の Van der Pol 自励声帯＋軟閉鎖2唇扉＋F0以下2極HPF（<code>0.72*hRef</code>）へ一本化。低音（<code>ossan</code>）は強い粘膜逆流 <code>ret=0.45</code> でダンディな艶を保ち、高音は軽結合 <code>ret=0.11</code> でボコーダー臭のないクリアな声へ。</li>
       <li><strong>v11.0：</strong><strong>読点の息の床（<code>pau_iki: -30</code> 既定）</strong> — 読点「、」の 0.35 秒を完全無音に彫り切らず、同じ原石ノイズが無声のまま5極声道＋唇放射を通った吐息を、有声部 RMS 比 −30 dB でうっすら残す（両端は余弦窓）。ReazonSpeech k2 が読点を文末と取り違えて「ちょっとしゃべれます」を落とす本数が、大人6声×3 seed で 6/18 → 2/18。<code>{pau_iki: null}</code> で v10.8 (<code>b9b5eb8</code>) とバイト一致。ちびっ子は崩れが出たため従来の無音のまま。間の長さノブ <code>pau_s</code>（既定 0.35 秒）も追加。</li>
       <li><strong>v10.8 (<a href="https://github.com/poidowl/tsukinami/commit/b9b5eb8" target="_blank" rel="noopener noreferrer"><code>b9b5eb8</code></a>)：</strong><strong>ノイズ削りコード自体の断捨離＆単一因果ループ統合（計 -306行 / -8.9KB）</strong> — 旧並列時代の非因果往復コム <code>yamaBp/ffbb/combHalf</code> をピーク利得一定の因果2極ゼロDCバンドパスへ置換して全段を完全因果1パス化し、重複していた <code>xSeed</code>・後段 <code>karuku</code>・ロボ専用別エンジン <code>combPeriod/resonator2Pole</code>・死蔵 <code>G2/G3</code> 軌道を全撤去して全7プリセット＋歌を単一ループへ統合。</li>
