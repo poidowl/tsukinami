@@ -500,14 +500,14 @@ const VOICELESS = new Set(["k", "s", "sh", "t", "ch", "ts", "h", "f", "p"]);
 const VOICED_OBS = new Set(["g", "d", "b", "z", "j"]);
 const KOTOBA_PRM = {
   alpha: 1.15, alpha3: 1.3, T: 30, Tvc: 30, Tvv: 40, Tpal: 40, undershoot: 80, f1on: 280, f1drop: true,
-  smooth: 30, ou_long: true, ei_long: true, vdl: -4.0, rdl: -4.0,
-  VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [380, 1300, 2650], e: [520, 2350, 3000], o: [650, 1050, 2850] },
+  smooth: 14, ou_long: true, ei_long: true, vdl: -4.0, rdl: -4.0,
+  VT: { a: [850, 1400, 2800], i: [330, 2750, 3300], u: [370, 1650, 2700], e: [520, 2350, 3000], o: [650, 1050, 2850] },
   LE: { lab: [0.75, 280], alv: [0.40, 1250], pal: [0.30, 1850], velF: [0.95, 300], velB: [1.05, 350] },
   gl: { y: [300, 2700, 3300], w: [360, 800, 2600] },
   nasT: { m: [280, 1100, 2500], n: [280, 1600, 2700], N: [300, 1300, 2600] },
   alvF2: 2350, alvF3: 3000,
   sc: 6000, shc: 3600, fg: 2.2, fvg: 0.15, ndl: -1.2, asp: 3, bg: 3.0, r3: 2000, rtrack: true,
-  rate: 1.0, fin: 1.5, pau: 0.35, qn: 0.10,
+  rate: 0.84, fin: 1.38, pau: 0.35, qn: 0.09,
   sil: -30.0, qlev: -18.0, decl: 1.5, devmax: 0.045, Nlev: -1.0, fend: -6.0, fend_at: 0.16,
   CDUR: { "": 0, k: 70, g: 50, s: 100, z: 70, sh: 100, j: 70, t: 60, d: 40, ch: 80, ts: 80, n: 50, h: 70, f: 70, m: 50, y: 60, r: 25, w: 55, b: 40, p: 70 },
   VDUR: { a: 90, e: 90, i: 80, o: 90, u: 85 },
@@ -537,7 +537,11 @@ function tokenizeKana(text, extraCuts = null) {
   const cuts = new Set();
   let moraIdx = 0;
   if (extraCuts) for (const c of extraCuts) cuts.add(c);
-  for (const ch of toKata(text)) {
+  const kata = toKata(text)
+    .replace(/([アカサタナハマヤラワガザダバパ])ァ/g, "$1ー").replace(/([イキシチニヒミリギジヂビピ])ィ/g, "$1ー")
+    .replace(/([ウクスツヌフムユルグズヅブプ])ゥ/g, "$1ー").replace(/([エケセテネヘメレゲゼデベペ])ェ/g, "$1ー")
+    .replace(/([オコソトノホモヨロゴゾドボポ])ォ/g, "$1ー");
+  for (const ch of kata) {
     if (ch === "'" || ch === "’") continue;
     if (ch === "/" || ch === "|") {
       if (moraIdx > 0) cuts.add(moraIdx);
@@ -696,8 +700,8 @@ function tracksFromKana(text, pre = 0.6, post = 0.1, params = null) {
     let v = (P.VDUR[q.v] / 1000) * P.rate * vd_s;
     if (q.dev) v = Math.min(v, P.devmax);
     if (q.final) v *= P.fin;
-    q.cd = (P.CDUR[q.c] / 1000) * P.rate * cd_s;
-    q.vd = v;
+    q.cd = Math.round(((P.CDUR[q.c] / 1000) * P.rate * cd_s) * 200) / 200;
+    q.vd = Math.round(v * 200) / 200;
   }
   if (P.vd_ms) {
     let k = 0;
@@ -1083,7 +1087,7 @@ function f0Rule(moras, n, opts = {}) {
     const w = b <= a ? 0.0 : (t - a) / (b - a);
     st[i] = kv[j] + w * (kv[j + 1] - kv[j]);
   }
-  st = smoothTri(st, Math.max(1, Math.trunc(sm / fp_ms)));
+  st = smoothTri(st, Math.max(1, Math.trunc((sm * 0.62) / fp_ms)));
   const vs = st.slice().sort((a, b) => a - b);
   if (fit_range && rng) {
     const lo = vs[Math.trunc(0.05 * (vs.length - 1))];
@@ -1369,10 +1373,15 @@ function makeHitofude(text, opts = {}) {
       }
     }
   }
+  const nas_fr = new Array(n).fill(0.0);
+  for (const m_ of r.moras) {
+    if (m_.kind === "N") for (let t = Math.max(0, Math.ceil(m_.a / fpz)); t < Math.min(n, Math.floor(m_.e / fpz)); t++) nas_fr[t] = 1.0;
+    else if (m_.kind === "CV" && (m_.c === "m" || m_.c === "n")) for (let t = Math.max(0, Math.ceil(m_.a / fpz)); t < Math.min(n, Math.floor(m_.b / fpz)); t++) nas_fr[t] = 1.0;
+  }
   const fs = fscale;
   const F1 = new Array(n), F2 = new Array(n), F3 = new Array(n), F4 = new Array(n);
   for (let t = 0; t < n; t++) {
-    F1[t] = Math.max(r.F1[t] * fs, r.voiced[t] ? 1.04 * f0_fr[t] : 180.0);
+    F1[t] = Math.max(r.F1[t] * fs, nas_fr[t] > 0.5 ? 240.0 : (r.voiced[t] ? 1.04 * f0_fr[t] : 180.0));
     F2[t] = Math.min(Math.max(r.F2[t] * fs, F1[t] + 280.0), 8500.0);
     F3[t] = Math.min(Math.max(r.F3[t] * fs, F2[t] + 350.0), 9000.0);
     F4[t] = Math.min(8600.0, F3[t] + 1150.0 * fs);
@@ -1415,21 +1424,22 @@ function makeHitofude(text, opts = {}) {
   const coupled = shin > 0.0;
   const hiMix = Math.min(1.0, Math.max(0.0, (hRef - 125.0) / 85.0));
   x = karuku(x, coupled ? 320 : (hz >= 200.0 ? 115 : 220));
-  const xClean = arakezuriT(x.slice(), tw, 2, perSample(cons_sharp, N));
+  const xClean = arakezuriT(x.slice(), tw, hiMix > 0.5 ? 1 : 2, perSample(cons_sharp, N));
   const softPos = (v) => { const z = v * 12.0; return z > 20.0 ? v : (z < -20.0 ? 0.0 : Math.log1p(Math.exp(z)) / 12.0); };
   const pLungWalk = coupled ? furafura(x, 0.38, (0.14 - 0.10 * hiMix) * 0.15, 0.045 + 0.175 * hiMix) : null;
+  const nasSm = perSample(smooth1(nas_fr, 12), N);
   const F5 = F4.map((v) => (fs < 0.92 ? Math.min(4850.0, v * 1.26) : Math.min(8800.0, v + 1100.0 * fs)));
   const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
   const nPoles = coupled ? 5 : 4;
   const gBuf = coupled ? null : new Float64Array(N), gBuf2 = coupled ? null : new Float64Array(N);
   const vdpBuf = (coupled && captureSteps) ? new Float64Array(N) : null, uOut = new Float64Array(N), yc = new Float64Array(N);
   const twoPiSR = (2.0 * Math.PI) / SR, piSR = Math.PI / SR;
-  const ret = 0.45 * shin * (1.0 - 0.75 * hiMix), qSoft = coupled ? (1.45 - 0.30 * hiMix) : 1.0;
-  const rawAir = (0.02 + 0.03 * hiMix) * rawAirMul;
-  const radK = coupled ? (0.42 + 0.48 * hiMix) : 0.70;
+  const ret = 0.45 * shin * (1.0 - 0.75 * hiMix), qSoft = coupled ? (1.45 - 0.57 * hiMix) : 1.0;
+  const rawAir = (0.02 - 0.008 * hiMix) * rawAirMul;
+  const radK = coupled ? (0.42 + 0.46 * hiMix) : 0.70;
   const loGain = 1.805 - 0.155 * hiMix, upGain = 3.10 - 0.10 * hiMix, knee = 0.22 - 0.04 * hiMix;
-  const bwMinP = [80.0, 110.0 * qSoft, 150.0 * qSoft, 220.0 * qSoft, 260.0 * qSoft];
-  const qDivP = [8.0, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
+  const bwMinP = [80.0 + 70.0 * hiMix, 110.0 * qSoft, 150.0 * qSoft, 220.0 * qSoft, 260.0 * qSoft];
+  const qDivP = [8.0 - 2.8 * hiMix, 11.0 / qSoft, 13.0 / qSoft, 14.0 / qSoft, 14.0 / qSoft];
   const dMulP = [150.0 - 60.0 * hiMix, 50.0 - 20.0 * hiMix, 30.0 - 15.0 * hiMix, 0.0, 0.0];
   const y1 = new Float64Array(5), y2 = new Float64Array(5);
   let doorLp1 = 0.0, doorLp2 = 0.0, doorPrev = 0.0, gLp1 = 0.0, gLp2 = 0.0, uFlow = 0.0, p1Prev = 0.0, ycPrev = 0.0, vx = 0.0, vv = 0.0;
@@ -1443,9 +1453,9 @@ function makeHitofude(text, opts = {}) {
       vv += -w0 * w0 * vx + mu * (1.0 - vx * vx) * vv + 0.015 * w0 * xClean[i] + ret * 0.35 * w0 * doorPrev * pRet;
       vx += vv;
       if (Math.abs(vx) > 4.0) { vx = Math.sign(vx) * 4.0; vv = 0.0; }
-      const gVal = vx * 0.35;
+      const gVal = (vx + 0.32 * hiMix) * 0.35;
       if (vdpBuf) vdpBuf[i] = gVal;
-      const aDoor = Math.exp(-8.20 / p);
+      const aDoor = Math.exp(-(8.20 + 7.80 * hiMix) / p);
       doorLp1 = (1.0 - aDoor) * gVal + aDoor * doorLp1;
       doorLp2 = (1.0 - aDoor) * doorLp1 + aDoor * doorLp2;
       const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain;
@@ -1456,10 +1466,10 @@ function makeHitofude(text, opts = {}) {
       doorPrev = door;
       if (door > 0.0) {
         const pLoad = Math.tanh((0.70 * y1[0] + 0.30 * ycPrev) * 3.0);
-        const aFl = 0.88 + ((door > uFlow ? 0.35 : 0.08) - 0.88) * hiMix;
+        const aFl = 0.88 + ((door > uFlow ? 0.28 : 0.02) - 0.88) * hiMix;
         uFlow = aFl * uFlow + (1.0 - aFl) * door * (pLungWalk[i] + rawAir * xClean[i]) * (1.0 - ret * 0.50 * pLoad);
-      } else uFlow *= 0.50;
-      sig = (1.0 - vo) * 0.28 * xClean[i] + vo * (uFlow * 3.6);
+      } else uFlow *= (0.50 - 0.28 * hiMix);
+      sig = (1.0 - vo) * (0.28 + 0.14 * hiMix) * xClean[i] + vo * (uFlow * 3.6);
     } else {
       const cIn = g > 1e-4 ? Math.sqrt(1.0 - g * g) : 1.0;
       const fb1 = readDelay(gBuf, i, p); gLp1 = (1.0 - damp) * fb1 + damp * gLp1;
@@ -1470,7 +1480,7 @@ function makeHitofude(text, opts = {}) {
     }
     uOut[i] = sig;
     for (let k = 0; k < nPoles; k++) {
-      const fk = FS[k][i], rk = Math.exp(-piSR * (Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev));
+      const fk = FS[k][i], rk = Math.exp(-piSR * ((Math.max(bwMinP[k], fk / qDivP[k]) + dMulP[k] * doorPrev) * (1.0 + (k >= 1 ? 1.5 : 0.35) * nasSm[i])));
       const ck = -rk * rk, bk = 2.0 * rk * Math.cos(twoPiSR * fk);
       sig = (1.0 - bk - ck) * sig + bk * y1[k] + ck * y2[k];
       y2[k] = y1[k]; y1[k] = sig;
@@ -1479,7 +1489,7 @@ function makeHitofude(text, opts = {}) {
   }
   if (captureSteps) { x1 = coupled ? vdpBuf : gBuf2.slice(); x2 = uOut.slice(); }
   x = xClean;
-  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - radK * yc[i - 1];
+  for (let i = 1; i < N; i++) ycRad[i] = yc[i] - (radK - 0.28 * nasSm[i]) * yc[i - 1];
   if (coupled) {
     const w0 = twoPiSR * (0.72 * hRef), cw = Math.cos(w0), al = Math.sin(w0) / Math.SQRT2;
     const a0 = 1.0 + al, b0 = (1.0 + cw) * 0.5 / a0, b1 = -(1.0 + cw) / a0, b2 = b0, a1 = (-2.0 * cw) / a0, a2 = (1.0 - al) / a0;
@@ -1501,7 +1511,7 @@ function makeHitofude(text, opts = {}) {
   }
   const G1S = perSample(r.G1, N), FCW = perSample(smooth1(f_cons_w, 6), N);
   const y = new Float64Array(N);
-  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.40 * FCW[i] * bpc[i];
+  for (let i = 0; i < N; i++) y[i] = vScale * G1S[i] * ycRad[i] + 0.26 * FCW[i] * bpc[i];
   const x3 = captureSteps ? y.slice() : null;
   if (level_k > 0.0) {
     const sq = new Float64Array(N);
