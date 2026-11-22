@@ -144,14 +144,22 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
       let r0 = 0.0;
       for (let i = 0; i < wl; i++) r0 += buf[i] * buf[i];
       let bestLag = 0, bestVal = 0.0;
+      const acVals = new Float64Array(maxLag + 2);
       for (let lag = minLag; lag <= maxLag; lag++) {
         let s = 0.0;
         for (let i = 0; i < wl - lag; i++) s += buf[i] * buf[i + lag];
         const v = s / (r0 + 1e-12);
+        acVals[lag] = v;
         if (v > bestVal) { bestVal = v; bestLag = lag; }
       }
       if (bestVal > 0.48 && bestLag > 0) {
-        f0Hz[t] = sr / bestLag;
+        let fracLag = bestLag;
+        if (bestLag > minLag && bestLag < maxLag) {
+          const yL = acVals[bestLag - 1], y0 = acVals[bestLag], yR = acVals[bestLag + 1];
+          const denom = yL - 2.0 * y0 + yR;
+          if (Math.abs(denom) > 1e-9) fracLag += Math.max(-0.5, Math.min(0.5, 0.5 * (yL - yR) / denom));
+        }
+        f0Hz[t] = sr / fracLag;
         // Cepstral liftering for clean vocal-tract envelope
         const { re: ceps } = fftRadix2(logFull);
         const lif = new Float64Array(nfft);
