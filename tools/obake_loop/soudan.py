@@ -17,7 +17,18 @@ USER = ("集計（初見の台本での聞き間違い）:\n" + json.dumps(D, en
         "analysis は 3〜5 個、proposals は 3〜5 個、効きそうな順。正解側（読みの作り方）の問題と耳側の問題を分ける。")
 txt, meta = gen(SYS, USER, max_total=1600, temperature=0.4)
 ans = re.sub(r"^```(json)?|```$", "", txt.strip(), flags=re.M).strip()
-try: J = json.loads(ans[ans.index("{"): ans.rindex("}") + 1])
+def loads_lenient(t):
+    """LLM の JSON を甘めに読む：そのまま → 変な \\ エスケープ（\\6 や \\` など）の \\ を落とす → 制御文字も許す。"""
+    t = t[t.index("{"): t.rindex("}") + 1]
+    errs = []
+    for f in (lambda x: x, lambda x: re.sub(r'\\(["\\/bfnrt]|u[0-9a-fA-F]{4})?', lambda m: m.group(0) if m.group(1) else "", x)):
+        for strict in (True, False):
+            try: return json.loads(f(t), strict=strict), errs
+            except Exception as e: errs.append(str(e))
+    raise ValueError(" / ".join(errs))
+try:
+    J, errs = loads_lenient(ans)
+    if errs: J["_parse_fixed"] = errs[0]
 except Exception as e: J = {"parse_error": str(e), "raw": ans}
 J["_meta"] = {**meta, "digest": os.path.basename(dig), "score_recent": D.get("score_recent"), "note": "提案だけ。耳は変えていない。採否はナグリ。"}
 json.dump(J, open(outp, "w"), ensure_ascii=False, indent=1)
