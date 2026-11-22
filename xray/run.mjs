@@ -11,6 +11,7 @@ import { CAT04_TOOLS } from "./cat04_phase.mjs";
 import { CAT05_TOOLS } from "./cat05_prosody.mjs";
 import { CAT06_TOOLS } from "./cat06_breath.mjs";
 import { CAT07_TOOLS } from "./cat07_consonants.mjs";
+import { CAT08_TOOLS } from "./cat08_psycho.mjs";
 
 export const ALL_TOOLS = [
   ...CAT01_TOOLS,
@@ -20,6 +21,7 @@ export const ALL_TOOLS = [
   ...CAT05_TOOLS,
   ...CAT06_TOOLS,
   ...CAT07_TOOLS,
+  ...CAT08_TOOLS,
 ];
 
 export function analyzeBuffer(bytes) {
