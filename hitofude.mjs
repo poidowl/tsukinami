@@ -617,11 +617,17 @@ function guessPhrases(moras) {
   if (cur.length) { chunks.push(cur); qs.push(false); }
   const phr = [];
   let k = 0;
+  const FLAT_END = new Set(Array.from("ネヨノワナニハガヲ"));
   for (let ci = 0; ci < chunks.length; ci++) {
     const seg = chunks[ci], L = seg.length;
-    const W = L - ((PART.has(seg[L - 1]) && L > 2) ? 1 : 0);
-    let acc = W >= 3 ? Math.max(1, W - 2) : 1;
-    while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
+    let acc;
+    if (L >= 2 && FLAT_END.has(seg[L - 1])) {
+      acc = 0; // 会話・カワイイ終助詞（ね・よ・の・わ・に等）は平板型で明るく保つ
+    } else {
+      const W = L - ((PART.has(seg[L - 1]) && L > 2) ? 1 : 0);
+      acc = W >= 3 ? Math.max(1, W - 2) : 1;
+      while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
+    }
     phr.push([k, L, acc, qs[ci] ? 1 : 0]);
     k += L;
   }
@@ -965,7 +971,7 @@ export function makeHitofude(text, opts = {}) {
     vib_c = 6.0,      // 歌モード：長音ビブラート深さ (cent)
     captureSteps = false,
     rawAirMul = 0.6,  // 扉を通る生ノイズ rawAir の倍率
-    pau_s = null,     // 読点「、」の間の長さ (秒)
+    pau_s = 0.22,     // 読点「、」の間の長さ (秒、アニメ会話の軽快な間)
     pau_iki = -30,    // 読点の間に残す息の床 (dB, 有声部 RMS 比)
   } = opts;
 
@@ -1182,6 +1188,8 @@ export function makeHitofude(text, opts = {}) {
   const xClean = arakezuriT(x.slice(), tw, 1, perSample(cons_sharp, N));
   const softPos = (v) => { const z = v * 12.0; return z > 20.0 ? v : (z < -20.0 ? 0.0 : Math.log1p(Math.exp(z)) / 12.0); };
   const pLungWalk = furafura(x, 0.38, 0.006, 0.22);
+  // 声門閉鎖シマー (原石ノイズ由来の緩やかな粘膜剛性ゆらぎ → 周期ごとの位相ロック 0.996 を有機的にほぐす)
+  const closeShim = furafura(x, 0.0, 1.0, 0.42);
   const F5 = F4.map((v) => Math.min(8800.0, v + 1100.0 * fs));
   const FS = [F1, F2, F3, F4, F5].map((Fk) => perSample(Fk, N));
   const vdpBuf = captureSteps ? new Float64Array(N) : null, uOut = new Float64Array(N), yc = new Float64Array(N);
@@ -1205,7 +1213,7 @@ export function makeHitofude(text, opts = {}) {
     // OQ休止開度バイアス (+0.12): 笛っぽいH1過多を抑え、H2の芯があるアニメ声帯パルスへ
     const gVal = (vx + 0.12) * 0.35;
     if (vdpBuf) vdpBuf[i] = gVal;
-    const aDoor = Math.exp(-15.0 / p);
+    const aDoor = Math.exp(-(15.0 + 2.8 * closeShim[i]) / p);
     doorLp1 = (1.0 - aDoor) * gVal + aDoor * doorLp1;
     doorLp2 = (1.0 - aDoor) * doorLp1 + aDoor * doorLp2;
     const uUp = doorLp2 * upGain, uLo = doorLp1 * loGain;
@@ -1258,6 +1266,14 @@ export function makeHitofude(text, opts = {}) {
         nx2 = nx1; nx1 = xi; ny2 = ny1; ny1 = yi; ycRad[i] = yi;
       }
     }
+    // 軟組織マイクロ位相分散オールパス2段 (振幅変化 0.00 dB、全倍音の一斉クリック感だけを優しくほぐす)
+    for (const ap of [0.32, -0.24]) {
+      let ax1 = 0.0, ay1 = 0.0;
+      for (let i = 0; i < N; i++) {
+        const xi = ycRad[i], yi = ap * xi + ax1 - ap * ay1;
+        ax1 = xi; ay1 = yi; ycRad[i] = yi;
+      }
+    }
   }
   let vInSq = 0.0, vOutSq = 0.0, vCnt = 0;
   for (let i = 1; i < N; i++) if (GS[i] > 0.25 && INH_S[i] < 0.05) { vInSq += x[i] * x[i]; vOutSq += ycRad[i] * ycRad[i]; vCnt++; }
@@ -1300,14 +1316,17 @@ export function makeHitofude(text, opts = {}) {
     for (let i = 0; i < N; i++) y[i] *= gLv[i];
   }
 
-  // 変調スペクトル過多(3-22Hzのブツ切り感)を抑え、アニメ声らしいレガートな繋がりにする
-  const loudSm = smooth1(r.loud, 22);
+  // 変調スペクトル過多(3-22Hzのブツ切り感)を抑え、音節間の谷を0.74倍に和らげてレガートに繋ぐ
+  const loudSm = smooth1(r.loud, 26);
   const loExp = new Array(n);
-  for (let t = 0; t < n; t++) loExp[t] = Math.exp((loudSm[t] + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
+  for (let t = 0; t < n; t++) {
+    const ld = loudSm[t] > -18.0 ? loudSm[t] * 0.74 : loudSm[t];
+    loExp[t] = Math.exp((ld + r.dl[t] - (sigh > 0.0 ? 0.45 * sigh_sm[t] : 0.0)) / 2.0) * (vibWave ? Math.max(0.55, 1.0 + 0.015 * vib_c * vibWave[t]) : 1.0);
+  }
   const env = perSample(loExp, N);
   let pk = 0.0;
   for (let i = 0; i < N; i++) {
-    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.70, 1.0 + 0.10 * wander[i] * wNorm) : 1.0);
+    y[i] *= env[i] * (wNorm > 0.0 ? Math.max(0.75, 1.0 + 0.08 * wander[i] * wNorm) : 1.0);
     const av = Math.abs(y[i]);
     if (av > pk) pk = av;
   }
