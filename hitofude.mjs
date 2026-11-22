@@ -19,45 +19,45 @@ export const KNOB_KEYS = [
 export const PRESETS = {
   kawaii: {
     label: "カワイイ",
-    description: "現代アニメヒロイン標準（笑顔声道・ちょい有声気息・有声息吸い・語尾スクープ 335Hz）",
+    description: "現代アニメヒロイン標準（笑顔声道・ちょい有声気息・有声息吸い 335Hz）",
     seed: 2024, hz: 335.0, fscale: 1.15, rate: 1.16,
     g_vo: 0.895, tilt_w: 3, sigh: 0.14, jitter: 0.0022, wander_st: 0.17,
-    smile: 0.65, asp: 0.14, inhale: 0.55, scoop: 1.6,
+    smile: 0.65, asp: 0.14, inhale: 0.55, scoop: 0.45,
   },
   amae: {
     label: "甘え",
-    description: "ふわとろ甘え声（有声息吸い強め・句末吐息・語尾上げ 315Hz）",
+    description: "ふわとろ甘え声（有声息吸い強め・句末吐息 315Hz）",
     seed: 2024, hz: 315.0, fscale: 1.13, rate: 1.24,
     g_vo: 0.885, tilt_w: 3, sigh: 0.42, jitter: 0.0025, wander_st: 0.18,
-    smile: 0.55, asp: 0.20, inhale: 0.72, scoop: 2.2,
+    smile: 0.55, asp: 0.20, inhale: 0.72, scoop: 0.65,
   },
   genki: {
     label: "元気",
     description: "ハキハキ元気ヒロイン（笑顔声道MAX・母音くっきり・弾むテンポ 355Hz）",
     seed: 2024, hz: 355.0, fscale: 1.17, rate: 1.10,
     g_vo: 0.90, tilt_w: 3, sigh: 0.0, jitter: 0.0020, wander_st: 0.16,
-    smile: 0.90, asp: 0.08, inhale: 0.45, scoop: 1.8,
+    smile: 0.90, asp: 0.08, inhale: 0.45, scoop: 0.50,
   },
   tenshi: {
     label: "天使",
     description: "透明ファルセット寄り（短声道・高音域で息が花開く天使声 370Hz）",
     seed: 2024, hz: 370.0, fscale: 1.19, rate: 1.18,
     g_vo: 0.885, tilt_w: 3, sigh: 0.30, jitter: 0.0024, wander_st: 0.18,
-    smile: 0.60, asp: 0.22, inhale: 0.60, scoop: 1.4,
+    smile: 0.60, asp: 0.22, inhale: 0.60, scoop: 0.35,
   },
   chibi: {
     label: "ちび",
     description: "ちびっ子ハイパー元気（超短声道 fscale=1.24・高ピッチ 395Hz・くっきり笑顔）",
     seed: 2024, hz: 395.0, fscale: 1.24, rate: 1.08,
     g_vo: 0.90, tilt_w: 3, sigh: 0.0, jitter: 0.0024, wander_st: 0.18,
-    smile: 0.85, asp: 0.06, inhale: 0.35, scoop: 2.0, pau_iki: null,
+    smile: 0.85, asp: 0.06, inhale: 0.35, scoop: 0.55, pau_iki: null,
   },
   sasayaki: {
     label: "ささやき",
     description: "耳元カワイイ囁き（有声気息＆有声息吸いたっぷりの近距離ボイス 305Hz）",
     seed: 2024, hz: 305.0, fscale: 1.12, rate: 1.25,
     g_vo: 0.70, tilt_w: 4, sigh: 0.72, jitter: 0.0030, wander_st: 0.16,
-    smile: 0.50, asp: 0.28, inhale: 0.65, scoop: 1.2,
+    smile: 0.50, asp: 0.28, inhale: 0.65, scoop: 0.30,
   },
 };
 
@@ -556,7 +556,7 @@ const SPECIAL = new Set(["ン", "ッ", "ー"]);
 const PART = new Set(Array.from("モニガヲデヘテ"));
 const LONGV = { a: "ア", i: "イ", u: "ウ", e: "エイ", o: "オウ" };
 
-export const ACCENT_KAWAII = { reg: 335.0, rng: 11.2, jump: 6.0, fall: 5.2, sag: 0.7, lag: 1.0, rlag: 0.45, ds: 0.8, ds_h: 0.2, reset: 0.92, decl: 0.25, fin: 0.0, qrise: 6.8, sm: 28.0 };
+export const ACCENT_KAWAII = { reg: 335.0, rng: 9.6, jump: 5.2, fall: 5.6, sag: 1.1, lag: 1.0, rlag: 0.5, ds: 1.8, ds_h: 0.4, reset: 0.72, decl: 0.9, fin: 1.6, qrise: 6.0, sm: 30.0 };
 export const ACCENT_CUTE = ACCENT_KAWAII;
 
 function splitMarked(text) {
@@ -617,17 +617,11 @@ function guessPhrases(moras) {
   if (cur.length) { chunks.push(cur); qs.push(false); }
   const phr = [];
   let k = 0;
-  const FLAT_END = new Set(Array.from("ネヨノワナニハガヲ"));
   for (let ci = 0; ci < chunks.length; ci++) {
     const seg = chunks[ci], L = seg.length;
-    let acc;
-    if (L >= 2 && FLAT_END.has(seg[L - 1])) {
-      acc = 0; // 会話・カワイイ終助詞（ね・よ・の・わ・に等）は平板型で明るく保つ
-    } else {
-      const W = L - ((PART.has(seg[L - 1]) && L > 2) ? 1 : 0);
-      acc = W >= 3 ? Math.max(1, W - 2) : 1;
-      while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
-    }
+    const W = L - ((PART.has(seg[L - 1]) && L > 2) ? 1 : 0);
+    let acc = W >= 3 ? Math.max(1, W - 2) : 1;
+    while (acc > 1 && SPECIAL.has(seg[acc - 1])) acc--;
     phr.push([k, L, acc, qs[ci] ? 1 : 0]);
     k += L;
   }
@@ -1042,20 +1036,10 @@ export function makeHitofude(text, opts = {}) {
       const vb = Math.max(0, Math.trunc(m_.b / fpz));
       const vLen = ie - vb;
       if (scoop > 0.0 && !(isLast && isQ) && vLen >= 6) {
-        const scLen = Math.min(vLen, isLast ? 36 : 22), ib = ie - scLen;
-        const liftSt = isLast ? scoop * 1.45 : scoop;
+        const scLen = Math.min(vLen, 18), ib = ie - scLen;
         for (let t_ = ib; t_ < ie; t_++) {
           const u = (t_ - ib) / Math.max(1, scLen - 1);
-          f0_fr[t_] *= Math.pow(2.0, (liftSt * Math.pow(u, 1.35)) / 12.0);
-        }
-        // 文末の最後の2モーラ全体もほんのり明るく持ち上げる（尻下がり防止）
-        if (isLast && im >= 1) {
-          const prevM = r.moras[im - 1];
-          const b2 = Math.max(0, Math.trunc(prevM.a / fpz));
-          for (let t_ = b2; t_ < ib; t_++) {
-            const u2 = (t_ - b2) / Math.max(1, ib - b2);
-            f0_fr[t_] *= Math.pow(2.0, (0.65 * scoop * u2) / 12.0);
-          }
+          f0_fr[t_] *= Math.pow(2.0, (scoop * Math.pow(u, 1.5)) / 12.0);
         }
       }
       if (vLen >= 32) {
