@@ -10,6 +10,7 @@ import { CAT03_TOOLS } from "./cat03_vocal_tract.mjs";
 import { CAT04_TOOLS } from "./cat04_phase.mjs";
 import { CAT05_TOOLS } from "./cat05_prosody.mjs";
 import { CAT06_TOOLS } from "./cat06_breath.mjs";
+import { CAT07_TOOLS } from "./cat07_consonants.mjs";
 
 export const ALL_TOOLS = [
   ...CAT01_TOOLS,
@@ -18,6 +19,7 @@ export const ALL_TOOLS = [
   ...CAT04_TOOLS,
   ...CAT05_TOOLS,
   ...CAT06_TOOLS,
+  ...CAT07_TOOLS,
 ];
 
 export function analyzeBuffer(bytes) {
