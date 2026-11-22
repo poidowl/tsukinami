@@ -113,10 +113,10 @@ function printHelp() {
 
 Options:
   -o, --out <path>         出力WAVパス（省略時は out/yomu_NNN_<preset>.wav）
-  --preset <name>          プリセット名 (${Object.keys(PRESETS).join(", ")}) [既定: hitofude]
+  --preset <name>          プリセット名 (${Object.keys(PRESETS).join(", ")}) [既定: kawaii]
   --list-presets           プリセット一覧を表示して終了
   --measure                合成波形の実測音響指標JSONを表示（LLM自己検証用）
-  --compare                基準プリセット (hitofude) との音響指標・包絡差分JSONを同時出力
+  --compare                基準プリセット (kawaii) との音響指標・包絡差分JSONを同時出力
   --uta <hz,hz,...>        歌モード：カンマ区切り周波数Hz列
   --recipe <json>          レシピJSONを読み込む
   --save-recipe <json>     現在のパラメータをレシピJSONへ保存
@@ -129,13 +129,15 @@ Options:
   --sigh <float>           句末の息抜き量 (0.0..1.0)
   --jitter <float>         周期ジッタ率
   --wander <float>         ピッチ緩徐漂い幅 (半音)
-  --damp <float>           コム帰還路の高域減衰 (0.0..0.95、高域に元の息を残す)
-  --shin <float>           声門扉と声道の再帰結合度 (0.0=片道4段、0.0<..1.0=2唇粘膜扉×5極声道の再帰低音)
+  --smile <float>          笑顔声道＋IDS母音拡大 (0.0..1.5)
+  --asp <float>            局所的非モーダル有声気息 (0.0..0.45)
+  --inhale <float>         有声の息吸い (0.0..1.5)
+  --scoop <float>          非疑問句末の語尾スクープ (半音, 0.0..3.5)
   -h, --help               このヘルプを表示`);
 }
 
 function dieParam(msg) {
-  console.error(`[kusanagi] Invalid parameter: ${msg}`);
+  console.error(`[kawaii-kusanagi] Invalid parameter: ${msg}`);
   process.exit(2);
 }
 
@@ -143,13 +145,13 @@ function main() {
   const flagMap = {
     seed: "seed", hz: "hz", fscale: "fscale", rate: "rate",
     "g-vo": "g_vo", tilt: "tilt_w", sigh: "sigh", jitter: "jitter", wander: "wander_st",
-    damp: "damp", shin: "shin",
+    smile: "smile", asp: "asp", inhale: "inhale", scoop: "scoop",
   };
   const numOpts = Object.fromEntries(Object.keys(flagMap).map((f) => [f, { type: "string" }]));
   const { values, positionals } = parseArgs({
     options: {
       out: { type: "string", short: "o" },
-      preset: { type: "string", default: "hitofude" },
+      preset: { type: "string", default: "kawaii" },
       "list-presets": { type: "boolean", default: false },
       measure: { type: "boolean", default: false },
       compare: { type: "boolean", default: false },
@@ -230,12 +232,12 @@ function main() {
       console.log("  [Measure]", JSON.stringify(measureWithHash(samples, r, wavBytes)));
     }
     if (values.compare) {
-      const baseRes = synth(t, PRESETS.hitofude, utaHz);
+      const baseRes = synth(t, PRESETS.kawaii, utaHz);
       const { stem, ext } = splitStemAndExt(outPath);
       const basePath = `${stem}_base${ext}`;
       fs.writeFileSync(basePath, encodeWav(baseRes.samples));
       const cmp = Object.assign({ base: basePath }, compareAcoustic(baseRes.samples, baseRes.r, samples, r));
-      console.log("  [Compare vs hitofude]", JSON.stringify(cmp));
+      console.log("  [Compare vs kawaii]", JSON.stringify(cmp));
     }
   }
 }
