@@ -1,4 +1,7 @@
 // xray/cat09_composite.mjs — 変態解析ツール #81〜#90: 総合スコア・不気味の谷・A/B差分距離 (Composite & Differential)
+import { getCloseSharpStats } from "./cat01_glottal.mjs";
+import { getPlompLeveltErb } from "./cat08_psycho.mjs";
+import { getAuditPrimitives } from "./cat13_audit.mjs";
 
 function clamp01(v) { return Math.max(0.0, Math.min(1.0, v)); }
 function bandScore(v, lo, hi, margin) {
@@ -35,11 +38,40 @@ function envBins(d, nBins = 120) {
   return out;
 }
 
+function computeArtifactRisk(d, m) {
+  const pl = getPlompLeveltErb(d);
+  const ap = getAuditPrimitives(d);
+  const cs = getCloseSharpStats(d);
+  const pCliff = clamp01((ap.cliffAll - 50.0) / 45.0);
+  const pJump = clamp01((ap.maxJump - 5.5) / 3.0);
+  if (!ap.hasVoiced) {
+    const score = Math.min(100.0, Math.max(100.0 * (0.60 * pCliff + 0.40 * pJump), 38.0 * Math.max(pCliff, pJump)));
+    return Number(score.toFixed(1));
+  }
+  const pWhistle = clamp01(((m.fixed_whistle_db ?? 5.0) - 5.2) / 2.5);
+  const pFatigue = clamp01(((m.ear_fatigue_db ?? -11.0) - (-9.5)) / 7.5);
+  const pSharp = Math.max(
+    clamp01(((m.close_sharpness ?? cs.med) - 3.30) / 0.80),
+    clamp01((cs.p90 - 4.65) / 0.90)
+  );
+  const pPiercing = clamp01(((m.zwicker_sharpness ?? 1.5) - 1.75) / 0.60);
+  const pRumble = clamp01(((m.sub_f0_rumble_db ?? -40.0) - (-32.0)) / 12.0);
+  const pRough = clamp01((pl.p90 - 12.0) / 12.0);
+  const weighted = 100.0 * (
+    0.18 * pWhistle + 0.14 * pFatigue + 0.12 * pSharp + 0.08 * pPiercing +
+    0.05 * pRumble + 0.18 * pCliff + 0.12 * pJump + 0.13 * pRough
+  );
+  const spikeFloor = 38.0 * Math.max(pCliff, pJump, pRough, pWhistle);
+  return Number(Math.min(100.0, Math.max(weighted, spikeFloor)).toFixed(1));
+}
+
 export const CAT09_TOOLS = [
   {
     id: 81, key: "kawaii_overall_100", name: "総合カワイイスコア (0-100)", unit: "pts",
     run(d, ctx) {
       const m = ctx?.metrics || {};
+      const pl = getPlompLeveltErb(d);
+      const ap = getAuditPrimitives(d);
       const sPitch = bandScore(m.f0_mean_hz ?? 330, 300, 420, 120);
       const sRange = bandScore(m.f0_range_st ?? 10, 8, 16, 6);
       const sEpi = bandScore(m.epilaryngeal_3k_db ?? -12, -14, -7, 10);
@@ -47,7 +79,13 @@ export const CAT09_TOOLS = [
       const sSharp = bandScore(m.zwicker_sharpness ?? 1.5, 1.35, 1.75, 0.6);
       const sHnr = bandScore(m.hnr_mid_db ?? 30, 26, 40, 12);
       const sClean = 1.0 - clamp01(((m.fixed_whistle_db ?? 5) - 5.5) / 3.0);
-      const score = 100.0 * (0.16 * sPitch + 0.14 * sRange + 0.20 * sEpi + 0.15 * sVbr + 0.15 * sSharp + 0.10 * sHnr + 0.10 * sClean);
+      const baseScore = 100.0 * (0.16 * sPitch + 0.14 * sRange + 0.20 * sEpi + 0.15 * sVbr + 0.15 * sSharp + 0.10 * sHnr + 0.10 * sClean);
+      const artRisk = computeArtifactRisk(d, m);
+      const penArt = Math.max(0.0, artRisk - 10.0) * 0.65;
+      const penCliff = clamp01((ap.cliffAll - 50.0) / 40.0) * 10.0;
+      const penRough = clamp01((pl.p90 - 13.0) / 10.0) * 8.0;
+      let score = Math.max(0.0, baseScore - penArt - penCliff - penRough);
+      if (artRisk >= 22.0) score = Math.min(score, Math.max(35.0, 82.0 - 0.55 * (artRisk - 22.0)));
       return Number(score.toFixed(1));
     },
   },
@@ -67,14 +105,7 @@ export const CAT09_TOOLS = [
   {
     id: 83, key: "artifact_risk_100", name: "異音リスク総合警報 (0=完全無臭 / 100=危険)", unit: "pts",
     run(d, ctx) {
-      const m = ctx?.metrics || {};
-      const pWhistle = clamp01(((m.fixed_whistle_db ?? 5) - 5.2) / 2.5);
-      const pFatigue = clamp01(((m.ear_fatigue_db ?? -11) - (-9.5)) / 7.5);
-      const pSharp = clamp01(((m.close_sharpness ?? 3.0) - 3.15) / 0.8);
-      const pPiercing = clamp01(((m.zwicker_sharpness ?? 1.5) - 1.75) / 0.6);
-      const pRumble = clamp01(((m.sub_f0_rumble_db ?? -40) - (-32.0)) / 12.0);
-      const score = 100.0 * (0.30 * pWhistle + 0.25 * pFatigue + 0.20 * pSharp + 0.15 * pPiercing + 0.10 * pRumble);
-      return Number(score.toFixed(1));
+      return computeArtifactRisk(d, ctx?.metrics || {});
     },
   },
   {
@@ -93,11 +124,15 @@ export const CAT09_TOOLS = [
     id: 85, key: "sweet_voice_100", name: "スイートボイス度 (Starr 2015)", unit: "pts",
     run(d, ctx) {
       const m = ctx?.metrics || {};
-      const sOnset = bandScore(m.onset_rise_ms ?? 30, 22, 50, 20);
+      const ap = getAuditPrimitives(d);
+      const sOnsetBase = bandScore(m.onset_rise_ms ?? 22, 12, 32, 28);
+      const toePen = ap.postPauseRiseMs >= 16.0 ? clamp01((ap.onsetToeRatio - 0.58) / 0.22) : 0.0;
+      const sOnset = clamp01(sOnsetBase * (1.0 - 0.45 * toePen));
       const sScoop = clamp01(((m.final_scoop_st ?? 0.8) + 0.2) / 1.4);
       const sSmile = bandScore(m.smile_tract_index ?? 1.15, 1.05, 1.25, 0.25);
       const sWarm = bandScore(m.warmth_db ?? 24, 18, 28, 10);
-      const sLeak = clamp01(((-14.0) - (m.fric_low_leak_db ?? -18)) / 6.0);
+      const rawLeak = clamp01(((-14.0) - (m.fric_low_leak_db ?? -18)) / 6.0);
+      const sLeak = ap.affrClosureDepthDb > 18.0 ? Math.max(rawLeak, 0.95) : rawLeak;
       return Number((100.0 * (0.20 * sOnset + 0.25 * sScoop + 0.20 * sSmile + 0.20 * sWarm + 0.15 * sLeak)).toFixed(1));
     },
   },

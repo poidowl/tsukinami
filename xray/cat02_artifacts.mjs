@@ -65,20 +65,50 @@ export const CAT02_TOOLS = [
     },
   },
   {
-    id: 16, key: "cliff_impulse_ratio", name: "1サンプル崖/クリック検知 (2階微分p99.98/中央値)", unit: "ratio",
+    id: 16, key: "cliff_impulse_ratio", name: "1サンプル崖/クリック検知 (2階微分p99.98+孤立クリック/中央値)", unit: "ratio",
     run(d) {
-      // p99.98 / median of 2nd difference |x[i]-2x[i-1]+x[i-2]| catches even rare 1-sample clicks without denominator inflation
+      // Center-aligned active-frame baseline over voiced + unvoiced frames + all-sample isolated-impulse promotion
+      // (catches edge clicks in leading/trailing silent margins attenuated by Hann win[0]=win[wl-1]=0).
+      const x = d.x;
+      const N = x.length;
+      const d2Full = new Float64Array(N);
       const diffs = [];
-      for (let t = 0; t < d.nFrames; t++) {
-        if (!d.f0Hz[t]) continue;
-        const off = t * d.hop;
-        for (let i = 2; i < d.hop && off + i < d.x.length; i++) {
-          diffs.push(Math.abs(d.x[off + i] - 2.0 * d.x[off + i - 1] + d.x[off + i - 2]));
+      let maxD2 = 0.0;
+      for (let i = 2; i < N; i++) {
+        const v2 = Math.abs(x[i] - 2.0 * x[i - 1] + x[i - 2]);
+        d2Full[i] = v2;
+        if (v2 > maxD2) maxD2 = v2;
+        const t = Math.max(0, Math.min(d.nFrames - 1, Math.round((i - 0.5 * d.wl) / d.hop)));
+        if (d.rmsFr[t] > 0.012) {
+          diffs.push(v2);
         }
       }
       if (diffs.length < 16) return 0.0;
-      const med = median(diffs) || 1e-9;
-      return Number(Math.min(999.0, percentile(diffs, 99.98) / med).toFixed(2));
+      const med = median(diffs);
+      if (med <= 1e-12) return maxD2 > 1e-9 ? 999.0 : 0.0;
+      const pVal = percentile(diffs, 99.98);
+      let bestD2 = pVal;
+      const R = Math.max(16, Math.round(0.0015 * d.sr));
+      const nb = [];
+      for (let idx = 2; idx < N; idx++) {
+        const v2 = d2Full[idx];
+        const isLeftEdge = idx === 2 && Math.abs(x[0] - x[1]) >= 2.0 * Math.abs(x[1] - x[2]);
+        const isRightEdge = idx === N - 1 && Math.abs(x[N - 1] - x[N - 2]) >= 2.0 * Math.abs(x[N - 2] - x[N - 3]);
+        const effV2 = (isLeftEdge || isRightEdge) ? 2.0 * v2 : v2;
+        if (effV2 <= pVal) continue;
+        nb.length = 0;
+        const lo = Math.max(2, idx - R);
+        const hi = Math.min(N - 1, idx + R);
+        for (let j = lo; j <= hi; j++) {
+          if (Math.abs(j - idx) <= 2) continue;
+          nb.push(d2Full[j]);
+        }
+        if (nb.length < 4) continue;
+        nb.sort((a, b) => a - b);
+        const nbP80 = nb[Math.min(nb.length - 1, Math.floor(0.80 * (nb.length - 1)))];
+        if (v2 / Math.max(nbP80, 1e-12) >= 5.0 && effV2 > bestD2) bestD2 = effV2;
+      }
+      return Number(Math.min(999.0, bestD2 / med).toFixed(2));
     },
   },
   {

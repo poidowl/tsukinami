@@ -1,5 +1,14 @@
 // xray/cat10_visual.mjs — 変態解析ツール #91〜#100: ビジュアルX線レンダラー (Pure JS SVG/HTML X-Ray Panels)
-import { median } from "./core.mjs";
+import { getPlompLeveltErb } from "./cat08_psycho.mjs";
+import { getAuditPrimitives } from "./cat13_audit.mjs";
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function infernoHex(u) {
   const pts = [
@@ -51,13 +60,18 @@ export const CAT10_TOOLS = [
         return (v + 75.0) / 65.0;
       }, "#91 Magnitude Spectrogram (0-8kHz)");
       if (ctx?.visuals) ctx.visuals.magSpec = svg;
-      return Number((mx - mn).toFixed(1));
+      return Number.isFinite(mx - mn) ? Number((mx - mn).toFixed(1)) : 0.0;
     },
   },
   {
     id: 92, key: "vis_phase_lock_map", name: "[SVG] 位相ロックマップ (d²φ/dt²) 生成", unit: "lock%",
     run(d, ctx) {
       const cols = 64, rows = 20;
+      if (d.nFrames < 3) {
+        const svg = makeHeatmapSvg(cols, rows, () => 0.0, "#92 Phase-Lock Stability Map");
+        if (ctx?.visuals) ctx.visuals.phaseMap = svg;
+        return 0.0;
+      }
       let sum = 0.0, cnt = 0;
       const svg = makeHeatmapSvg(cols, rows, (c, r) => {
         const t = Math.min(d.nFrames - 2, Math.max(1, Math.floor((c / cols) * d.nFrames)));
@@ -163,24 +177,54 @@ export const CAT10_TOOLS = [
   {
     id: 98, key: "vis_artifact_flags", name: "[SVG] 異音・赤旗タイムライン検知 生成", unit: "flags",
     run(d, ctx) {
-      let flags = 0;
+      let fatigueCnt = 0, cliffCnt = 0, roughCnt = 0;
       const bars = [];
+      const denomFr = Math.max(1, d.nFrames - 1);
+      const ap = getAuditPrimitives(d);
+      const pl = getPlompLeveltErb(d);
+      const cliffThr = ap.medD2 > 1e-12 ? 55.0 * ap.medD2 : 1e-9;
+      const frameMaxD2 = new Float64Array(d.nFrames);
+      const x = d.x;
+      const N = x.length;
+      for (let i = 2; i < N; i++) {
+        const t = Math.max(0, Math.min(d.nFrames - 1, Math.round((i - 0.5 * d.wl) / d.hop)));
+        let v = Math.abs(x[i] - 2.0 * x[i - 1] + x[i - 2]);
+        if (i === 2 && Math.abs(x[0] - x[1]) >= 2.0 * Math.abs(x[1] - x[2])) v *= 2.0;
+        else if (i === N - 1 && Math.abs(x[N - 1] - x[N - 2]) >= 2.0 * Math.abs(x[N - 2] - x[N - 3])) v *= 2.0;
+        if (v > frameMaxD2[t]) frameMaxD2[t] = v;
+      }
+
       for (let t = 0; t < d.nFrames; t += 2) {
         if (!d.f0Hz[t]) continue;
-        // Flag frame if sharp ear-fatigue peak in 2.5-4.2kHz exceeds low-mid by > -4dB
+        // Flag frame if sharp ear-fatigue peak in 2.5-4.2kHz exceeds low-mid by > 16dB
         let pk = -Infinity, lo = 0.0, ln = 0;
         for (let b = 0; b < d.nBins; b++) {
           if (d.freqs[b] >= 2500 && d.freqs[b] <= 4200 && d.magDb[t][b] > pk) pk = d.magDb[t][b];
           if (d.freqs[b] >= 400 && d.freqs[b] <= 1800) { lo += d.magDb[t][b]; ln++; }
         }
-        const bad = pk - (lo / (ln || 1)) > 16.0;
-        if (bad) {
-          flags++;
-          const x = (t / Math.max(1, d.nFrames - 1)) * 520;
-          bars.push(`<rect x="${x.toFixed(1)}" y="6" width="3" height="24" fill="#ef4444"/>`);
+        if (pk - (lo / (ln || 1)) > 16.0) {
+          fatigueCnt++;
+          const x = (t / denomFr) * 520;
+          bars.push(`<rect x="${x.toFixed(1)}" y="4" width="3" height="24" fill="#ef4444"/>`);
         }
       }
-      const svg = `<svg viewBox="0 0 520 52" width="100%" style="background:#0f1624;border-radius:8px;border:1px solid #24314a"><text x="6" y="13" fill="${flags ? "#ef4444" : "#4ade80"}" font-size="10" font-family="system-ui">#98 Artifact Red-Flag Timeline (${flags} flags)</text><g transform="translate(0,16)"><line x1="0" y1="18" x2="520" y2="18" stroke="#1e293b"/>${bars.join("")}</g></svg>`;
+
+      for (let t = 0; t < d.nFrames; t++) {
+        if (ap.cliffAll > 0.0 && frameMaxD2[t] > cliffThr) {
+          cliffCnt++;
+          const x = (t / denomFr) * 520;
+          bars.push(`<rect x="${x.toFixed(1)}" y="2" width="3" height="28" fill="#ec4899"/>`);
+        }
+        if (d.f0Hz[t] > 0 && pl.frameVals && pl.frameVals[t] > 15.0) {
+          roughCnt++;
+          const x = (t / denomFr) * 520;
+          bars.push(`<rect x="${x.toFixed(1)}" y="8" width="3" height="18" fill="#f59e0b"/>`);
+        }
+      }
+
+      const flags = fatigueCnt + cliffCnt + roughCnt;
+      const title = `#98 Artifact Red-Flag Timeline (${flags} flags: ${fatigueCnt} hi-mid / ${cliffCnt} cliff / ${roughCnt} rough)`;
+      const svg = `<svg viewBox="0 0 520 52" width="100%" style="background:#0f1624;border-radius:8px;border:1px solid #24314a"><text x="6" y="13" fill="${flags ? "#ef4444" : "#4ade80"}" font-size="10" font-family="system-ui">${title}</text><g transform="translate(0,16)"><line x1="0" y1="18" x2="520" y2="18" stroke="#1e293b"/>${bars.join("")}</g></svg>`;
       if (ctx?.visuals) ctx.visuals.flagSvg = svg;
       return flags;
     },
@@ -215,29 +259,78 @@ export const CAT10_TOOLS = [
     },
   },
   {
-    id: 100, key: "vis_100_report_ready", name: "[HTML] 100ツール全部入りビジュアルHTMLレポート", unit: "tools",
+    id: 100, key: "vis_100_report_ready", name: "[HTML] 150ツール全部入りビジュアルHTMLレポート", unit: "tools",
     run(d, ctx) {
-      return Object.keys(ctx?.metrics || {}).length + 1;
+      return ctx?.totalTools ?? (Object.keys(ctx?.metrics || {}).length + 1);
     },
   },
 ];
 
-export function buildHtmlReport(results, allTools) {
-  const hero = results[results.length - 1];
+const CAT_SECTIONS = [
+  [1, "Cat 01 (#01–#10): 声門・声帯ソース (Glottal & Voice Quality)"],
+  [11, "Cat 02 (#11–#20): 異音・アーティファクト自動ハンター (Artifacts)"],
+  [21, "Cat 03 (#21–#30): 声道・フォルマント・零点 (Vocal Tract)"],
+  [31, "Cat 04 (#31–#40): 位相・分散・微細構造 (Phase & Microstructure)"],
+  [41, "Cat 05 (#41–#50): ピッチ・カワイイ抑揚 (Prosody)"],
+  [51, "Cat 06 (#51–#60): 息・吐息・有声息吸い (Breath & Non-Modal)"],
+  [61, "Cat 07 (#61–#70): 子音・共調音・変調スペクトル (Consonants)"],
+  [71, "Cat 08 (#71–#80): 心理音響・聴覚モデル (Psychoacoustics & PL-ERB)"],
+  [81, "Cat 09 (#81–#90): 総合スコア・不気味の谷・A/B距離 (Composite)"],
+  [91, "Cat 10 (#91–#100): ビジュアルX線レンダラー (Visual SVG/HTML)"],
+  [101, "Cat 11 (#101–#110): 深淵非線形・RQA・TDA・声道逆算 (Felony Deep Physics)"],
+  [111, "Cat 12 (#111–#130): ババア検知20連反証センサー (Aging Risk)"],
+  [131, "Cat 13 (#131–#150): 総合音質監査・子音/立上がり・5大物理機構バリデータ (Audit & 5-Mechanism)"],
+];
+
+export function buildHtmlReport(results, allTools, suiteSummary = null) {
+  const safeResults = Array.isArray(results) ? results : [];
+  const hero = safeResults[safeResults.length - 1] || { label: "none", visuals: {} };
   const v = hero.visuals || {};
-  const headers = results.map((r) => `<th>${r.label}</th>`).join("");
-  const rows = allTools.map((t) => {
-    const cells = results.map((r) => `<td>${r.metrics[t.key]}</td>`).join("");
-    return `<tr><td>#${String(t.id).padStart(2, "0")}</td><td><code>${t.key}</code></td><td>${t.name}</td><td>${t.unit}</td>${cells}</tr>`;
-  }).join("\n");
+  const headers = safeResults.map((r) => `<th>${escHtml(r.label)}</th>`).join("");
+  const colSpan = 4 + safeResults.length;
+  const secMap = new Map(CAT_SECTIONS);
+  const rowParts = [];
+  for (const t of allTools) {
+    if (secMap.has(t.id)) {
+      rowParts.push(`<tr class="cat-hdr"><td colspan="${colSpan}">${escHtml(secMap.get(t.id))}</td></tr>`);
+    }
+    const cells = safeResults.map((r) => `<td>${escHtml(r.metrics?.[t.key])}</td>`).join("");
+    rowParts.push(`<tr><td>#${String(t.id).padStart(3, "0")}</td><td><code>${escHtml(t.key)}</code></td><td>${escHtml(t.name)}</td><td>${escHtml(t.unit)}</td>${cells}</tr>`);
+  }
+  const rows = rowParts.join("\n");
+
+  let suiteHtml = "";
+  if (suiteSummary) {
+    const verdict = suiteSummary.passed ? "PASS" : "FAIL";
+    const vColor = suiteSummary.passed ? "#4ade80" : "#ef4444";
+    const r = suiteSummary.rollups || {};
+    const rollupItems = Object.entries(r)
+      .map(([k, val]) => `<div class="rcard"><code>${escHtml(k)}</code><b>${escHtml(val)}</b></div>`)
+      .join("");
+    const failRows = (suiteSummary.failures || []).length
+      ? `<ul class="fails">${suiteSummary.failures.map((f) => `<li><b>${escHtml(f.id)}</b>: <code>${escHtml(f.metric)}</code> = ${escHtml(f.actual)} (expected ${escHtml(f.op)} ${escHtml(f.threshold)}, ${escHtml(f.source)})</li>`).join("")}</ul>`
+      : `<div class="okmsg">All ${escHtml(suiteSummary.gates?.total ?? 0)} gates passed across ${escHtml(safeResults.length)} items.</div>`;
+    suiteHtml = `<div class="suite-box">
+  <div class="suite-hdr">Suite Verdict: <span style="color:${vColor};font-weight:800">${verdict}</span> (${escHtml(suiteSummary.gates?.passed ?? 0)}/${escHtml(suiteSummary.gates?.total ?? 0)} gates passed)</div>
+  <div class="rgrid">${rollupItems}</div>
+  ${failRows}
+</div>`;
+  }
+
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>カワイイクサナギ 変態解析ツール100選 X線レポート</title>
+<title>カワイイクサナギ 変態解析ツール${allTools.length}選 X線レポート</title>
 <style>
   :root { color-scheme: dark; --bg: #070b14; --panel: #101726; --border: #24314a; --pink: #f472b6; --cyan: #38bdf8; --fg: #f1f5f9; --muted: #94a3b8; }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 14px; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); }
   h1 { margin: 0 0 4px; font-size: 1.05rem; color: #fff; }
   .sub { font-size: 0.76rem; color: var(--muted); margin-bottom: 12px; }
+  .suite-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .suite-hdr { font-size: 0.88rem; margin-bottom: 8px; }
+  .rgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 6px; margin-bottom: 8px; }
+  .rcard { background: #0a0e18; border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 0.72rem; }
+  .fails { margin: 6px 0 0 18px; padding: 0; font-size: 0.74rem; color: #fca5a5; }
+  .okmsg { font-size: 0.74rem; color: #86efac; }
   .vgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px; margin-bottom: 12px; }
   .vwide { display: grid; gap: 8px; margin-bottom: 10px; }
   details { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
@@ -246,10 +339,12 @@ export function buildHtmlReport(results, allTools) {
   th, td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: right; }
   th:nth-child(-n+4), td:nth-child(-n+4) { text-align: left; }
   th { color: var(--cyan); position: sticky; top: 0; background: var(--panel); }
+  tr.cat-hdr td { background: #162033; color: var(--pink); font-weight: 700; text-align: left; padding: 6px 8px; }
   code { color: #fbbf24; font-size: 0.7rem; }
 </style></head><body>
-<h1>🔬 カワイイクサナギ — 変態解析ツール 100選 X線レポート (${allTools.length} Tools)</h1>
-<div class="sub">純JS・外部依存ゼロ / ビジュアル対象: <b>${hero.label}</b>（全${results.length}ファイル比較）</div>
+<h1>🔬 カワイイクサナギ — 変態解析ツール ${allTools.length}選 X線レポート (${allTools.length} Tools)</h1>
+<div class="sub">純JS・外部依存ゼロ / ビジュアル対象: <b>${escHtml(hero.label)}</b>（全${safeResults.length}ファイル比較）</div>
+${suiteHtml}
 <div class="vwide">${v.magSpec || ""}${v.phaseMap || ""}${v.ltasSvg || ""}${v.f0Svg || ""}${v.flagSvg || ""}</div>
 <div class="vgrid">${v.radarSvg || ""}${v.formantSvg || ""}${v.harmSvg || ""}${v.modSvg || ""}</div>
 <details open><summary>📊 全 ${allTools.length} ツール計測テーブル（クリックで開閉）</summary>

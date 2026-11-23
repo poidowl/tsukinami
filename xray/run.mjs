@@ -1,59 +1,114 @@
 #!/usr/bin/env node
-// xray/run.mjs — カワイイクサナギ 変態解析ツール100選 CLIランナー（純JS・0依存）
-// 使い方: node xray/run.mjs file1.wav file2.wav ...
+// xray/run.mjs — カワイイクサナギ 変態解析ツール150選 CLIランナー & スイートゲート実行器（純JS・0依存）
+// 使い方:
+//   node xray/run.mjs [--json] [--report out.html] <wav1> [wav2 ...]
+//   node xray/run.mjs --suite <manifest.json> [--ref-wav <ref.wav>] [--gate-strict] [--no-default-gates] [--json] [--report out.html]
 import fs from "node:fs";
 import path from "node:path";
-import { decodeWav, extractBaseFrameData } from "./core.mjs";
-import { CAT01_TOOLS } from "./cat01_glottal.mjs";
-import { CAT02_TOOLS } from "./cat02_artifacts.mjs";
-import { CAT03_TOOLS } from "./cat03_vocal_tract.mjs";
-import { CAT04_TOOLS } from "./cat04_phase.mjs";
-import { CAT05_TOOLS } from "./cat05_prosody.mjs";
-import { CAT06_TOOLS } from "./cat06_breath.mjs";
-import { CAT07_TOOLS } from "./cat07_consonants.mjs";
-import { CAT08_TOOLS } from "./cat08_psycho.mjs";
-import { CAT09_TOOLS } from "./cat09_composite.mjs";
-import { buildHtmlReport, CAT10_TOOLS } from "./cat10_visual.mjs";
-import { CAT11_TOOLS } from "./cat11_felony.mjs";
-import { CAT12_TOOLS } from "./cat12_babaa.mjs";
+import { fileURLToPath } from "node:url";
+import { ALL_TOOLS, analyzeBuffer } from "./engine.mjs";
+import { runSuite, DEFAULT_SAFETY_GATES, formatSuiteTable } from "./suite.mjs";
+import { buildHtmlReport } from "./cat10_visual.mjs";
 
-export const ALL_TOOLS = [
-  ...CAT01_TOOLS,
-  ...CAT02_TOOLS,
-  ...CAT03_TOOLS,
-  ...CAT04_TOOLS,
-  ...CAT05_TOOLS,
-  ...CAT06_TOOLS,
-  ...CAT07_TOOLS,
-  ...CAT08_TOOLS,
-  ...CAT09_TOOLS,
-  ...CAT10_TOOLS,
-  ...CAT11_TOOLS,
-  ...CAT12_TOOLS,
-];
+export { ALL_TOOLS, analyzeBuffer, runSuite, DEFAULT_SAFETY_GATES };
 
-export function analyzeBuffer(bytes, ref = null, refMetrics = null) {
-  const { sr, samples } = decodeWav(bytes);
-  const d = extractBaseFrameData(sr, samples);
-  const metrics = {};
-  const visuals = {};
-  for (const tool of ALL_TOOLS) metrics[tool.key] = tool.run(d, { metrics, visuals, ref, refMetrics });
-  return { d, metrics, visuals };
+function requireArg(args, i, flag) {
+  const val = args[i + 1];
+  if (i + 1 >= args.length || typeof val !== "string" || !val.trim() || val.startsWith("--")) {
+    throw new Error(`Missing required argument for ${flag}`);
+  }
+  return val;
 }
 
 function main() {
   const args = process.argv.slice(2);
-  const asJson = args.includes("--json");
+  let asJson = false;
   let reportPath = null;
+  let suitePath = null;
+  let refWavPath = null;
+  let gateStrict = false;
+  let noDefaultGates = false;
   const files = [];
+
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--report" && args[i + 1]) { reportPath = args[++i]; }
-    else if (!args[i].startsWith("--")) files.push(args[i]);
+    const a = args[i];
+    if (a === "--json") { asJson = true; }
+    else if (a === "--gate-strict") { gateStrict = true; }
+    else if (a === "--no-default-gates") { noDefaultGates = true; }
+    else if (a === "--report") { reportPath = requireArg(args, i, "--report"); i++; }
+    else if (a === "--suite") { suitePath = requireArg(args, i, "--suite"); i++; }
+    else if (a === "--ref-wav") { refWavPath = requireArg(args, i, "--ref-wav"); i++; }
+    else if (a.startsWith("-")) { throw new Error(`Unknown option: ${a}`); }
+    else if (!a.trim()) { throw new Error("Empty WAV file path argument"); }
+    else { files.push(a); }
   }
+
+  if (!suitePath) {
+    if (refWavPath !== null) throw new Error("Option --ref-wav requires --suite <manifest.json>");
+    if (gateStrict) throw new Error("Option --gate-strict requires --suite <manifest.json>");
+    if (noDefaultGates) throw new Error("Option --no-default-gates requires --suite <manifest.json>");
+  } else if (files.length) {
+    throw new Error(`Unexpected positional arguments with --suite: ${files.join(", ")}`);
+  }
+
+  if (suitePath) {
+    const absManifest = path.resolve(suitePath);
+    if (!fs.existsSync(absManifest)) {
+      throw new Error(`Suite manifest not found: ${absManifest}`);
+    }
+    const raw = fs.readFileSync(absManifest, "utf8");
+    let manifestEntries;
+    try {
+      manifestEntries = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Invalid JSON in suite manifest '${absManifest}': ${err.message}`);
+    }
+    if (!Array.isArray(manifestEntries)) {
+      throw new Error(`Suite manifest '${absManifest}' must be a JSON Array`);
+    }
+    const suiteResult = runSuite(manifestEntries, {
+      refWav: refWavPath ? path.resolve(refWavPath) : null,
+      baseDir: path.dirname(absManifest),
+      includeDefaultGates: !noDefaultGates,
+      collectVisuals: Boolean(reportPath),
+    });
+
+    if (reportPath) {
+      fs.writeFileSync(reportPath, buildHtmlReport(suiteResult.items, ALL_TOOLS, suiteResult));
+      const msg = `[xray] Saved ${ALL_TOOLS.length}-Tool Suite HTML Report -> ${reportPath}`;
+      if (asJson) console.error(msg);
+      else console.log(msg);
+    }
+
+    if (asJson) {
+      const cleanItems = suiteResult.items.map(({ visuals, ...rest }) => rest);
+      const out = {
+        items: cleanItems,
+        rollups: suiteResult.rollups,
+        gates: suiteResult.gates,
+        failures: suiteResult.failures,
+        passed: suiteResult.passed,
+      };
+      console.log(JSON.stringify(out, null, 2));
+    } else {
+      console.log(formatSuiteTable(suiteResult));
+    }
+
+    if (gateStrict && !suiteResult.passed) process.exitCode = 1;
+    return;
+  }
+
   if (!files.length) {
-    console.log(`Usage: node xray/run.mjs [--json] [--report out.html] <wav1> [wav2 ...]`);
+    if (asJson || reportPath !== null) {
+      throw new Error("Missing WAV file argument(s) (or use --suite <manifest.json>)");
+    }
+    console.log("Usage:");
+    console.log("  node xray/run.mjs [--json] [--report out.html] <wav1> [wav2 ...]");
+    console.log("  node xray/run.mjs --suite <manifest.json> [--ref-wav <ref.wav>] [--gate-strict] [--no-default-gates] [--json] [--report out.html]");
     console.log(`Registered tools (${ALL_TOOLS.length}):`);
-    for (const t of ALL_TOOLS) console.log(`  #${String(t.id).padStart(2, "0")} ${t.key.padEnd(22)} : ${t.name} [${t.unit}]`);
+    for (const t of ALL_TOOLS) {
+      console.log(`  #${String(t.id).padStart(3, "0")} ${t.key.padEnd(26)} : ${t.name} [${t.unit}]`);
+    }
     return;
   }
 
@@ -68,7 +123,9 @@ function main() {
 
   if (reportPath) {
     fs.writeFileSync(reportPath, buildHtmlReport(results, ALL_TOOLS));
-    console.log(`[xray] Saved 100-Tool HTML Report -> ${reportPath}`);
+    const msg = `[xray] Saved ${ALL_TOOLS.length}-Tool HTML Report -> ${reportPath}`;
+    if (asJson) console.error(msg);
+    else console.log(msg);
   }
 
   if (asJson) {
@@ -77,18 +134,34 @@ function main() {
   }
 
   const colW = 14;
-  const header = `${"#".padEnd(3)} ${"Tool".padEnd(22)} ${"Unit".padEnd(7)} | ` + results.map((r) => r.label.slice(0, colW).padStart(colW)).join(" | ");
+  const header = `${"#".padEnd(4)} ${"Tool".padEnd(26)} ${"Unit".padEnd(7)} | ` +
+    results.map((r) => r.label.slice(0, colW).padStart(colW)).join(" | ");
   console.log(header);
   console.log("-".repeat(header.length));
   for (const t of ALL_TOOLS) {
-    const row = `${String(t.id).padStart(2, "0")}  ${t.key.padEnd(22)} ${t.unit.padEnd(7)} | ` +
+    const row = `${String(t.id).padStart(3, "0")}  ${t.key.padEnd(26)} ${t.unit.padEnd(7)} | ` +
       results.map((r) => String(r.metrics[t.key]).padStart(colW)).join(" | ");
     console.log(row);
   }
 }
 
-import { fileURLToPath } from "node:url";
+function isMainEntry() {
+  if (!process.argv[1]) return false;
+  const selfPath = fileURLToPath(import.meta.url);
+  const argPath = path.resolve(process.argv[1]);
+  if (argPath === selfPath) return true;
+  try {
+    return fs.realpathSync(argPath) === fs.realpathSync(selfPath);
+  } catch {
+    return false;
+  }
+}
 
-if (path.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
-  main();
+if (isMainEntry()) {
+  try {
+    main();
+  } catch (err) {
+    console.error(`[xray] Error: ${err?.message || err}`);
+    process.exitCode = 1;
+  }
 }

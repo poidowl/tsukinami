@@ -1,33 +1,156 @@
 // xray/core.mjs — カワイイクサナギ変態音響X線スイート 共通コア（純JS・外部依存ゼロ・Node/ブラウザ共通）
-import { fftRadix2 } from "../hitofude.mjs";
+
+const FFT_CACHE = new Map();
+
+export function fftRadix2(reIn) {
+  const n = reIn.length;
+  if (n <= 0) return { re: new Float64Array(0), im: new Float64Array(0) };
+  let plan = FFT_CACHE.get(n);
+  if (!plan) {
+    const bits = Math.round(Math.log2(n));
+    const bitrev = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      let x = i, r = 0;
+      for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; }
+      bitrev[i] = r;
+    }
+    const twRe = [], twIm = [], steps = [];
+    for (let step = 2; step <= n; step <<= 1) {
+      const half = step >> 1;
+      const cRe = new Float64Array(half), cIm = new Float64Array(half);
+      for (let k = 0; k < half; k++) {
+        const ang = (-2.0 * Math.PI * k) / step;
+        cRe[k] = Math.cos(ang);
+        cIm[k] = Math.sin(ang);
+      }
+      steps.push(step);
+      twRe.push(cRe);
+      twIm.push(cIm);
+    }
+    plan = { bitrev, steps, twRe, twIm };
+    FFT_CACHE.set(n, plan);
+  }
+  const re = new Float64Array(n), im = new Float64Array(n);
+  for (let i = 0; i < n; i++) re[i] = reIn[plan.bitrev[i]];
+  for (let si = 0; si < plan.steps.length; si++) {
+    const step = plan.steps[si], half = step >> 1;
+    const cRe = plan.twRe[si], cIm = plan.twIm[si];
+    for (let s = 0; s < n; s += step) {
+      for (let k = 0; k < half; k++) {
+        const i1 = s + k, i2 = i1 + half;
+        const vr = re[i2] * cRe[k] - im[i2] * cIm[k];
+        const vi = re[i2] * cIm[k] + im[i2] * cRe[k];
+        re[i2] = re[i1] - vr; im[i2] = im[i1] - vi;
+        re[i1] += vr; im[i1] += vi;
+      }
+    }
+  }
+  return { re, im };
+}
 
 export function decodeWav(bytes) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new TypeError("Invalid WAV input: expected Uint8Array");
+  }
+  if (bytes.byteLength < 44) {
+    throw new Error(`Invalid WAV: buffer too short (${bytes.byteLength} bytes, minimum 44)`);
+  }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let off = 12, sr = 44100, ch = 1, bits = 16, dataOff = 44, dataLen = bytes.byteLength - 44;
+  const readFourCC = (o) => String.fromCharCode(
+    view.getUint8(o), view.getUint8(o + 1), view.getUint8(o + 2), view.getUint8(o + 3)
+  );
+  if (readFourCC(0) !== "RIFF" || readFourCC(8) !== "WAVE") {
+    throw new Error("Invalid WAV header: missing RIFF/WAVE magic");
+  }
+
+  let off = 12;
+  let hasFmt = false;
+  let hasData = false;
+  let audioFmt = 0;
+  let sr = 0;
+  let ch = 0;
+  let bits = 0;
+  let dataOff = 0;
+  let dataLen = 0;
+
   while (off + 8 <= bytes.byteLength) {
-    const id = String.fromCharCode(view.getUint8(off), view.getUint8(off + 1), view.getUint8(off + 2), view.getUint8(off + 3));
+    const id = readFourCC(off);
     const sz = view.getUint32(off + 4, true);
+    const bodyOff = off + 8;
     if (id === "fmt ") {
-      ch = view.getUint16(off + 10, true);
-      sr = view.getUint32(off + 12, true);
-      bits = view.getUint16(off + 22, true);
+      if (sz < 16 || bodyOff + 16 > bytes.byteLength) {
+        throw new Error(`Invalid WAV: truncated 'fmt ' chunk (size=${sz})`);
+      }
+      audioFmt = view.getUint16(bodyOff, true);
+      ch = view.getUint16(bodyOff + 2, true);
+      sr = view.getUint32(bodyOff + 4, true);
+      bits = view.getUint16(bodyOff + 14, true);
+      if (audioFmt === 0xFFFE) {
+        // WAVE_FORMAT_EXTENSIBLE: resolve PCM(1) / IEEE_FLOAT(3) if standard KSDATAFORMAT_SUBTYPE GUID tail matches
+        if (sz < 40 || bodyOff + 40 > bytes.byteLength) {
+          throw new Error(`Invalid WAV: truncated WAVE_FORMAT_EXTENSIBLE 'fmt ' chunk (size=${sz})`);
+        }
+        const guidTailOk =
+          view.getUint16(bodyOff + 26, true) === 0x0000 &&
+          view.getUint16(bodyOff + 28, true) === 0x0000 &&
+          view.getUint16(bodyOff + 30, true) === 0x0010 &&
+          view.getUint8(bodyOff + 32) === 0x80 && view.getUint8(bodyOff + 33) === 0x00 &&
+          view.getUint8(bodyOff + 34) === 0x00 && view.getUint8(bodyOff + 35) === 0xAA &&
+          view.getUint8(bodyOff + 36) === 0x00 && view.getUint8(bodyOff + 37) === 0x38 &&
+          view.getUint8(bodyOff + 38) === 0x9B && view.getUint8(bodyOff + 39) === 0x71;
+        if (!guidTailOk) {
+          throw new Error("Unsupported WAV format: non-standard WAVE_FORMAT_EXTENSIBLE SubFormat GUID");
+        }
+        audioFmt = view.getUint16(bodyOff + 24, true);
+      }
+      hasFmt = true;
+      if (hasData) break;
     } else if (id === "data") {
-      dataOff = off + 8;
+      dataOff = bodyOff;
       dataLen = Math.min(sz, bytes.byteLength - dataOff);
-      break;
+      hasData = true;
+      if (hasFmt) break;
     }
     off += 8 + sz + (sz & 1);
   }
-  const bytesPerSample = Math.max(1, bits >> 3);
-  const nFrames = Math.floor(dataLen / (bytesPerSample * ch));
+
+  if (!hasFmt) throw new Error("Invalid WAV: missing 'fmt ' chunk");
+  if (!hasData) throw new Error("Invalid WAV: missing 'data' chunk");
+  if (!Number.isInteger(sr) || sr <= 0 || sr > 384000) {
+    throw new Error(`Invalid WAV sample rate: ${sr} Hz (expected 1..384000)`);
+  }
+  if (!Number.isInteger(ch) || ch <= 0 || ch > 16) {
+    throw new Error(`Invalid WAV channel count: ${ch} (expected 1..16)`);
+  }
+  const isPcm = audioFmt === 1 && (bits === 8 || bits === 16 || bits === 24 || bits === 32);
+  const isFloat = audioFmt === 3 && (bits === 32 || bits === 64);
+  if (!isPcm && !isFloat) {
+    throw new Error(`Unsupported WAV format: audioFormat=${audioFmt}, bitsPerSample=${bits}`);
+  }
+
+  const bytesPerSample = bits >> 3;
+  const frameStride = bytesPerSample * ch;
+  const nFrames = Math.floor(dataLen / frameStride);
   const x = new Float64Array(nFrames);
   for (let i = 0; i < nFrames; i++) {
     let sum = 0.0;
     for (let c = 0; c < ch; c++) {
-      const p = dataOff + (i * ch + c) * bytesPerSample;
-      if (bits === 16) sum += view.getInt16(p, true) / 32768.0;
-      else if (bits === 32) sum += view.getFloat32(p, true);
-      else sum += (view.getUint8(p) - 128) / 128.0;
+      const p = dataOff + i * frameStride + c * bytesPerSample;
+      if (audioFmt === 3) {
+        const v = bits === 64 ? view.getFloat64(p, true) : view.getFloat32(p, true);
+        if (!Number.isFinite(v)) {
+          throw new Error(`Invalid WAV: non-finite IEEE float sample at frame ${i}`);
+        }
+        sum += v;
+      } else if (bits === 16) {
+        sum += view.getInt16(p, true) / 32768.0;
+      } else if (bits === 24) {
+        sum += ((view.getInt8(p + 2) << 16) | (view.getUint8(p + 1) << 8) | view.getUint8(p)) / 8388608.0;
+      } else if (bits === 32) {
+        sum += view.getInt32(p, true) / 2147483648.0;
+      } else {
+        sum += (view.getUint8(p) - 128) / 128.0;
+      }
     }
     x[i] = sum / ch;
   }
@@ -76,11 +199,26 @@ export function percentile(arr, p) {
   return s[idx];
 }
 
+export function pctlInterp(arr, p) {
+  if (!arr.length) return 0.0;
+  const s = Float64Array.from(arr).sort();
+  const pos = Math.min(s.length - 1, Math.max(0, (p / 100.0) * (s.length - 1)));
+  const lo = Math.floor(pos);
+  const hi = Math.min(s.length - 1, Math.ceil(pos));
+  return s[lo] + (s[hi] - s[lo]) * (pos - lo);
+}
+
 export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
-  const x = trimAndNormalize(sr, rawSamples);
-  const nfft = sr > 30000 ? 2048 : 1024;
-  const wl = Math.trunc(0.026 * sr);
-  const hop = Math.trunc(0.005 * sr);
+  let x = trimAndNormalize(sr, rawSamples);
+  const wl = Math.max(4, Math.trunc(0.026 * sr));
+  let nfft = sr > 30000 ? 2048 : 1024;
+  while (nfft < wl) nfft <<= 1;
+  const hop = Math.max(1, Math.trunc(0.005 * sr));
+  if (x.length < wl) {
+    const pad = new Float64Array(wl);
+    pad.set(x);
+    x = pad;
+  }
   const win = new Float64Array(wl);
   let winSum = 0.0;
   for (let i = 0; i < wl; i++) {
@@ -105,7 +243,8 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
   const maxLag = Math.min(wl - 2, Math.trunc(sr / 140));
   const buf = new Float64Array(nfft);
   const logFull = new Float64Array(nfft);
-  const qCut = Math.max(8, Math.trunc(0.0021 * sr)); // 2.1ms リフタ（高音F0シマを除去しつつF1/F2の分離を保持）
+  const lif = new Float64Array(nfft);
+  const qCutMax = Math.max(8, Math.min((nfft >> 1) - 1, Math.trunc(0.0021 * sr))); // 2.1ms リフタ上限（高音F0は動的に0.82*T0へクランプ）
   const invScale = 2.0 / (winSum || 1.0);
 
   for (let t = 0; t < nFrames; t++) {
@@ -113,7 +252,7 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
     buf.fill(0.0);
     let sq = 0.0;
     for (let i = 0; i < wl; i++) {
-      const v = x[off + i] * win[i];
+      const v = (off + i < x.length ? x[off + i] : 0.0) * win[i];
       buf[i] = v;
       sq += v * v;
     }
@@ -160,9 +299,11 @@ export function extractBaseFrameData(sr, rawSamples, fmax = 8000.0) {
           if (Math.abs(denom) > 1e-9) fracLag += Math.max(-0.5, Math.min(0.5, 0.5 * (yL - yR) / denom));
         }
         f0Hz[t] = sr / fracLag;
-        // Cepstral liftering for clean vocal-tract envelope
+        // Adaptive cepstral liftering: stays bit-identical to 2.1ms for f0 <= 390Hz,
+        // and clamps below 0.82 * T0 on high-F0 speech (400-580Hz) to block F0 ripple leakage.
+        const qCut = Math.max(8, Math.min(qCutMax, Math.floor((0.82 * sr) / f0Hz[t])));
         const { re: ceps } = fftRadix2(logFull);
-        const lif = new Float64Array(nfft);
+        lif.fill(0.0);
         lif[0] = ceps[0] / nfft;
         for (let q = 1; q < qCut; q++) {
           const w = 0.5 + 0.5 * Math.cos((Math.PI * q) / qCut);

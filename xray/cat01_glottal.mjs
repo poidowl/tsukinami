@@ -1,6 +1,5 @@
 // xray/cat01_glottal.mjs — 変態解析ツール #01〜#10: 声門・声帯ソース解析 (Glottal & Voice Quality)
-import { fftRadix2 } from "../hitofude.mjs";
-import { median } from "./core.mjs";
+import { fftRadix2, median, percentile } from "./core.mjs";
 
 function peakDbNear(freqs, spDb, fc, bwFrac = 0.22) {
   let mx = -Infinity;
@@ -17,6 +16,30 @@ function peakDbBand(freqs, spDb, lo, hi) {
     if (freqs[k] >= lo && freqs[k] <= hi && spDb[k] > mx) mx = spDb[k];
   }
   return mx;
+}
+
+export function getCloseSharpStats(d) {
+  if (d._closeSharp) return d._closeSharp;
+  const vals = [];
+  for (let t = 0; t < d.nFrames; t++) {
+    if (!d.f0Hz[t]) continue;
+    const off = t * d.hop;
+    const end = Math.min(d.wl, d.x.length - off);
+    if (end < 2) continue;
+    let maxNeg = 0.0, sq = 0.0;
+    for (let i = 1; i < end; i++) {
+      const dv = d.x[off + i] - d.x[off + i - 1];
+      if (-dv > maxNeg) maxNeg = -dv;
+      sq += dv * dv;
+    }
+    const rmsD = Math.sqrt(sq / end) || 1e-9;
+    vals.push(maxNeg / rmsD);
+  }
+  const med = Number(median(vals).toFixed(2));
+  const p90 = Number(percentile(vals, 90).toFixed(2));
+  d._closeSharp = { med, p90 };
+  d._closeSharpP90 = p90;
+  return d._closeSharp;
 }
 
 export const CAT01_TOOLS = [
@@ -117,22 +140,7 @@ export const CAT01_TOOLS = [
   },
   {
     id: 6, key: "close_sharpness", name: "声門閉鎖シャープネス (負微分尖度)", unit: "ratio",
-    run(d) {
-      const vals = [];
-      for (let t = 0; t < d.nFrames; t++) {
-        if (!d.f0Hz[t]) continue;
-        const off = t * d.hop;
-        let maxNeg = 0.0, sq = 0.0;
-        for (let i = 1; i < d.wl; i++) {
-          const dv = d.x[off + i] - d.x[off + i - 1];
-          if (-dv > maxNeg) maxNeg = -dv;
-          sq += dv * dv;
-        }
-        const rmsD = Math.sqrt(sq / d.wl) || 1e-9;
-        vals.push(maxNeg / rmsD);
-      }
-      return Number(median(vals).toFixed(2));
-    },
+    run: (d) => getCloseSharpStats(d).med,
   },
   {
     id: 7, key: "subharmonic_ratio", name: "サブハーモニクス比 SHR (エッジ/フライ)", unit: "dB",
@@ -198,7 +206,8 @@ export const CAT01_TOOLS = [
           let pk = 0.0;
           for (let k = t; k < Math.min(d.nFrames, t + 16); k++) if (d.rmsFr[k] > pk) pk = d.rmsFr[k];
           let t15 = t, t85 = t;
-          while (t15 > 0 && d.rmsFr[t15] > 0.15 * pk) t15--;
+          const tMin = Math.max(0, t - 16);
+          while (t15 > tMin && d.rmsFr[t15] > 0.15 * pk) t15--;
           while (t85 < Math.min(d.nFrames - 1, t + 16) && d.rmsFr[t85] < 0.85 * pk) t85++;
           rises.push((t85 - t15) * 5.0);
         } else if (d.f0Hz[t] === 0 && d.f0Hz[Math.max(0, t - 1)] === 0) {

@@ -15,26 +15,30 @@ function voicedCenterSlice(d, len = 1024) {
   return { seg: d.x.subarray(a, Math.min(d.x.length, a + len)), f0: d.f0Hz[bestT] };
 }
 
-function buildRqaStats(d) {
-  if (d._rqa) return d._rqa;
-  const { seg, f0 } = voicedCenterSlice(d, 1200);
-  const tau = Math.max(2, Math.round(d.sr / (f0 * 4.0)));
+export function computeRqaSlice(seg, sr, f0) {
+  const f0Safe = f0 > 50 ? f0 : 300.0;
+  const tau = Math.max(2, Math.round(sr / (f0Safe * 4.0)));
+  if (seg.length - 2 * tau < 12) return { entr: 0.0, lam: 0.0 };
   const step = Math.max(1, Math.floor((seg.length - 2 * tau) / 96));
   const pts = [];
   for (let i = 0; i + 2 * tau < seg.length && pts.length < 96; i += step) {
     pts.push([seg[i], seg[i + tau], seg[i + 2 * tau]]);
   }
   const M = pts.length;
-  if (M < 12) { d._rqa = { entr: 0.0, lam: 0.0 }; return d._rqa; }
+  if (M < 12) return { entr: 0.0, lam: 0.0 };
   const dists = [];
   const D = new Float64Array(M * M);
+  let maxDist = 0.0;
   for (let i = 0; i < M; i++) {
     for (let j = i + 1; j < M; j++) {
       const dist = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1], pts[i][2] - pts[j][2]);
       D[i * M + j] = D[j * M + i] = dist;
       dists.push(dist);
+      if (dist > maxDist) maxDist = dist;
     }
   }
+  // Guard silent/constant slices from returning spurious 100% LAM
+  if (maxDist < 1e-9) return { entr: 0.0, lam: 0.0 };
   const eps = percentile(dists, 15) || 1e-6;
   const R = new Uint8Array(M * M);
   let recTot = 0;
@@ -64,7 +68,48 @@ function buildRqaStats(d) {
     }
     if (run >= 2) lamPts += run;
   }
-  d._rqa = { entr: Number(entr.toFixed(3)), lam: Number(((100.0 * lamPts) / (recTot || 1)).toFixed(1)) };
+  return { entr, lam: (100.0 * lamPts) / (recTot || 1) };
+}
+
+function buildRqaStats(d) {
+  if (d._rqa) return d._rqa;
+  const allVo = [];
+  let maxVoRms = 0.0;
+  for (let t = 0; t < d.nFrames; t++) {
+    if (d.f0Hz[t] > 0) {
+      allVo.push(t);
+      if (d.rmsFr[t] > maxVoRms) maxVoRms = d.rmsFr[t];
+    }
+  }
+  if (!allVo.length) {
+    d._rqa = { entr: 0.0, lam: 0.0 };
+    return d._rqa;
+  }
+  const strongVo = allVo.filter((t) => d.rmsFr[t] >= 0.40 * maxVoRms);
+  const cand = strongVo.length >= 5 ? strongVo : allVo;
+  const K = Math.min(5, cand.length);
+  const len = Math.max(256, Math.round(0.050 * d.sr));
+  const picked = [];
+  for (let q = 0; q < K; q++) {
+    const i0 = Math.floor((q * cand.length) / K);
+    const i1 = Math.max(i0 + 1, Math.floor(((q + 1) * cand.length) / K));
+    let bestT = cand[i0], bestRms = -1.0;
+    for (let i = i0; i < i1; i++) {
+      const t = cand[i];
+      if (d.rmsFr[t] > bestRms) { bestRms = d.rmsFr[t]; bestT = t; }
+    }
+    if (!picked.length || picked[picked.length - 1] !== bestT) picked.push(bestT);
+  }
+  const entrs = [], lams = [];
+  for (const bestT of picked) {
+    const c = bestT * d.hop + (d.wl >> 1);
+    const a = Math.max(0, Math.min(Math.max(0, d.x.length - len), c - (len >> 1)));
+    const seg = d.x.subarray(a, Math.min(d.x.length, a + len));
+    const st = computeRqaSlice(seg, d.sr, d.f0Hz[bestT]);
+    entrs.push(st.entr);
+    lams.push(st.lam);
+  }
+  d._rqa = { entr: Number(median(entrs).toFixed(3)), lam: Number(median(lams).toFixed(1)) };
   return d._rqa;
 }
 

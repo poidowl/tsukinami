@@ -35,25 +35,36 @@ function tremor2to4Hz(d) {
   const env = [];
   for (let t = 0; t < d.nFrames; t++) {
     if (!d.f0Hz[t]) continue;
-    const r = d.rmsDb ? Math.pow(10, (d.rmsDb[t] ?? -80) / 20) : 0;
-    env.push(r);
+    env.push(d.rmsFr[t]);
   }
-  if (env.length < 32) return 0;
-  const mean = env.reduce((a, b) => a + b, 0) / env.length || 1e-9;
-  const norm = env.map((v) => (v - mean) / mean);
+  if (env.length < 64) return 0.0; // require >= 320ms voiced speech
+  const N = env.length;
+  const mean = env.reduce((a, b) => a + b, 0) / N || 1e-9;
+  const wNorm = new Float64Array(N);
+  let wSum = 0.0, wSq = 0.0, acSq = 0.0;
+  for (let i = 0; i < N; i++) {
+    const w = 0.5 - 0.5 * Math.cos((2.0 * Math.PI * i) / (N - 1));
+    const v = (env[i] - mean) / mean;
+    wNorm[i] = v * w;
+    wSum += w;
+    wSq += w * w;
+    acSq += v * v * w * w;
+  }
+  const acRms = Math.sqrt(acSq / (wSq || 1.0) + 1e-12);
   const fps = d.sr / d.hop;
-  let maxMag = 0;
+  let maxDepth = 0.0;
   for (let f = 2.0; f <= 4.0; f += 0.25) {
-    let re = 0, im = 0;
-    for (let i = 0; i < norm.length; i++) {
-      const ang = (2 * Math.PI * f * i) / fps;
-      re += norm[i] * Math.cos(ang);
-      im -= norm[i] * Math.sin(ang);
+    let re = 0.0, im = 0.0;
+    for (let i = 0; i < N; i++) {
+      const ang = (2.0 * Math.PI * f * i) / fps;
+      re += wNorm[i] * Math.cos(ang);
+      im -= wNorm[i] * Math.sin(ang);
     }
-    const mag = Math.hypot(re, im) / norm.length;
-    if (mag > maxMag) maxMag = mag;
+    const depth = (2.0 * Math.hypot(re, im)) / (wSum || 1.0);
+    if (depth > maxDepth) maxDepth = depth;
   }
-  return maxMag;
+  const purity = Math.min(1.0, (maxDepth / Math.SQRT2) / (acRms + 1e-9));
+  return maxDepth * purity * purity;
 }
 
 const INDIVIDUAL_SENSORS = [
